@@ -1,0 +1,263 @@
+/* ============================================================
+   Tiffin — warm food-editorial design system
+   Fraunces (display) + Instrument Sans (body/UI)
+   ============================================================ */
+
+:root {
+  --paper: #fbf6ec;
+  --paper-2: #f3ead9;
+  --paper-3: #ece0cb;
+  --ink: #241c15;
+  --ink-soft: #6d5f50;
+  --ink-faint: #9c8d7c;
+  --line: rgba(36, 28, 21, 0.12);
+  --line-strong: rgba(36, 28, 21, 0.22);
+
+  --tomato: #e1462a;
+  --tomato-deep: #bd3620;
+  --saffron: #e7a324;
+  --leaf: #3c6e47;
+  --danger: #b4341f;
+
+  --r-lg: 20px;
+  --r-md: 13px;
+  --r-sm: 9px;
+
+  --shadow-sm: 0 2px 6px -2px rgba(60, 40, 20, 0.18);
+  --shadow: 0 22px 48px -26px rgba(60, 40, 20, 0.55);
+  --shadow-lift: 0 30px 70px -32px rgba(60, 40, 20, 0.6);
+
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background-color: var(--paper);
+  /* Layered warmth: soft radial glows + a fine grain overlay. */
+  background-image:
+    radial-gradient(1100px 700px at 108% -10%, rgba(231, 163, 36, 0.16), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(225, 70, 42, 0.12), transparent 55%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.5;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  font-optical-sizing: auto;
+}
+
+a {
+  color: var(--tomato-deep);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.98rem;
+  border: none;
+  border-radius: var(--r-md);
+  padding: 0.85rem 1.35rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease),
+    background 0.18s var(--ease), opacity 0.18s var(--ease);
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--tomato) 0%, var(--tomato-deep) 100%);
+  color: #fff5ee;
+  box-shadow: 0 12px 26px -12px rgba(189, 54, 32, 0.75);
+}
+.btn-primary:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px -14px rgba(189, 54, 32, 0.85);
+}
+.btn-primary:not(:disabled):active {
+  transform: translateY(0);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1.5px solid var(--line-strong);
+}
+.btn-ghost:not(:disabled):hover {
+  border-color: var(--ink);
+  background: rgba(36, 28, 21, 0.04);
+}
+.btn-block {
+  width: 100%;
+}
+
+/* ---------- Form fields ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.field label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.input {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.8rem 0.95rem;
+  transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease),
+    background 0.16s var(--ease);
+  width: 100%;
+}
+.input::placeholder {
+  color: var(--ink-faint);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--tomato);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(225, 70, 42, 0.14);
+}
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  background: var(--paper-3);
+  border-radius: var(--r-md);
+}
+.tab {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0.5rem 1rem;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+}
+.tab[data-active='true'] {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Alerts ---------- */
+.alert {
+  border-radius: var(--r-md);
+  padding: 0.75rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.alert-error {
+  background: rgba(180, 52, 31, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(180, 52, 31, 0.25);
+}
+.alert-ok {
+  background: rgba(60, 110, 71, 0.12);
+  color: var(--leaf);
+  border: 1px solid rgba(60, 110, 71, 0.28);
+}
+
+/* ---------- Cards / chips ---------- */
+.card {
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+}
+.chip-accent {
+  background: rgba(231, 163, 36, 0.22);
+  color: #8a5e0f;
+}
+
+.spin {
+  width: 1.05em;
+  height: 1.05em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+.center {
+  text-align: center;
+}
