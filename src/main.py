@@ -18,6 +18,7 @@ from src.modules.cart.router import router as cart_router
 # Ensure all domain models are imported so create_all/migrations see them.
 import src.modules.users.models  # noqa: F401
 import src.modules.restaurants.models  # noqa: F401
+import src.modules.orders.models  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)

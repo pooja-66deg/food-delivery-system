@@ -19,6 +19,7 @@ from src.main import app
 # Import model modules so their tables register on Base.metadata.
 import src.modules.users.models  # noqa: F401,E402
 import src.modules.restaurants.models  # noqa: F401,E402
+import src.modules.orders.models  # noqa: F401,E402
 
 
 @pytest.fixture
