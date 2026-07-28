@@ -1,0 +1,494 @@
+/* ============================================================
+   Layout: auth split-screen + authenticated app shell
+   ============================================================ */
+
+/* ---------- Auth split screen ---------- */
+.auth-split {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+}
+
+.brand-panel {
+  position: relative;
+  overflow: hidden;
+  color: #fff6ee;
+  padding: 3.5rem 3.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    radial-gradient(120% 120% at 80% 10%, rgba(231, 163, 36, 0.95), transparent 55%),
+    linear-gradient(158deg, #c0371f 0%, #e1462a 48%, #cf5a1e 100%);
+}
+/* Decorative "plate" rings, bottom-right. */
+.brand-panel::before,
+.brand-panel::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 246, 238, 0.28);
+}
+.brand-panel::before {
+  width: 460px;
+  height: 460px;
+  right: -150px;
+  bottom: -170px;
+}
+.brand-panel::after {
+  width: 300px;
+  height: 300px;
+  right: -70px;
+  bottom: -90px;
+  border-color: rgba(255, 246, 238, 0.45);
+}
+
+.brand-mark {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+}
+.brand-mark .dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--saffron);
+  box-shadow: 0 0 0 4px rgba(231, 163, 36, 0.3);
+}
+
+.brand-headline {
+  position: relative;
+  z-index: 1;
+  max-width: 22ch;
+}
+.brand-headline h1 {
+  font-size: clamp(2.4rem, 3.4vw, 3.5rem);
+  font-weight: 600;
+  color: #fff6ee;
+}
+.brand-headline .serif-em {
+  font-style: italic;
+  font-weight: 500;
+  color: #ffe6c2;
+}
+.brand-headline p {
+  margin-top: 1.1rem;
+  font-size: 1.05rem;
+  color: rgba(255, 246, 238, 0.82);
+  max-width: 34ch;
+}
+
+.brand-values {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.brand-values li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.98rem;
+  color: rgba(255, 246, 238, 0.92);
+}
+.brand-values .tick {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: rgba(255, 246, 238, 0.16);
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+}
+
+/* ---------- Auth form side ---------- */
+.auth-form-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.75rem;
+}
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+}
+.auth-card h2 {
+  font-size: 2rem;
+  margin-bottom: 0.35rem;
+}
+.auth-card .sub {
+  color: var(--ink-soft);
+  margin-bottom: 1.75rem;
+}
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+.auth-foot {
+  margin-top: 1.5rem;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+.link-btn {
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--tomato-deep);
+  cursor: pointer;
+  padding: 0;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+.otp-hint {
+  font-size: 0.85rem;
+  background: rgba(231, 163, 36, 0.16);
+  color: #8a5e0f;
+  border-radius: var(--r-sm);
+  padding: 0.6rem 0.75rem;
+  font-weight: 500;
+}
+
+/* ---------- App shell (authenticated) ---------- */
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.15rem 2rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(251, 246, 236, 0.8);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.app-nav .brand-mark {
+  color: var(--ink);
+  font-size: 1.35rem;
+}
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.avatar {
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tomato), var(--saffron));
+  color: #fff6ee;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 2.75rem 1.75rem 4rem;
+}
+.page-head {
+  margin-bottom: 2rem;
+}
+.page-head h1 {
+  font-size: clamp(2.1rem, 3.2vw, 2.9rem);
+}
+.page-head p {
+  color: var(--ink-soft);
+  margin-top: 0.35rem;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+.panel {
+  padding: 1.6rem 1.6rem 1.75rem;
+}
+.panel h3 {
+  font-size: 1.3rem;
+  margin-bottom: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.address-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.95rem 1.05rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.5);
+  transition: border-color 0.16s var(--ease), transform 0.16s var(--ease);
+}
+.address-card:hover {
+  border-color: var(--line-strong);
+}
+.address-card .addr-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  text-transform: capitalize;
+}
+.address-card .addr-lines {
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+.icon-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-faint);
+  font-size: 1.1rem;
+  align-self: flex-start;
+  padding: 0.2rem;
+  border-radius: var(--r-sm);
+  transition: color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.icon-btn:hover {
+  color: var(--danger);
+  background: rgba(180, 52, 31, 0.1);
+}
+
+.empty {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.checkbox-row input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--tomato);
+}
+
+.full-center {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  gap: 0.75rem;
+}
+
+/* ---------- Restaurant browsing ---------- */
+.toolbar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+}
+.toolbar .input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.rest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+.rest-card {
+  display: block;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 1.3rem 1.35rem 1.15rem;
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.rest-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--line-strong);
+  text-decoration: none;
+}
+.rest-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.rest-card h3 {
+  font-size: 1.3rem;
+  margin-bottom: 0.3rem;
+}
+.rest-card p {
+  font-size: 0.92rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rest-card-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+}
+.badge-open {
+  background: rgba(60, 110, 71, 0.16);
+  color: var(--leaf);
+}
+.badge-closed {
+  background: rgba(180, 52, 31, 0.12);
+  color: var(--danger);
+}
+
+/* ---------- Restaurant detail ---------- */
+.back-link {
+  display: inline-block;
+  margin-bottom: 1.25rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.back-link:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+.rest-hero {
+  margin-bottom: 2.25rem;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.rest-hero-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.rest-hero-head h1 {
+  font-size: clamp(2rem, 3.4vw, 3rem);
+}
+.rest-hero-meta {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+.menu-section {
+  margin-bottom: 2.25rem;
+}
+.menu-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1rem 1.15rem;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.menu-item-name {
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+.price {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.15rem;
+  color: var(--tomato-deep);
+  white-space: nowrap;
+}
+
+/* nav links */
+.nav-links {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+.nav-links a {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.nav-links a.active,
+.nav-links a:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 860px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+  }
+  .brand-panel {
+    display: none;
+  }
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  .app-main {
+    padding: 1.75rem 1.15rem 3rem;
+  }
+}

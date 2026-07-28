@@ -1,0 +1,95 @@
+# Cloud Build pipeline: test -> build -> push to Artifact Registry -> deploy to Cloud Run.
+#
+# Trigger:  gcloud builds submit --config deploy/gcp/cloudbuild.yaml \
+#             --substitutions=_REGION=us-central1,_AR_REPO=food-delivery,\
+# _CLOUDSQL_INSTANCE=PROJECT:us-central1:food-db,_VPC_CONNECTOR=food-connector,\
+# _API_URL=https://food-api-xxxx.run.app
+#
+# One-time infrastructure setup lives in deploy/gcp/README.md.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: food-delivery              # Artifact Registry repository name
+  _API_SERVICE: food-api
+  _FE_SERVICE: food-frontend
+  _CLOUDSQL_INSTANCE: ""               # PROJECT:REGION:INSTANCE
+  _VPC_CONNECTOR: ""                   # Serverless VPC Access connector (for Memorystore)
+  _API_URL: ""                         # Public API URL the frontend calls (set after first API deploy or use a custom domain)
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
+
+steps:
+  # 1. Run the test suite (uses in-memory SQLite + fakeredis, so no live infra needed).
+  - id: test
+    name: python:3.11-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install --quiet -e ".[dev]"
+        export DATABASE_URL="postgresql://u:p@localhost:5432/db" \
+               REDIS_URL="redis://localhost:6379/0" \
+               JWT_SECRET_KEY="ci-secret" KAFKA_BROKERS="localhost:9092"
+        pytest -q
+
+  # 2. Build + push the API image.
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - docker/Dockerfile
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
+      - .
+
+  # 3. Build + push the frontend image (API URL baked in at build time).
+  - id: build-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/gcp/frontend.Dockerfile
+      - --build-arg
+      - "VITE_API_URL=${_API_URL}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
+      - .
+
+  # 4. Deploy the API to Cloud Run (secrets + Cloud SQL + Memorystore via VPC).
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_API_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --vpc-connector=${_VPC_CONNECTOR}
+      - --vpc-egress=private-ranges-only
+      - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest
+    waitFor: ["test", "build-api"]
+
+  # 5. Deploy the frontend to Cloud Run (static SPA served by nginx).
+  - id: deploy-frontend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_FE_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+    waitFor: ["build-frontend"]
