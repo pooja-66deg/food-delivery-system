@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # Roles a user may self-register as. "admin" is provisioned separately, never
 # via public registration.
@@ -20,12 +20,27 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     role: SelfServiceRole = "customer"
 
+    @field_validator("password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        # bcrypt hashes at most 72 bytes; reject longer input as 422 rather
+        # than letting the hash call raise a 500 downstream.
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
+
 
 class LoginRequest(BaseModel):
     """Payload for email/password login."""
 
     email: EmailStr
     password: str
+
+
+class RefreshRequest(BaseModel):
+    """Payload carrying a refresh token."""
+
+    refresh_token: str
 
 
 class TokenResponse(BaseModel):

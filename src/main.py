@@ -4,21 +4,25 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from src.config import settings
-from src.infrastructure.database import engine, Base
+from src.infrastructure.database import engine
 from src.infrastructure.redis import init_redis, close_redis
 from src.infrastructure.kafka import init_kafka, close_kafka
 from src.core.exceptions import AppException
 from src.modules.users.router import auth_router, users_router
 from src.modules.restaurants.router import router as restaurants_router
 from src.modules.cart.router import router as cart_router
+from src.modules.orders.router import router as orders_router
+from src.modules.payments.router import router as payments_router
 
 # Ensure all domain models are imported so create_all/migrations see them.
 import src.modules.users.models  # noqa: F401
 import src.modules.restaurants.models  # noqa: F401
 import src.modules.orders.models  # noqa: F401
+import src.modules.payments.models  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -29,9 +33,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan context for startup and shutdown events."""
     # Startup
+    # Schema is managed by Alembic migrations (`alembic upgrade head`), run as a
+    # deploy/start step — not created at runtime. See README "Database migrations".
     logger.info("Starting up...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     await init_redis()
     init_kafka()
     logger.info("Application started successfully")
@@ -53,10 +57,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware — explicit origin allowlist (never "*" together with credentials).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,7 +87,9 @@ async def validation_exception_handler(request, exc: RequestValidationError):
         status_code=422,
         content={
             "detail": "Validation error",
-            "errors": exc.errors(),
+            # jsonable_encoder sanitizes non-serializable bits (e.g. a ctx
+            # ValueError from a custom field validator) that plain json can't.
+            "errors": jsonable_encoder(exc.errors()),
         },
     )
 
@@ -93,6 +99,8 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(restaurants_router)
 app.include_router(cart_router)
+app.include_router(orders_router)
+app.include_router(payments_router)
 
 
 # Health check endpoint

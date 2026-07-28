@@ -1,9 +1,10 @@
 """HTTP routes for the users domain (auth + profile)."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
+from src.core.ratelimit import enforce_rate_limit
 from src.infrastructure.database import get_db
 from src.infrastructure.redis import get_redis
 from src.modules.users import otp as otp_module
@@ -17,24 +18,47 @@ from src.modules.users.schemas import (
     LoginRequest,
     OTPRequest,
     OTPVerify,
+    RefreshRequest,
     TokenResponse,
     UserRegister,
     UserResponse,
     UserUpdate,
 )
 
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
 
 
 @auth_router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(data: UserRegister, session: AsyncSession = Depends(get_db)):
+async def register(data: UserRegister, request: Request, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    await enforce_rate_limit(
+        redis, f"rl:register:{_client_ip(request)}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
     return await service.register_user(session, data)
 
 
 @auth_router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, session: AsyncSession = Depends(get_db)):
+async def login(data: LoginRequest, request: Request, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    await enforce_rate_limit(
+        redis, f"rl:login:{_client_ip(request)}:{data.email}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
     return await service.login(session, data.email, data.password)
+
+
+@auth_router.post("/refresh", response_model=TokenResponse)
+async def refresh(data: RefreshRequest, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    return await service.refresh_tokens(session, redis, data.refresh_token)
+
+
+@auth_router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(data: RefreshRequest, redis=Depends(get_redis)):
+    await service.logout(redis, data.refresh_token)
 
 
 @auth_router.post("/otp/request")

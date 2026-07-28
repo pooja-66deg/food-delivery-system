@@ -47,6 +47,7 @@ class RefundStatus(str, Enum):
 class Actor(str, Enum):
     CUSTOMER = "CUSTOMER"
     RESTAURANT = "RESTAURANT"
+    DRIVER = "DRIVER"
     SYSTEM = "SYSTEM"
 
 

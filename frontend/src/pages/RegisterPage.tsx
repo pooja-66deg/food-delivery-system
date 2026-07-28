@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
+import type { SignupRole } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
@@ -13,6 +14,7 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const { saveSession } = useAuth()
 
+  const [role, setRole] = useState<SignupRole>('customer')
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -32,10 +34,11 @@ export function RegisterPage() {
     setError(null)
     void (async () => {
       try {
-        await authApi.register(form)
+        await authApi.register({ ...form, role })
         const tokens = await authApi.login(form.email, form.password)
         await saveSession(tokens)
-        navigate('/restaurants')
+        // Restaurant owners manage their kitchen; customers browse.
+        navigate(role === 'restaurant' ? '/account' : '/restaurants')
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Something went wrong.')
       } finally {
@@ -55,7 +58,20 @@ export function RegisterPage() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <h2>Create your account</h2>
-          <p className="sub">A few details and your first order is minutes away.</p>
+          <p className="sub">
+            {role === 'restaurant'
+              ? 'List your kitchen and start taking orders.'
+              : 'A few details and your first order is minutes away.'}
+          </p>
+
+          <div className="tabs" style={{ marginBottom: '1.5rem' }}>
+            <button type="button" className="tab" data-active={role === 'customer'} onClick={() => setRole('customer')}>
+              I'm a customer
+            </button>
+            <button type="button" className="tab" data-active={role === 'restaurant'} onClick={() => setRole('restaurant')}>
+              I'm a restaurant
+            </button>
+          </div>
 
           {error && <Alert>{error}</Alert>}
 

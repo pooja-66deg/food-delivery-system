@@ -28,11 +28,15 @@ export function AccountPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
       >
-        <span className="chip chip-accent">Your account</span>
+        <span className="chip chip-accent">
+          {user?.role === 'restaurant' ? 'Restaurant account' : user?.role === 'admin' ? 'Admin account' : 'Customer account'}
+        </span>
         <h1 style={{ marginTop: '0.6rem' }}>
           Hello, {user?.first_name} {user?.last_name}
         </h1>
-        <p>Manage your profile details and delivery addresses.</p>
+        <p>
+          Signed in as <strong>{user?.role}</strong>. Manage your profile details and delivery addresses.
+        </p>
       </motion.div>
 
       <div className="account-grid">

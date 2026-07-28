@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     api_title: str = "Food Delivery Platform"
     api_version: str = "0.1.0"
     environment: str = "development"
+    # Comma-separated list of allowed CORS origins (explicit — never "*" with credentials).
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    # Auth rate limiting (fixed window, per client IP)
+    auth_rate_max: int = 10
+    auth_rate_window_seconds: int = 60
 
     # Database
     database_url: str
@@ -32,6 +38,9 @@ class Settings(BaseSettings):
     otp_max_attempts: int = 5
     otp_request_max: int = 3
     otp_request_window_seconds: int = 300
+
+    # Orders
+    restaurant_accept_timeout_seconds: int = 300
 
     # Kafka
     kafka_brokers: str = "localhost:9092"

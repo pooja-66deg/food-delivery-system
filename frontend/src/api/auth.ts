@@ -30,12 +30,15 @@ export interface Address {
   is_default: boolean
 }
 
+export type SignupRole = 'customer' | 'restaurant'
+
 export interface RegisterInput {
   email: string
   phone: string
   first_name: string
   last_name: string
   password: string
+  role?: SignupRole
 }
 
 export interface AddressInput {

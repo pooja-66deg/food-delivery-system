@@ -1,6 +1,7 @@
 """Profile and address management for the users domain."""
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ConflictException, NotFoundException
@@ -21,7 +22,11 @@ async def update_profile(session: AsyncSession, user: User, data: UserUpdate) ->
     for field, value in updates.items():
         setattr(user, field, value)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise ConflictException("Phone already registered")
     await session.refresh(user)
     return user
 
