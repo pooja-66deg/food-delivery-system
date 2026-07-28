@@ -6,6 +6,7 @@ auth layer can translate them into HTTP 401 responses uniformly.
 """
 
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -25,7 +26,7 @@ def create_access_token(
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=settings.jwt_expiration_minutes))
-    to_encode.update({"exp": expire, "iat": now, "type": "access"})
+    to_encode.update({"exp": expire, "iat": now, "type": "access", "jti": uuid.uuid4().hex})
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
@@ -34,7 +35,7 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
     to_encode = data.copy()
     now = datetime.now(timezone.utc)
     expire = now + timedelta(days=settings.jwt_refresh_expiration_days)
-    to_encode.update({"exp": expire, "iat": now, "type": "refresh"})
+    to_encode.update({"exp": expire, "iat": now, "type": "refresh", "jti": uuid.uuid4().hex})
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

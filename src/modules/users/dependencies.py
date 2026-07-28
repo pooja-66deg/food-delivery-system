@@ -35,8 +35,12 @@ async def get_current_user(
     subject = payload.get("sub")
     if subject is None:
         raise UnauthorizedException("Invalid token")
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError):
+        raise UnauthorizedException("Invalid token")
 
-    user = await session.get(User, int(subject))
+    user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise UnauthorizedException("User not found or inactive")
     return user
