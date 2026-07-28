@@ -1,0 +1,30 @@
+# Core web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Data validation / settings
+pydantic[email]==2.10.4
+pydantic-settings==2.7.0
+
+# Database (async + sync drivers)
+sqlalchemy==2.0.36
+greenlet==3.1.1
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+
+# Cache / session store (async client ships in redis-py)
+redis==5.2.1
+
+# Auth
+PyJWT==2.10.1
+bcrypt==4.2.1
+
+# Messaging
+kafka-python-ng==2.2.3
+
+# HTTP client
+httpx==0.28.1
+
+# Environment
+python-dotenv==1.0.1

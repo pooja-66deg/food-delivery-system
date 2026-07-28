@@ -1,0 +1,69 @@
+"""HTTP routes for the cart & checkout domain. All routes are per-authenticated-user."""
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.infrastructure.database import get_db
+from src.infrastructure.redis import get_redis
+from src.modules.cart import checkout as checkout_service
+from src.modules.cart import service as cart_service
+from src.modules.cart.schemas import AddToCart, CartView, CheckoutRequest, UpdateCartItem, ValidatedOrder
+from src.modules.users.dependencies import get_current_user
+from src.modules.users.models import User
+
+router = APIRouter(prefix="/cart", tags=["cart"])
+
+
+@router.get("", response_model=CartView)
+async def get_cart(
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    return await cart_service.get_cart(redis, session, user.id)
+
+
+@router.post("/items", response_model=CartView)
+async def add_item(
+    data: AddToCart,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    return await cart_service.add_item(redis, session, user.id, data.menu_item_id, data.quantity)
+
+
+@router.patch("/items/{menu_item_id}", response_model=CartView)
+async def update_item(
+    menu_item_id: int,
+    data: UpdateCartItem,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    return await cart_service.update_item(redis, session, user.id, menu_item_id, data.quantity)
+
+
+@router.delete("/items/{menu_item_id}", response_model=CartView)
+async def remove_item(
+    menu_item_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    return await cart_service.remove_item(redis, session, user.id, menu_item_id)
+
+
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_cart(user: User = Depends(get_current_user), redis=Depends(get_redis)):
+    await cart_service.clear_cart(redis, user.id)
+
+
+@router.post("/checkout", response_model=ValidatedOrder)
+async def checkout(
+    data: CheckoutRequest,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    return await checkout_service.validate_checkout(redis, session, user, data)

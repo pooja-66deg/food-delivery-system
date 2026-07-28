@@ -1,0 +1,12 @@
+# Files not uploaded to Cloud Build. Keeps the source upload small.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+htmlcov
+.coverage
+.coverage.*
+**/node_modules
+frontend/dist
+*.log
