@@ -1,0 +1,93 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: fooddelivery
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d fooddelivery"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fooddelivery_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka is not used by any feature until Milestone 5 (delivery/notification
+  # events). It's disabled here to keep the local stack clean and fast — the API
+  # already tolerates Kafka being absent. It will be reintroduced in KRaft mode
+  # (no Zookeeper, which avoids the broker-registration race) when M5 needs it.
+  #
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.5.0
+  #   container_name: fooddelivery_kafka
+  #   ports: ["9092:9092"]
+  #   restart: unless-stopped
+  #   environment:
+  #     KAFKA_NODE_ID: 1
+  #     KAFKA_PROCESS_ROLES: broker,controller
+  #     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+  #     KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  #     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  #     CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: fooddelivery_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres:5432/fooddelivery
+      REDIS_URL: redis://redis:6379/0
+      # Kafka disabled for now (see note above); the app tolerates its absence.
+      KAFKA_BROKERS: disabled:9092
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Customer Web App (built + served by nginx, proxies /api to the backend)
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: fooddelivery_frontend
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+  redis_data:
