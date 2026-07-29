@@ -26,14 +26,14 @@ class StatusBody(BaseModel):
 
 
 @router.post("/checkout", response_model=OrderRead, status_code=status.HTTP_201_CREATED)
-async def checkout(data: CheckoutRequest, user: User = Depends(get_current_user),
+async def checkout(data: CheckoutRequest, user: User = Depends(require_role("customer")),
                    session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
     return await service.create_order_from_checkout(redis, session, user, data)
 
 
 @router.get("", response_model=list[OrderSummary])
 async def list_my_orders(limit: int = 20, offset: int = 0,
-                         user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db)):
+                         user: User = Depends(require_role("customer")), session: AsyncSession = Depends(get_db)):
     return await service.list_orders(session, user.id, limit, offset)
 
 
@@ -44,7 +44,7 @@ async def get_order(order_id: int, user: User = Depends(get_current_user),
 
 
 @router.post("/{order_id}/cancel", response_model=OrderRead)
-async def cancel_order(order_id: int, user: User = Depends(get_current_user),
+async def cancel_order(order_id: int, user: User = Depends(require_role("customer")),
                        session: AsyncSession = Depends(get_db)):
     return await service.cancel_by_customer(session, user, order_id)
 

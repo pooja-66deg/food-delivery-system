@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # Roles a user may self-register as. "admin" is provisioned separately, never
 # via public registration.
-SelfServiceRole = Literal["customer", "restaurant"]
+SelfServiceRole = Literal["customer", "restaurant", "driver"]
 
 
 class UserRegister(BaseModel):

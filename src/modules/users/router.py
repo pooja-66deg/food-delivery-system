@@ -29,12 +29,16 @@ from src.modules.users.schemas import (
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
+
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
 
 
 @auth_router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(data: UserRegister, request: Request, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+async def register(
+    data: UserRegister, request: Request,
+    session: AsyncSession = Depends(get_db), redis=Depends(get_redis),
+):
     await enforce_rate_limit(
         redis, f"rl:register:{_client_ip(request)}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
@@ -43,7 +47,10 @@ async def register(data: UserRegister, request: Request, session: AsyncSession =
 
 
 @auth_router.post("/login", response_model=TokenResponse)
-async def login(data: LoginRequest, request: Request, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+async def login(
+    data: LoginRequest, request: Request,
+    session: AsyncSession = Depends(get_db), redis=Depends(get_redis),
+):
     await enforce_rate_limit(
         redis, f"rl:login:{_client_ip(request)}:{data.email}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,

@@ -37,8 +37,9 @@ export function RegisterPage() {
         await authApi.register({ ...form, role })
         const tokens = await authApi.login(form.email, form.password)
         await saveSession(tokens)
-        // Restaurant owners manage their kitchen; customers browse.
-        navigate(role === 'restaurant' ? '/account' : '/restaurants')
+        // Send each role to its home screen.
+        const home = role === 'restaurant' ? '/manage' : role === 'driver' ? '/deliveries' : '/restaurants'
+        navigate(home)
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Something went wrong.')
       } finally {
@@ -61,15 +62,20 @@ export function RegisterPage() {
           <p className="sub">
             {role === 'restaurant'
               ? 'List your kitchen and start taking orders.'
-              : 'A few details and your first order is minutes away.'}
+              : role === 'driver'
+                ? 'Sign up to pick up and deliver orders.'
+                : 'A few details and your first order is minutes away.'}
           </p>
 
           <div className="tabs" style={{ marginBottom: '1.5rem' }}>
             <button type="button" className="tab" data-active={role === 'customer'} onClick={() => setRole('customer')}>
-              I'm a customer
+              Customer
             </button>
             <button type="button" className="tab" data-active={role === 'restaurant'} onClick={() => setRole('restaurant')}>
-              I'm a restaurant
+              Restaurant
+            </button>
+            <button type="button" className="tab" data-active={role === 'driver'} onClick={() => setRole('driver')}>
+              Driver
             </button>
           </div>
 

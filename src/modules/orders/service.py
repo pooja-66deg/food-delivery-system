@@ -17,11 +17,24 @@ from src.modules.orders.models import (
     Actor, Order, OrderItem, OrderStatus, OrderStatusEvent, PaymentMethod, PaymentStatus, RefundStatus,
 )
 from src.modules.orders.state_machine import OrderError
+from src.modules.events import outbox
+from src.modules.notifications import service as notification_service
 from src.modules.payments import service as payment_service
 from src.modules.restaurants import service as restaurant_service
 
 _LOCK_KEY = "order_lock:{user_id}"
 _LOCK_TTL = 10
+
+
+def _emit_status(session: AsyncSession, order: Order) -> None:
+    """Queue a customer notification and an outbox event for the order's current
+    status, in the caller's transaction (outbox pattern — same tx as the state
+    change). Caller commits."""
+    notification_service.notify_order_status(session, order)
+    outbox.record_event(
+        session, "order-events", str(order.id),
+        {"order_id": order.id, "status": order.status, "customer_id": order.customer_id},
+    )
 
 
 async def _load_full(session: AsyncSession, order_id: int) -> Order:
@@ -72,6 +85,7 @@ async def create_order_from_checkout(
                             reason="COD: to be collected on delivery")
         order.payment_status = PaymentStatus.SUCCESS.value
 
+        _emit_status(session, order)
         await session.commit()
         await cart_service.clear_cart(redis, user.id)
         loaded = await _load_full(session, order.id)
@@ -125,6 +139,7 @@ async def cancel_by_customer(session: AsyncSession, user, order_id: int) -> Orde
     order.cancelled_by = Actor.CUSTOMER.value
     refund = sm.refund_on_cancel(current, Actor.CUSTOMER)
     _record_refund(order, refund)
+    _emit_status(session, order)
     await session.commit()
     if refund == RefundStatus.FULL:
         await payment_service.refund_payment(session, order)
@@ -137,6 +152,7 @@ async def accept_by_restaurant(session: AsyncSession, user, order_id: int) -> Or
         raise NotFoundException("Order", str(order_id))
     await restaurant_service.owned_restaurant(session, user, order.restaurant_id)
     sm.apply_transition(session, order, OrderStatus.RESTAURANT_ACCEPTED, Actor.RESTAURANT)
+    _emit_status(session, order)
     await session.commit()
     return await _load_full(session, order_id)
 
@@ -150,6 +166,7 @@ async def reject_by_restaurant(session: AsyncSession, user, order_id: int, reaso
     order.cancelled_by = Actor.RESTAURANT.value
     order.cancel_reason = reason
     _record_refund(order, RefundStatus.FULL)  # kitchen rejection always refunds
+    _emit_status(session, order)
     await session.commit()
     await payment_service.refund_payment(session, order)
     return await _load_full(session, order_id)
@@ -167,11 +184,30 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         order.cancelled_by = Actor.RESTAURANT.value
         refund = sm.refund_on_cancel(current, Actor.RESTAURANT)
         _record_refund(order, refund)
+    _emit_status(session, order)
     await session.commit()
     if to == OrderStatus.DELIVERED:
         await payment_service.settle_payment(session, order)
     elif refund == RefundStatus.FULL:
         await payment_service.refund_payment(session, order)
+    if to == OrderStatus.READY_FOR_PICKUP:
+        # Local import avoids an orders<->delivery import cycle.
+        from src.modules.delivery import service as delivery_service
+        await delivery_service.assign_for_order(session, order)
+    return await _load_full(session, order_id)
+
+
+async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) -> Order:
+    """Advance an order on behalf of the assigned driver (OUT_FOR_DELIVERY /
+    DELIVERED). Access is enforced by the delivery service before calling."""
+    order = await session.get(Order, order_id)
+    if order is None:
+        raise NotFoundException("Order", str(order_id))
+    sm.apply_transition(session, order, to, Actor.DRIVER)
+    _emit_status(session, order)
+    await session.commit()
+    if to == OrderStatus.DELIVERED:
+        await payment_service.settle_payment(session, order)
     return await _load_full(session, order_id)
 
 
@@ -187,6 +223,7 @@ async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> in
                             reason="restaurant acceptance timeout")
         order.cancelled_by = Actor.SYSTEM.value
         _record_refund(order, RefundStatus.FULL)
+        _emit_status(session, order)
     await session.commit()
     for order in stale:
         await payment_service.refund_payment(session, order)

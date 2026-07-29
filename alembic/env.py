@@ -12,6 +12,9 @@ import src.modules.users.models  # noqa: F401
 import src.modules.restaurants.models  # noqa: F401
 import src.modules.orders.models  # noqa: F401
 import src.modules.payments.models  # noqa: F401
+import src.modules.delivery.models  # noqa: F401
+import src.modules.notifications.models  # noqa: F401
+import src.modules.events.models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

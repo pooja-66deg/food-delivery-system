@@ -28,7 +28,7 @@ async def relay_outbox(session: AsyncSession, batch_size: int = 100) -> int:
     published = 0
     for row in rows:
         try:
-            await send_event(row.topic, json.loads(row.payload), key=row.key)
+            await send_event(row.topic, row.key, json.loads(row.payload))
             row.published_at = datetime.now(timezone.utc)
             published += 1
         except Exception:  # noqa: BLE001 — leave for retry, don't abort the batch

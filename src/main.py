@@ -17,12 +17,18 @@ from src.modules.restaurants.router import router as restaurants_router
 from src.modules.cart.router import router as cart_router
 from src.modules.orders.router import router as orders_router
 from src.modules.payments.router import router as payments_router
+from src.modules.delivery.router import router as delivery_router
+from src.modules.notifications.router import router as notifications_router
+from src.modules.admin.router import router as admin_router
 
 # Ensure all domain models are imported so create_all/migrations see them.
 import src.modules.users.models  # noqa: F401
 import src.modules.restaurants.models  # noqa: F401
 import src.modules.orders.models  # noqa: F401
 import src.modules.payments.models  # noqa: F401
+import src.modules.delivery.models  # noqa: F401
+import src.modules.notifications.models  # noqa: F401
+import src.modules.events.models  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -101,6 +107,9 @@ app.include_router(restaurants_router)
 app.include_router(cart_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
+app.include_router(delivery_router)
+app.include_router(notifications_router)
+app.include_router(admin_router)
 
 
 # Health check endpoint
