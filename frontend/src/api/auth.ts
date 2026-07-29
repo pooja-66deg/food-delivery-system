@@ -30,7 +30,7 @@ export interface Address {
   is_default: boolean
 }
 
-export type SignupRole = 'customer' | 'restaurant'
+export type SignupRole = 'customer' | 'restaurant' | 'driver'
 
 export interface RegisterInput {
   email: string

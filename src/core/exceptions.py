@@ -1,7 +1,7 @@
 """Core utilities and exceptions."""
 
 from typing import Any, Dict
-from fastapi import HTTPException, status
+from fastapi import status
 
 
 class AppException(Exception):

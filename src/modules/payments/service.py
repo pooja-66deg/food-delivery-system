@@ -3,8 +3,6 @@
 Settle/refund are no-ops when an order has no payment row, so order flows built
 directly in tests (bypassing checkout) don't require a payment.
 """
-from decimal import Decimal
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
