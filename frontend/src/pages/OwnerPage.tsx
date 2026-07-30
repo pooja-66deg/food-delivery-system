@@ -188,6 +188,28 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
     }
   }
 
+  async function uploadRestaurantImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      await restaurantsApi.uploadImage(restaurantId, file)
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Image upload failed.')
+    }
+  }
+
+  async function uploadItemImage(itemId: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      await restaurantsApi.uploadItemImage(restaurantId, itemId, file)
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Image upload failed.')
+    }
+  }
+
   if (!detail) {
     return <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
   }
@@ -201,6 +223,18 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
         </Button>
       </div>
       {error && <Alert>{error}</Alert>}
+
+      <div className="image-field">
+        {detail.image_url ? (
+          <img className="image-thumb" src={`/api${detail.image_url}`} alt={`${detail.name} cover`} />
+        ) : (
+          <div className="image-thumb image-placeholder" aria-hidden>No image</div>
+        )}
+        <label className="file-label">
+          {detail.image_url ? 'Replace cover image' : 'Upload cover image'}
+          <input type="file" accept="image/*" onChange={uploadRestaurantImage} />
+        </label>
+      </div>
 
       <form className="owner-inline-form" onSubmit={addCategory}>
         <input
@@ -222,16 +256,29 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
             <div className="menu-items">
               {cat.items.map((item) => (
                 <div key={item.id} className="menu-item">
-                  <div>
-                    <div className="menu-item-name">{item.name}</div>
-                    <div className="muted">${Number(item.price).toFixed(2)}</div>
+                  <div className="menu-item-lead">
+                    {item.image_url ? (
+                      <img className="item-thumb" src={`/api${item.image_url}`} alt={item.name} />
+                    ) : (
+                      <div className="item-thumb item-placeholder" aria-hidden>🍽</div>
+                    )}
+                    <div>
+                      <div className="menu-item-name">{item.name}</div>
+                      <div className="muted">${Number(item.price).toFixed(2)}</div>
+                    </div>
                   </div>
-                  <button
-                    className="link-danger"
-                    onClick={() => toggleItem(item.id, item.is_available)}
-                  >
-                    {item.is_available ? 'Mark unavailable' : 'Mark available'}
-                  </button>
+                  <div className="menu-item-actions">
+                    <label className="file-label file-label-sm">
+                      Photo
+                      <input type="file" accept="image/*" onChange={(e) => uploadItemImage(item.id, e)} />
+                    </label>
+                    <button
+                      className="link-danger"
+                      onClick={() => toggleItem(item.id, item.is_available)}
+                    >
+                      {item.is_available ? 'Mark unavailable' : 'Mark available'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

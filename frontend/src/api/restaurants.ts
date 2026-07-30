@@ -1,6 +1,6 @@
 // Typed bindings for the restaurants domain.
 
-import { request } from './client'
+import { request, upload } from './client'
 
 export interface Restaurant {
   id: number
@@ -13,6 +13,7 @@ export interface Restaurant {
   phone: string
   is_open: boolean
   min_order_amount: number
+  image_url?: string | null
 }
 
 export interface MenuItem {
@@ -22,6 +23,7 @@ export interface MenuItem {
   description: string | null
   price: number
   is_available: boolean
+  image_url?: string | null
 }
 
 export interface MenuCategory {
@@ -79,4 +81,10 @@ export const restaurantsApi = {
 
   updateItem: (id: number, itemId: number, body: Partial<MenuItemCreateInput>) =>
     request<MenuItem>(`/restaurants/${id}/items/${itemId}`, { method: 'PATCH', body, auth: true }),
+
+  uploadImage: (id: number, file: File) =>
+    upload<Restaurant>(`/restaurants/${id}/image`, file),
+
+  uploadItemImage: (id: number, itemId: number, file: File) =>
+    upload<MenuItem>(`/restaurants/${id}/items/${itemId}/image`, file),
 }

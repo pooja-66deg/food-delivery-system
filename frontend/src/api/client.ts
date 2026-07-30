@@ -60,6 +60,27 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   return data as T
 }
 
+/** POST a single file as multipart/form-data (field name "file"), with auth. */
+export async function upload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  const headers: Record<string, string> = {}
+  const token = tokenGetter()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  let res: Response
+  try {
+    res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: form })
+  } catch {
+    throw new ApiError('Cannot reach the server. Is the backend running?', 0)
+  }
+  const data = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new ApiError(extractMessage(data) ?? `Request failed (${res.status})`, res.status, data)
+  }
+  return data as T
+}
+
 function extractMessage(data: unknown): string | null {
   if (!data || typeof data !== 'object') return null
   const detail = (data as Record<string, unknown>).detail

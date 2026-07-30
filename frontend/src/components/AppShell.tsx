@@ -27,9 +27,11 @@ export function AppShell() {
             </NavLink>
           )}
           {isCustomer && <NavLink to="/orders">Orders</NavLink>}
+          {isCustomer && <NavLink to="/payments">Payments</NavLink>}
           {isDriver && <NavLink to="/deliveries">Deliveries</NavLink>}
           {isOwner && <NavLink to="/manage">Manage</NavLink>}
           {user?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
+          <NavLink to="/notifications">Notifications</NavLink>
           <NavLink to="/account">Account</NavLink>
         </div>
         <div className="nav-right">

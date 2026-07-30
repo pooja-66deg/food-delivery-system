@@ -2,19 +2,36 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
+import { deliveryApi } from '../api/delivery'
+import type { Tracking } from '../api/delivery'
 import { ordersApi } from '../api/orders'
 import type { Order, Payment } from '../api/orders'
+import { paymentsApi } from '../api/payments'
+import { reviewsApi } from '../api/reviews'
+import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button } from '../components/ui'
 import { canCustomerCancel, statusLabel } from './orderStatus'
 
+const REVIEWABLE = new Set(['DELIVERED', 'COMPLETED'])
+
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
   const { refresh: refreshCart } = useCart()
   const [order, setOrder] = useState<Order | null>(null)
   const [payment, setPayment] = useState<Payment | null>(null)
+  const [tracking, setTracking] = useState<Tracking | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+
+  // review form
+  const [rating, setRating] = useState(5)
+  const [comment, setComment] = useState('')
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewed, setReviewed] = useState(false)
 
   const load = useCallback(async () => {
     if (!id) return
@@ -22,7 +39,7 @@ export function OrderDetailPage() {
     try {
       const o = await ordersApi.get(Number(id))
       setOrder(o)
-      setPayment(await ordersApi.payment(o.id).catch(() => null))
+      setPayment(await paymentsApi.forOrder(o.id).catch(() => null))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load order.')
     }
@@ -31,6 +48,22 @@ export function OrderDetailPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Poll live tracking while the order is out for delivery.
+  useEffect(() => {
+    if (!order || order.status !== 'OUT_FOR_DELIVERY') {
+      setTracking(null)
+      return
+    }
+    let active = true
+    const tick = () => deliveryApi.tracking(order.id).then((t) => active && setTracking(t)).catch(() => {})
+    void tick()
+    const timer = setInterval(tick, 5000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [order])
 
   async function cancel() {
     if (!order) return
@@ -46,7 +79,41 @@ export function OrderDetailPage() {
     }
   }
 
-  if (error) {
+  async function retryPayment() {
+    if (!order) return
+    setRetrying(true)
+    setError(null)
+    try {
+      await paymentsApi.retry(order.id)
+      await load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Retry failed.')
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  async function submitReview() {
+    if (!order) return
+    setReviewing(true)
+    setError(null)
+    try {
+      await reviewsApi.create(order.id, rating, comment || undefined)
+      setReviewed(true)
+      setNotice('Thanks for your review!')
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setReviewed(true)
+        setNotice('You have already reviewed this order.')
+      } else {
+        setError(e instanceof ApiError ? e.message : 'Could not submit review.')
+      }
+    } finally {
+      setReviewing(false)
+    }
+  }
+
+  if (error && !order) {
     return (
       <main className="app-main">
         <Link to="/orders" className="back-link">← Back to orders</Link>
@@ -63,6 +130,8 @@ export function OrderDetailPage() {
     )
   }
 
+  const isCustomer = user?.role === 'customer'
+
   return (
     <main className="app-main">
       <Link to="/orders" className="back-link">← Back to orders</Link>
@@ -78,6 +147,32 @@ export function OrderDetailPage() {
           {order.refund_status !== 'NONE' && <span className="chip">Refund: {order.refund_status}</span>}
         </div>
       </div>
+
+      {error && <Alert>{error}</Alert>}
+      {notice && <Alert kind="ok">{notice}</Alert>}
+
+      {payment?.status === 'FAILED' && (
+        <Alert>
+          Payment failed.{' '}
+          <button className="link-inline" onClick={retryPayment} disabled={retrying}>
+            {retrying ? 'Retrying…' : 'Retry payment'}
+          </button>
+        </Alert>
+      )}
+
+      {tracking && (
+        <div className="track-card">
+          <span className="track-pulse" aria-hidden />
+          <div>
+            <div className="menu-item-name">Out for delivery</div>
+            <div className="muted">
+              {tracking.location
+                ? `Driver near ${tracking.location.latitude.toFixed(4)}, ${tracking.location.longitude.toFixed(4)}`
+                : 'Locating your driver…'}
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="menu-section">
         <h2>Items</h2>
@@ -112,6 +207,36 @@ export function OrderDetailPage() {
           ))}
         </ol>
       </section>
+
+      {isCustomer && REVIEWABLE.has(order.status) && !reviewed && (
+        <section className="menu-section">
+          <h2>Rate your order</h2>
+          <div className="rating-row" role="radiogroup" aria-label="Rating">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="star"
+                data-on={n <= rating}
+                aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                aria-checked={n === rating}
+                role="radio"
+                onClick={() => setRating(n)}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="Tell others about your experience (optional)"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
+          <Button loading={reviewing} onClick={submitReview}>Submit review</Button>
+        </section>
+      )}
 
       {canCustomerCancel(order.status) && (
         <Button variant="ghost" loading={cancelling} onClick={cancel}>
