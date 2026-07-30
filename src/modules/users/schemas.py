@@ -43,6 +43,26 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request a password-reset token for an email."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Complete a password reset with the token and a new password."""
+
+    token: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
+
+
 class TokenResponse(BaseModel):
     """Issued JWT pair."""
 

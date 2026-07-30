@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Auth rate limiting (fixed window, per client IP)
     auth_rate_max: int = 10
     auth_rate_window_seconds: int = 60
+    password_reset_ttl_seconds: int = 900
 
     # Database
     database_url: str
@@ -41,6 +42,9 @@ class Settings(BaseSettings):
 
     # Orders
     restaurant_accept_timeout_seconds: int = 300
+
+    # Media (uploaded images)
+    media_root: str = "media"
 
     # Kafka
     kafka_brokers: str = "localhost:9092"

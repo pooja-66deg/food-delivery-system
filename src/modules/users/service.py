@@ -1,5 +1,8 @@
 """Business logic for the users domain."""
 
+import hashlib
+import secrets
+
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +16,50 @@ from src.modules.users.models import User
 from src.modules.users.schemas import TokenResponse, UserRegister
 
 __all__ = [
-    "register_user", "login", "login_with_otp", "refresh_tokens", "logout", "verify_password",
+    "register_user", "login", "login_with_otp", "refresh_tokens", "logout",
+    "request_password_reset", "reset_password", "verify_password",
 ]
 
 _BLOCKLIST_KEY = "jwt:blocklist:{jti}"
+_RESET_KEY = "pwd_reset:{token_hash}"
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def request_password_reset(session: AsyncSession, redis, email: str) -> str | None:
+    """Issue a single-use reset token for ``email`` if an active account exists.
+
+    Returns the plaintext token (for the caller to deliver, e.g. email/SMS) or
+    None if there's no matching account. The token's SHA-256 hash is stored in
+    Redis with a TTL; the plaintext is never persisted.
+    """
+    user = await session.scalar(select(User).where(User.email == email))
+    if user is None or not user.is_active:
+        return None
+    token = secrets.token_urlsafe(32)
+    await redis.set(
+        _RESET_KEY.format(token_hash=_hash_token(token)),
+        str(user.id),
+        ex=settings.password_reset_ttl_seconds,
+    )
+    return token
+
+
+async def reset_password(session: AsyncSession, redis, token: str, new_password: str) -> None:
+    """Consume a reset token and set a new password. Raises UnauthorizedException
+    if the token is missing/expired. Revokes the token after use."""
+    key = _RESET_KEY.format(token_hash=_hash_token(token))
+    user_id = await redis.get(key)
+    if user_id is None:
+        raise UnauthorizedException("Invalid or expired reset token")
+    user = await session.get(User, int(user_id))
+    if user is None:
+        raise UnauthorizedException("Invalid or expired reset token")
+    user.hashed_password = hash_password(new_password)
+    await session.commit()
+    await redis.delete(key)
 
 
 async def _blocklist(redis, jti: str) -> None:

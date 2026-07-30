@@ -14,7 +14,8 @@ def _utcnow() -> datetime:
 
 class DeliveryStatus(str, Enum):
     UNASSIGNED = "UNASSIGNED"   # no driver available yet
-    ASSIGNED = "ASSIGNED"
+    ASSIGNED = "ASSIGNED"       # offered to a driver, awaiting their accept
+    ACCEPTED = "ACCEPTED"       # driver accepted; will pick up
     PICKED_UP = "PICKED_UP"
     DELIVERED = "DELIVERED"
 
@@ -27,5 +28,6 @@ class Delivery(Base):
     driver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default=DeliveryStatus.UNASSIGNED.value, nullable=False)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

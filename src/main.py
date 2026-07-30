@@ -1,12 +1,14 @@
 """Main FastAPI application entry point."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from src.config import settings
 from src.infrastructure.database import engine
 from src.infrastructure.redis import init_redis, close_redis
@@ -20,6 +22,7 @@ from src.modules.payments.router import router as payments_router
 from src.modules.delivery.router import router as delivery_router
 from src.modules.notifications.router import router as notifications_router
 from src.modules.admin.router import router as admin_router
+from src.modules.reviews.router import router as reviews_router
 
 # Ensure all domain models are imported so create_all/migrations see them.
 import src.modules.users.models  # noqa: F401
@@ -29,6 +32,7 @@ import src.modules.payments.models  # noqa: F401
 import src.modules.delivery.models  # noqa: F401
 import src.modules.notifications.models  # noqa: F401
 import src.modules.events.models  # noqa: F401
+import src.modules.reviews.models  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -110,6 +114,12 @@ app.include_router(payments_router)
 app.include_router(delivery_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
+app.include_router(reviews_router)
+
+
+# Serve uploaded images (restaurant/menu) from the media directory.
+os.makedirs(settings.media_root, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
 
 
 # Health check endpoint

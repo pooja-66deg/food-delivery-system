@@ -11,5 +11,6 @@ class DeliveryRead(BaseModel):
     driver_id: int | None
     status: str
     assigned_at: datetime | None
+    accepted_at: datetime | None
     picked_up_at: datetime | None
     delivered_at: datetime | None

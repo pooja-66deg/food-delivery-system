@@ -65,8 +65,8 @@ async def reject_order(order_id: int, body: RejectBody = RejectBody(),
 @router.post("/{order_id}/status", response_model=OrderRead)
 async def set_status(order_id: int, body: StatusBody,
                      user: User = Depends(require_role("restaurant", "admin")),
-                     session: AsyncSession = Depends(get_db)):
-    return await service.advance_status(session, user, order_id, body.to)
+                     session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    return await service.advance_status(session, user, order_id, body.to, redis=redis)
 
 
 @router.post("/internal/expire-acceptances")
