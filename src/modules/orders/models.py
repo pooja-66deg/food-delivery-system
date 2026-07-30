@@ -29,6 +29,7 @@ class OrderStatus(str, Enum):
 
 class PaymentMethod(str, Enum):
     COD = "COD"
+    CARD = "CARD"
 
 
 class PaymentStatus(str, Enum):

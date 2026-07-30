@@ -5,6 +5,7 @@ import { authApi } from '../api/auth'
 import type { Address } from '../api/auth'
 import { ApiError } from '../api/client'
 import { ordersApi } from '../api/orders'
+import type { PaymentMethod } from '../api/orders'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button } from '../components/ui'
 
@@ -13,6 +14,7 @@ export function CartPage() {
   const navigate = useNavigate()
   const [addresses, setAddresses] = useState<Address[]>([])
   const [addressId, setAddressId] = useState<number | null>(null)
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('COD')
   const [error, setError] = useState<string | null>(null)
   const [placing, setPlacing] = useState(false)
 
@@ -34,7 +36,7 @@ export function CartPage() {
     setError(null)
     setPlacing(true)
     try {
-      const order = await ordersApi.checkout(addressId, cart.price_hash)
+      const order = await ordersApi.checkout(addressId, cart.price_hash, payMethod)
       await refresh()
       navigate(`/orders/${order.id}`)
     } catch (e) {
@@ -122,13 +124,30 @@ export function CartPage() {
               )}
             </div>
 
+            <div className="field">
+              <label>Payment method</label>
+              <div className="tabs">
+                <button type="button" className="tab" data-active={payMethod === 'COD'} onClick={() => setPayMethod('COD')}>
+                  Cash on delivery
+                </button>
+                <button type="button" className="tab" data-active={payMethod === 'CARD'} onClick={() => setPayMethod('CARD')}>
+                  Card (online)
+                </button>
+              </div>
+              {payMethod === 'CARD' && (
+                <p className="muted" style={{ marginTop: '0.5rem' }}>
+                  Card is processed via Stripe. In this demo the card step is simulated unless Stripe keys are configured.
+                </p>
+              )}
+            </div>
+
             <Button
               block
               loading={placing}
               disabled={addressId === null}
               onClick={checkout}
             >
-              Place order (Cash on Delivery)
+              {payMethod === 'CARD' ? 'Place order (Card)' : 'Place order (Cash on Delivery)'}
             </Button>
           </div>
         </>

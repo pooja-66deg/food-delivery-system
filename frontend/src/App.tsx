@@ -15,6 +15,7 @@ import { OwnerPage } from './pages/OwnerPage'
 import { PaymentsPage } from './pages/PaymentsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
+import { RestaurantOrdersPage } from './pages/RestaurantOrdersPage'
 import { RestaurantsPage } from './pages/RestaurantsPage'
 import { RestaurantDetailPage } from './pages/RestaurantDetailPage'
 
@@ -37,6 +38,7 @@ export function App() {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/deliveries" element={<DriverPage />} />
           <Route path="/manage" element={<OwnerPage />} />
+          <Route path="/restaurant/orders" element={<RestaurantOrdersPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>

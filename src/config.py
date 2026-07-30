@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None
+    # Email (SendGrid) + Push (FCM) — optional; senders log when unset.
+    sendgrid_api_key: Optional[str] = None
+    sendgrid_from_email: Optional[str] = None
+    fcm_server_key: Optional[str] = None
 
     # Logging
     log_level: str = "INFO"

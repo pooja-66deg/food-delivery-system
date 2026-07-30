@@ -14,13 +14,14 @@ from src.modules.cart import service as cart_service
 from src.modules.cart.schemas import CheckoutRequest
 from src.modules.orders import state_machine as sm
 from src.modules.orders.models import (
-    Actor, Order, OrderItem, OrderStatus, OrderStatusEvent, PaymentMethod, PaymentStatus, RefundStatus,
+    Actor, Order, OrderItem, OrderStatus, OrderStatusEvent, PaymentStatus, RefundStatus,
 )
 from src.modules.orders.state_machine import OrderError
 from src.modules.events import outbox
 from src.modules.notifications import service as notification_service
 from src.modules.payments import service as payment_service
 from src.modules.restaurants import service as restaurant_service
+from src.modules.restaurants.models import Restaurant
 
 _LOCK_KEY = "order_lock:{user_id}"
 _LOCK_TTL = 10
@@ -61,7 +62,7 @@ async def create_order_from_checkout(
             restaurant_id=validated.restaurant_id,
             address_id=validated.address_id,
             status=OrderStatus.CREATED.value,
-            payment_method=PaymentMethod.COD.value,
+            payment_method=request.payment_method,
             payment_status=PaymentStatus.PENDING.value,
             subtotal=validated.subtotal,
             delivery_fee=Decimal("0"),
@@ -86,6 +87,13 @@ async def create_order_from_checkout(
         order.payment_status = PaymentStatus.SUCCESS.value
 
         _emit_status(session, order)
+        # Alert the restaurant owner that a new order has arrived.
+        restaurant = await session.get(Restaurant, order.restaurant_id)
+        if restaurant is not None:
+            notification_service.add_notification(
+                session, restaurant.owner_id, "order.new",
+                f"New order #{order.id} — {order.total} to prepare.", order.id,
+            )
         await session.commit()
         await cart_service.clear_cart(redis, user.id)
         loaded = await _load_full(session, order.id)
@@ -100,6 +108,21 @@ async def list_orders(session: AsyncSession, customer_id: int, limit: int = 20, 
     stmt = (
         select(Order)
         .where(Order.customer_id == customer_id)
+        .options(selectinload(Order.items), selectinload(Order.events))
+        .order_by(Order.created_at.desc(), Order.id.desc())
+        .limit(limit).offset(offset)
+    )
+    return list(await session.scalars(stmt))
+
+
+async def list_orders_for_restaurant(
+    session: AsyncSession, user, restaurant_id: int, limit: int = 50, offset: int = 0
+) -> list[Order]:
+    """Orders for a restaurant the caller owns (or admin), newest first."""
+    await restaurant_service.owned_restaurant(session, user, restaurant_id)  # 404/403
+    stmt = (
+        select(Order)
+        .where(Order.restaurant_id == restaurant_id)
         .options(selectinload(Order.items), selectinload(Order.events))
         .order_by(Order.created_at.desc(), Order.id.desc())
         .limit(limit).offset(offset)

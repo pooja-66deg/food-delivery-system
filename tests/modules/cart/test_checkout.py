@@ -114,6 +114,19 @@ async def test_checkout_rejected_when_address_out_of_zone(fake_redis, db_session
 
 
 @pytest.mark.asyncio
+async def test_checkout_zone_match_is_case_insensitive(fake_redis, db_session):
+    # Restaurant city "Metropolis"; address " metropolis " should still be in zone.
+    owner, customer, r, item, _ = await _setup(db_session)
+    await cart.add_item(fake_redis, db_session, customer.id, item.id, 1)
+    addr = await profile.add_address(
+        db_session, customer,
+        AddressCreate(label="home2", line1="2 Main St", city=" metropolis ", postal_code="12345"),
+    )
+    order = await _checkout(fake_redis, db_session, customer, addr)  # no CheckoutError
+    assert order.address_id == addr.id
+
+
+@pytest.mark.asyncio
 async def test_checkout_rejected_when_below_min_order(fake_redis, db_session):
     owner, customer, r, item, address = await _setup(db_session, min_order="25.00")
     await cart.add_item(fake_redis, db_session, customer.id, item.id, 1)  # 10 < 25
