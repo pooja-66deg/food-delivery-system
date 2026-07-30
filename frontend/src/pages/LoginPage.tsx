@@ -125,6 +125,9 @@ export function LoginPage() {
               <Button type="submit" block loading={busy}>
                 Sign in
               </Button>
+              <p className="sub" style={{ textAlign: 'center' }}>
+                <Link to="/forgot-password" className="back-link">Forgot password?</Link>
+              </p>
             </form>
           ) : (
             <div className="form-stack" style={{ marginTop: error ? '1rem' : 0 }}>

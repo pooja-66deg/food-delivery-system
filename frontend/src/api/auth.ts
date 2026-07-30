@@ -68,6 +68,15 @@ export const authApi = {
   verifyOtp: (phone: string, otp: string) =>
     request<Tokens>('/auth/otp/verify', { method: 'POST', body: { phone, otp } }),
 
+  forgotPassword: (email: string) =>
+    request<{ message: string; debug_token?: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    }),
+
+  resetPassword: (token: string, new_password: string) =>
+    request<void>('/auth/reset-password', { method: 'POST', body: { token, new_password } }),
+
   me: () => request<User>('/users/me', { auth: true }),
 
   updateProfile: (input: ProfileUpdate) =>

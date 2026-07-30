@@ -6,6 +6,12 @@ import type { Delivery } from '../api/delivery'
 import { useAuth } from '../auth/AuthContext'
 import { Alert, Button } from '../components/ui'
 
+const DESCRIPTIONS: Record<string, string> = {
+  ASSIGNED: 'Offered to you — accept to take it',
+  ACCEPTED: 'Accepted — head to the restaurant',
+  PICKED_UP: 'On the way to the customer',
+}
+
 export function DriverPage() {
   const { user } = useAuth()
   const [assignments, setAssignments] = useState<Delivery[] | null>(null)
@@ -29,13 +35,20 @@ export function DriverPage() {
     void load()
   }, [load])
 
-  async function act(orderId: number, action: 'pickup' | 'deliver') {
+  const MESSAGES: Record<string, string> = {
+    accept: 'Accepted order',
+    reject: 'Released order',
+    pickup: 'Picked up order',
+    deliver: 'Delivered order',
+  }
+
+  async function act(orderId: number, action: 'accept' | 'reject' | 'pickup' | 'deliver') {
     setError(null)
     setNotice(null)
     setActingOn(orderId)
     try {
       await deliveryApi[action](orderId)
-      setNotice(action === 'pickup' ? `Picked up order #${orderId}.` : `Delivered order #${orderId}.`)
+      setNotice(`${MESSAGES[action]} #${orderId}.`)
       await load()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Action failed.')
@@ -70,23 +83,34 @@ export function DriverPage() {
       ) : (
         <div className="order-list">
           {assignments.map((d) => (
-            <div key={d.id} className="order-card" style={{ cursor: 'default' }}>
+            <div key={d.id} className="delivery-card">
               <div>
                 <div className="menu-item-name">Order #{d.order_id}</div>
-                <div className="muted">
-                  {d.status === 'ASSIGNED' ? 'Ready for pickup' : 'Out for delivery'}
-                </div>
+                <div className="muted">{DESCRIPTIONS[d.status] ?? d.status}</div>
               </div>
-              <span className="badge">{d.status === 'ASSIGNED' ? 'Assigned' : 'Picked up'}</span>
-              {d.status === 'ASSIGNED' ? (
-                <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'pickup')}>
-                  Pick up
-                </Button>
-              ) : (
-                <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'deliver')}>
-                  Mark delivered
-                </Button>
-              )}
+              <span className="badge">{d.status}</span>
+              <div className="delivery-actions">
+                {d.status === 'ASSIGNED' && (
+                  <>
+                    <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'accept')}>
+                      Accept
+                    </Button>
+                    <Button variant="ghost" loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'reject')}>
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {d.status === 'ACCEPTED' && (
+                  <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'pickup')}>
+                    Pick up
+                  </Button>
+                )}
+                {d.status === 'PICKED_UP' && (
+                  <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'deliver')}>
+                    Mark delivered
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
