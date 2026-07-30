@@ -172,7 +172,7 @@ async def reject_by_restaurant(session: AsyncSession, user, order_id: int, reaso
     return await _load_full(session, order_id)
 
 
-async def advance_status(session: AsyncSession, user, order_id: int, to: OrderStatus) -> Order:
+async def advance_status(session: AsyncSession, user, order_id: int, to: OrderStatus, redis=None) -> Order:
     order = await session.get(Order, order_id)
     if order is None:
         raise NotFoundException("Order", str(order_id))
@@ -193,7 +193,7 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
     if to == OrderStatus.READY_FOR_PICKUP:
         # Local import avoids an orders<->delivery import cycle.
         from src.modules.delivery import service as delivery_service
-        await delivery_service.assign_for_order(session, order)
+        await delivery_service.assign_for_order(session, order, redis=redis)
     return await _load_full(session, order_id)
 
 

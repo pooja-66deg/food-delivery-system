@@ -6,6 +6,7 @@ directly in tests (bypassing checkout) don't require a payment.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.modules.orders.models import Order
 from src.modules.payments.models import Payment, PaymentTxStatus
 from src.modules.payments.providers import PaymentProvider, provider_for
 
@@ -39,8 +40,9 @@ async def create_payment_for_order(
     return payment
 
 
-async def settle_payment(session: AsyncSession, order) -> Payment | None:
-    """Mark the payment collected/captured (called when an order is delivered)."""
+async def capture_payment(session: AsyncSession, order) -> Payment | None:
+    """Capture an authorized payment (COD: cash collected; card: funds captured).
+    Moves AUTHORIZED → SUCCEEDED. No-op if there's no payment."""
     payment = await get_payment(session, order.id)
     if payment is None:
         return None
@@ -48,6 +50,38 @@ async def settle_payment(session: AsyncSession, order) -> Payment | None:
     await session.commit()
     await session.refresh(payment)
     return payment
+
+
+# Settling on delivery is a capture; keep the name the order flow calls.
+settle_payment = capture_payment
+
+
+async def retry_payment(session: AsyncSession, order, provider: PaymentProvider | None = None) -> Payment | None:
+    """Re-authorize a FAILED payment. Returns the payment unchanged if it isn't
+    in a failed state, or None if there's no payment for the order."""
+    payment = await get_payment(session, order.id)
+    if payment is None:
+        return None
+    if payment.status != PaymentTxStatus.FAILED.value:
+        return payment
+    provider = provider or provider_for(payment.provider)
+    result = await provider.authorize(order.total, idempotency_key=f"order-{order.id}-retry")
+    payment.status = PaymentTxStatus.AUTHORIZED.value if result.ok else PaymentTxStatus.FAILED.value
+    payment.provider_ref = result.reference
+    await session.commit()
+    await session.refresh(payment)
+    return payment
+
+
+async def list_for_customer(session: AsyncSession, customer_id: int, limit: int = 50, offset: int = 0) -> list[Payment]:
+    stmt = (
+        select(Payment)
+        .join(Order, Payment.order_id == Order.id)
+        .where(Order.customer_id == customer_id)
+        .order_by(Payment.id.desc())
+        .limit(limit).offset(offset)
+    )
+    return list(await session.scalars(stmt))
 
 
 async def refund_payment(

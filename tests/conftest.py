@@ -33,6 +33,7 @@ import src.modules.payments.models  # noqa: F401,E402
 import src.modules.delivery.models  # noqa: F401,E402
 import src.modules.notifications.models  # noqa: F401,E402
 import src.modules.events.models  # noqa: F401,E402
+import src.modules.reviews.models  # noqa: F401,E402
 
 
 @pytest.fixture

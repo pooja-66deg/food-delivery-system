@@ -7,6 +7,7 @@ from src.config import settings
 from src.core.ratelimit import enforce_rate_limit
 from src.infrastructure.database import get_db
 from src.infrastructure.redis import get_redis
+from src.modules.notifications import senders
 from src.modules.users import otp as otp_module
 from src.modules.users import profile as profile_service
 from src.modules.users import service
@@ -15,10 +16,12 @@ from src.modules.users.models import User
 from src.modules.users.schemas import (
     AddressCreate,
     AddressResponse,
+    ForgotPasswordRequest,
     LoginRequest,
     OTPRequest,
     OTPVerify,
     RefreshRequest,
+    ResetPasswordRequest,
     TokenResponse,
     UserRegister,
     UserResponse,
@@ -68,9 +71,34 @@ async def logout(data: RefreshRequest, redis=Depends(get_redis)):
     await service.logout(redis, data.refresh_token)
 
 
+@auth_router.post("/forgot-password")
+async def forgot_password(
+    data: ForgotPasswordRequest, request: Request,
+    session: AsyncSession = Depends(get_db), redis=Depends(get_redis),
+):
+    await enforce_rate_limit(
+        redis, f"rl:forgot:{_client_ip(request)}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
+    token = await service.request_password_reset(session, redis, data.email)
+    # Always the same response so we don't reveal whether the email is registered.
+    body = {"message": "If an account exists for that email, a reset link has been sent."}
+    # Convenience for local/dev and tests; never exposed in production.
+    if token and settings.environment != "production":
+        body["debug_token"] = token
+    return body
+
+
+@auth_router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password(data: ResetPasswordRequest, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    await service.reset_password(session, redis, data.token, data.new_password)
+
+
 @auth_router.post("/otp/request")
 async def request_otp(data: OTPRequest, redis=Depends(get_redis)):
     code = await otp_module.request_otp(redis, data.phone)
+    # Deliver over SMS (real via Twilio when configured, otherwise logged).
+    await senders.dispatch("SMS", data.phone, f"Your verification code is {code}")
     body = {"message": "OTP sent"}
     # Convenience for local/dev and tests; never exposed in production.
     if settings.environment != "production":

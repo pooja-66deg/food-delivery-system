@@ -4,12 +4,15 @@ Public: browse restaurants and view menus.
 Owner (role restaurant/admin): create/update restaurants and manage menus.
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.exceptions import NotFoundException
 from src.infrastructure.database import get_db
 from src.modules.restaurants import menu as menu_service
 from src.modules.restaurants import service
+from src.modules.restaurants.models import MenuItem
+from src.modules.restaurants.storage import save_image
 from src.modules.restaurants.schemas import (
     CategoryCreate,
     CategoryResponse,
@@ -69,6 +72,20 @@ async def update_restaurant(
     return await service.update_restaurant(session, restaurant_id, user, data)
 
 
+@router.post("/{restaurant_id}/image", response_model=RestaurantResponse)
+async def upload_restaurant_image(
+    restaurant_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(owner_only),
+    session: AsyncSession = Depends(get_db),
+):
+    restaurant = await service.owned_restaurant(session, user, restaurant_id)
+    restaurant.image_url = await save_image(file, f"restaurants/{restaurant_id}")
+    await session.commit()
+    await session.refresh(restaurant)
+    return restaurant
+
+
 # ---------- Menu: categories ----------
 @router.get("/{restaurant_id}/categories", response_model=list[CategoryResponse])
 async def list_categories(restaurant_id: int, session: AsyncSession = Depends(get_db)):
@@ -119,3 +136,21 @@ async def delete_item(
     session: AsyncSession = Depends(get_db),
 ):
     await menu_service.delete_item(session, user, restaurant_id, item_id)
+
+
+@router.post("/{restaurant_id}/items/{item_id}/image", response_model=MenuItemResponse)
+async def upload_item_image(
+    restaurant_id: int,
+    item_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(owner_only),
+    session: AsyncSession = Depends(get_db),
+):
+    await service.owned_restaurant(session, user, restaurant_id)  # authz
+    item = await session.get(MenuItem, item_id)
+    if item is None or item.restaurant_id != restaurant_id:
+        raise NotFoundException("Menu item", str(item_id))
+    item.image_url = await save_image(file, f"restaurants/{restaurant_id}/items")
+    await session.commit()
+    await session.refresh(item)
+    return item
