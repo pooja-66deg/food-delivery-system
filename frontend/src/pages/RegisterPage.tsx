@@ -28,6 +28,14 @@ export function RegisterPage() {
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  // Names: letters and spaces only. Phone: digits with an optional leading '+'.
+  const onlyLetters = (v: string) => v.replace(/[^A-Za-z ]/g, '')
+  const onlyPhone = (v: string) => v.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '')
+  const setFiltered =
+    (key: keyof typeof form, filter: (v: string) => string) =>
+    (e: { target: { value: string } }) =>
+      setForm((f) => ({ ...f, [key]: filter(e.target.value) }))
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
@@ -89,7 +97,9 @@ export function RegisterPage() {
                 autoComplete="given-name"
                 placeholder="Alex"
                 value={form.first_name}
-                onChange={set('first_name')}
+                onChange={setFiltered('first_name', onlyLetters)}
+                pattern="[A-Za-z ]+"
+                title="Letters only"
                 required
               />
               <Field
@@ -98,7 +108,9 @@ export function RegisterPage() {
                 autoComplete="family-name"
                 placeholder="Rivera"
                 value={form.last_name}
-                onChange={set('last_name')}
+                onChange={setFiltered('last_name', onlyLetters)}
+                pattern="[A-Za-z ]+"
+                title="Letters only"
                 required
               />
             </div>
@@ -116,10 +128,14 @@ export function RegisterPage() {
               label="Phone"
               name="phone"
               type="tel"
+              inputMode="numeric"
               autoComplete="tel"
-              placeholder="+1 555 123 4567"
+              placeholder="15551234567"
               value={form.phone}
-              onChange={set('phone')}
+              onChange={setFiltered('phone', onlyPhone)}
+              pattern="\+?[0-9]+"
+              title="Digits only (optional leading +)"
+              minLength={8}
               required
             />
             <Field

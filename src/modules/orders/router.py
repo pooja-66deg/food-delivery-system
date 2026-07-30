@@ -37,6 +37,13 @@ async def list_my_orders(limit: int = 20, offset: int = 0,
     return await service.list_orders(session, user.id, limit, offset)
 
 
+@router.get("/restaurant/{restaurant_id}", response_model=list[OrderRead])
+async def restaurant_orders(restaurant_id: int,
+                            user: User = Depends(require_role("restaurant", "admin")),
+                            session: AsyncSession = Depends(get_db)):
+    return await service.list_orders_for_restaurant(session, user, restaurant_id)
+
+
 @router.get("/{order_id}", response_model=OrderRead)
 async def get_order(order_id: int, user: User = Depends(get_current_user),
                     session: AsyncSession = Depends(get_db)):

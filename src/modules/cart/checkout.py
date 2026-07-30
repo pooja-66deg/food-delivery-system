@@ -53,12 +53,17 @@ async def validate_checkout(
     if request.price_hash != cart.price_hash:
         raise CheckoutError("PRICE_MISMATCH_REFRESH", "Prices changed. Please review your cart.")
 
-    # 4. Delivery address serviceable? (MVP zone = same city as the restaurant)
+    # 4. Delivery address serviceable? (MVP zone = same city as the restaurant,
+    #    matched case-insensitively and trimmed so "Surat" / "surat" / " surat "
+    #    all count as the same city).
     address = await session.get(Address, request.address_id)
     if address is None or address.user_id != user.id:
         raise NotFoundException("Address", str(request.address_id))
-    if address.city != restaurant.city:
-        raise CheckoutError("ADDRESS_OUT_OF_ZONE", "We don't deliver to this address yet.")
+    if address.city.strip().casefold() != restaurant.city.strip().casefold():
+        raise CheckoutError(
+            "ADDRESS_OUT_OF_ZONE",
+            f"We only deliver within {restaurant.city} for this restaurant.",
+        )
 
     # 5. Minimum order value met?
     if cart.subtotal < restaurant.min_order_amount:

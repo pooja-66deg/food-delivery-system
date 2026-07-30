@@ -60,8 +60,24 @@ class EmailSender:
     channel = "EMAIL"
 
     async def send(self, to: str, message: str) -> bool:
-        # TODO: integrate SendGrid/SES here. Stubbed to a log.
-        logger.info("[notify:EMAIL] to=%s :: %s", to, message)
+        """Send via SendGrid when configured; otherwise log. Failures degrade to
+        False rather than raising."""
+        key, sender = settings.sendgrid_api_key, settings.sendgrid_from_email
+        if key and sender:
+            try:
+                import sendgrid  # optional dependency
+                from sendgrid.helpers.mail import Mail
+
+                client = sendgrid.SendGridAPIClient(key)
+                mail = Mail(from_email=sender, to_emails=to, subject="Order update",
+                            plain_text_content=message)
+                await asyncio.to_thread(lambda: client.send(mail))
+                logger.info("[notify:EMAIL] sent via SendGrid to %s", to)
+                return True
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[notify:EMAIL] SendGrid send failed: %s", exc)
+                return False
+        logger.info("[notify:EMAIL] (no provider) to=%s :: %s", to, message)
         return True
 
 
@@ -69,8 +85,26 @@ class PushSender:
     channel = "PUSH"
 
     async def send(self, to: str, message: str) -> bool:
-        # TODO: integrate FCM here. Stubbed to a log.
-        logger.info("[notify:PUSH] to=%s :: %s", to, message)
+        """Send a push via FCM (legacy HTTP) when a server key is configured;
+        otherwise log. ``to`` is a device token."""
+        key = settings.fcm_server_key
+        if key:
+            try:
+                import httpx  # already a dependency
+
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(
+                        "https://fcm.googleapis.com/fcm/send",
+                        headers={"Authorization": f"key={key}", "Content-Type": "application/json"},
+                        json={"to": to, "notification": {"title": "Order update", "body": message}},
+                    )
+                resp.raise_for_status()
+                logger.info("[notify:PUSH] sent via FCM to %s", to)
+                return True
+            except Exception as exc:  # noqa: BLE001
+                logger.error("[notify:PUSH] FCM send failed: %s", exc)
+                return False
+        logger.info("[notify:PUSH] (no provider) to=%s :: %s", to, message)
         return True
 
 

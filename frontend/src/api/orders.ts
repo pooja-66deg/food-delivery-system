@@ -56,11 +56,20 @@ export interface Payment {
   created_at: string
 }
 
+export type PaymentMethod = 'COD' | 'CARD'
+
 export const ordersApi = {
-  checkout: (address_id: number, price_hash: string) =>
-    request<Order>('/orders/checkout', { method: 'POST', body: { address_id, price_hash }, auth: true }),
+  checkout: (address_id: number, price_hash: string, payment_method: PaymentMethod = 'COD') =>
+    request<Order>('/orders/checkout', {
+      method: 'POST',
+      body: { address_id, price_hash, payment_method },
+      auth: true,
+    }),
 
   list: () => request<OrderSummary[]>('/orders', { auth: true }),
+
+  forRestaurant: (restaurantId: number) =>
+    request<Order[]>(`/orders/restaurant/${restaurantId}`, { auth: true }),
 
   get: (id: number) => request<Order>(`/orders/${id}`, { auth: true }),
 
