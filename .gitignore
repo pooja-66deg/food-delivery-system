@@ -219,3 +219,13 @@ __marimo__/
 
 # Uploaded images (local media store)
 media/
+
+# Node / frontend build output
+node_modules/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+CLAUDE.md
+SKILL.md
