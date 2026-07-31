@@ -8,7 +8,8 @@ import type { SignupRole } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
-import { Alert, Button, Field } from '../components/ui'
+import { Alert, Button, Field, PasswordField } from '../components/ui'
+import { filterNameInput, filterPhoneInput } from '../lib/inputFilters'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -28,9 +29,6 @@ export function RegisterPage() {
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
 
-  // Names: letters and spaces only. Phone: digits with an optional leading '+'.
-  const onlyLetters = (v: string) => v.replace(/[^A-Za-z ]/g, '')
-  const onlyPhone = (v: string) => v.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '')
   const setFiltered =
     (key: keyof typeof form, filter: (v: string) => string) =>
     (e: { target: { value: string } }) =>
@@ -97,7 +95,7 @@ export function RegisterPage() {
                 autoComplete="given-name"
                 placeholder="Alex"
                 value={form.first_name}
-                onChange={setFiltered('first_name', onlyLetters)}
+                onChange={setFiltered('first_name', filterNameInput)}
                 pattern="[A-Za-z ]+"
                 title="Letters only"
                 required
@@ -108,7 +106,7 @@ export function RegisterPage() {
                 autoComplete="family-name"
                 placeholder="Rivera"
                 value={form.last_name}
-                onChange={setFiltered('last_name', onlyLetters)}
+                onChange={setFiltered('last_name', filterNameInput)}
                 pattern="[A-Za-z ]+"
                 title="Letters only"
                 required
@@ -132,16 +130,15 @@ export function RegisterPage() {
               autoComplete="tel"
               placeholder="15551234567"
               value={form.phone}
-              onChange={setFiltered('phone', onlyPhone)}
+              onChange={setFiltered('phone', filterPhoneInput)}
               pattern="\+?[0-9]+"
               title="Digits only (optional leading +)"
               minLength={8}
               required
             />
-            <Field
+            <PasswordField
               label="Password"
               name="password"
-              type="password"
               autoComplete="new-password"
               placeholder="At least 8 characters"
               value={form.password}
