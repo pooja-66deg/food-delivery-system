@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { authApi } from '../api/auth'
 import { ApiError } from '../api/client'
 import { BrandPanel } from '../components/BrandPanel'
-import { Alert, Button, Field } from '../components/ui'
+import { Alert, Button, Field, PasswordField } from '../components/ui'
 
 export function ResetPasswordPage() {
   const navigate = useNavigate()
@@ -59,10 +59,9 @@ export function ResetPasswordPage() {
                 onChange={(e) => setToken(e.target.value)}
                 required
               />
-              <Field
+              <PasswordField
                 label="New password"
                 name="new_password"
-                type="password"
                 autoComplete="new-password"
                 placeholder="••••••••"
                 minLength={8}

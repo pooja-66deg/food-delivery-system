@@ -7,7 +7,7 @@ import { authApi } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
-import { Alert, Button, Field } from '../components/ui'
+import { Alert, Button, Field, PasswordField } from '../components/ui'
 
 type Mode = 'password' | 'otp'
 type OtpStep = 'request' | 'verify'
@@ -112,10 +112,9 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <Field
+              <PasswordField
                 label="Password"
                 name="password"
-                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}

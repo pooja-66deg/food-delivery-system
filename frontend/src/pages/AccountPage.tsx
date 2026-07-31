@@ -7,6 +7,7 @@ import type { Address, AddressInput } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Alert, Button, Field } from '../components/ui'
+import { filterNameInput, filterPhoneInput } from '../lib/inputFilters'
 
 const EMPTY_ADDRESS: AddressInput = {
   label: 'home',
@@ -17,8 +18,19 @@ const EMPTY_ADDRESS: AddressInput = {
   is_default: false,
 }
 
+// Every role gets an account page, but only customers order food, so only they
+// have delivery addresses. Anything role-specific is derived here rather than
+// scattered through the panels.
+const ROLE_LABELS: Record<string, string> = {
+  customer: 'Customer account',
+  restaurant: 'Restaurant account',
+  driver: 'Driver account',
+  admin: 'Admin account',
+}
+
 export function AccountPage() {
   const { user } = useAuth()
+  const isCustomer = user?.role === 'customer'
 
   return (
     <main className="app-main">
@@ -28,20 +40,19 @@ export function AccountPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
       >
-        <span className="chip chip-accent">
-          {user?.role === 'restaurant' ? 'Restaurant account' : user?.role === 'admin' ? 'Admin account' : 'Customer account'}
-        </span>
+        <span className="chip chip-accent">{ROLE_LABELS[user?.role ?? ''] ?? 'Account'}</span>
         <h1 style={{ marginTop: '0.6rem' }}>
           Hello, {user?.first_name} {user?.last_name}
         </h1>
         <p>
-          Signed in as <strong>{user?.role}</strong>. Manage your profile details and delivery addresses.
+          Signed in as <strong>{user?.role}</strong>.{' '}
+          {isCustomer ? 'Manage your profile details and delivery addresses.' : 'Manage your profile details.'}
         </p>
       </motion.div>
 
       <div className="account-grid">
         <ProfilePanel />
-        <AddressPanel />
+        {isCustomer && <AddressPanel />}
       </div>
     </main>
   )
@@ -57,8 +68,12 @@ function ProfilePanel() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
-  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }))
+  // Same keystroke filters as the register form, so invalid characters never
+  // reach the API and come back as a 422.
+  const setFiltered =
+    (key: keyof typeof form, filter: (v: string) => string) =>
+    (e: { target: { value: string } }) =>
+      setForm((f) => ({ ...f, [key]: filter(e.target.value) }))
 
   const save = (e: FormEvent) => {
     e.preventDefault()
@@ -85,10 +100,37 @@ function ProfilePanel() {
       {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
       <form className="form-stack" onSubmit={save} style={{ marginTop: msg ? '1rem' : 0 }}>
         <div className="form-row">
-          <Field label="First name" name="first_name" value={form.first_name} onChange={set('first_name')} required />
-          <Field label="Last name" name="last_name" value={form.last_name} onChange={set('last_name')} required />
+          <Field
+            label="First name"
+            name="first_name"
+            value={form.first_name}
+            onChange={setFiltered('first_name', filterNameInput)}
+            pattern="[A-Za-z ]+"
+            title="Letters only"
+            required
+          />
+          <Field
+            label="Last name"
+            name="last_name"
+            value={form.last_name}
+            onChange={setFiltered('last_name', filterNameInput)}
+            pattern="[A-Za-z ]+"
+            title="Letters only"
+            required
+          />
         </div>
-        <Field label="Phone" name="phone" type="tel" value={form.phone} onChange={set('phone')} required />
+        <Field
+          label="Phone"
+          name="phone"
+          type="tel"
+          inputMode="numeric"
+          value={form.phone}
+          onChange={setFiltered('phone', filterPhoneInput)}
+          pattern="\+?[0-9]+"
+          title="Digits only (optional leading +)"
+          minLength={8}
+          required
+        />
         <div className="field">
           <label>Email</label>
           <input className="input" value={user.email} disabled />
