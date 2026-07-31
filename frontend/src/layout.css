@@ -692,6 +692,16 @@
   border-radius: var(--r-md);
   background: rgba(255, 255, 255, 0.5);
 }
+/* The global `* { margin: 0 }` reset strips heading and paragraph margins, so
+   every panel restores its own vertical rhythm — same approach as `.panel h3`.
+   Without these the h2, the empty-state copy, and .owner-form's border-top all
+   stack flush against each other. */
+.owner-panel > h2 {
+  margin-bottom: 1.1rem;
+}
+.owner-panel > .muted {
+  margin-bottom: 1.25rem;
+}
 .owner-rest-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
 .owner-rest-item {
   display: flex; justify-content: space-between; align-items: center;
