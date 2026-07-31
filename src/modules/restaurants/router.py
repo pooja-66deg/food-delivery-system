@@ -16,12 +16,14 @@ from src.modules.restaurants.storage import save_image
 from src.modules.restaurants.schemas import (
     CategoryCreate,
     CategoryResponse,
+    CuisineCount,
     MenuItemCreate,
     MenuItemResponse,
     MenuItemUpdate,
     RestaurantCreate,
     RestaurantDetail,
     RestaurantResponse,
+    RestaurantSuggestion,
     RestaurantUpdate,
 )
 from src.modules.users.dependencies import require_role
@@ -41,6 +43,30 @@ async def list_restaurants(
     session: AsyncSession = Depends(get_db),
 ):
     return await service.list_restaurants(session, city=city, search=search)
+
+
+# ---------- Discovery ----------
+# These MUST stay above `/{restaurant_id}`. FastAPI resolves routes in
+# declaration order and does not fall through when a path parameter fails type
+# conversion, so declaring "/suggest" later makes it 422 on `int("suggest")`
+# instead of reaching this handler. Covered by
+# test_suggest_route_resolves_before_restaurant_id.
+@router.get("/suggest", response_model=list[RestaurantSuggestion])
+async def suggest(
+    q: str = Query(..., description="Partial restaurant name or cuisine"),
+    limit: int = Query(default=8, ge=1, le=20),
+    session: AsyncSession = Depends(get_db),
+):
+    return await service.suggest_restaurants(session, q, limit=limit)
+
+
+@router.get("/cuisines/popular", response_model=list[CuisineCount])
+async def popular_cuisines(
+    limit: int = Query(default=8, ge=1, le=20),
+    session: AsyncSession = Depends(get_db),
+):
+    rows = await service.popular_cuisines(session, limit=limit)
+    return [CuisineCount(cuisine=cuisine, count=count) for cuisine, count in rows]
 
 
 @router.get("/{restaurant_id}", response_model=RestaurantDetail)

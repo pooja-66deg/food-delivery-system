@@ -1,23 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { restaurantsApi } from '../api/restaurants'
-import type { Restaurant } from '../api/restaurants'
+import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/restaurants'
 import { ApiError } from '../api/client'
 import { Alert, Button } from '../components/ui'
+import { PopularCuisines } from '../components/PopularCuisines'
+import { SearchSuggest } from '../components/SearchSuggest'
 
 export function RestaurantsPage() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<Restaurant[] | null>(null)
+  const [cuisines, setCuisines] = useState<CuisineCount[]>([])
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [city, setCity] = useState('')
 
-  const load = async () => {
+  // Overrides let a cuisine chip search immediately with its own term instead
+  // of racing the `search` state update.
+  const load = async (overrides?: { search?: string; city?: string }) => {
+    const term = overrides?.search ?? search
+    const place = overrides?.city ?? city
     setError(null)
     try {
-      setItems(await restaurantsApi.list({ search: search || undefined, city: city || undefined }))
+      setItems(await restaurantsApi.list({ search: term || undefined, city: place || undefined }))
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to load restaurants.')
       setItems([])
@@ -26,12 +34,28 @@ export function RestaurantsPage() {
 
   useEffect(() => {
     void load()
+    // Discovery chips are a nice-to-have: a failure here must not take the
+    // page down with it.
+    void restaurantsApi
+      .popularCuisines()
+      .then(setCuisines)
+      .catch(() => setCuisines([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const fetchSuggestions = useCallback((q: string) => restaurantsApi.suggest(q), [])
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     void load()
+  }
+
+  // Picking a named restaurant means "take me there", not "filter by this text".
+  const onSuggestionChosen = (s: RestaurantSuggestion) => navigate(`/restaurants/${s.id}`)
+
+  const onCuisinePicked = (cuisine: string) => {
+    setSearch(cuisine)
+    void load({ search: cuisine })
   }
 
   return (
@@ -48,11 +72,11 @@ export function RestaurantsPage() {
       </motion.div>
 
       <form className="toolbar" onSubmit={onSubmit}>
-        <input
-          className="input"
-          placeholder="Search restaurants…"
+        <SearchSuggest
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
+          onSelect={onSuggestionChosen}
+          fetchSuggestions={fetchSuggestions}
         />
         <input
           className="input"
@@ -63,6 +87,8 @@ export function RestaurantsPage() {
         />
         <Button type="submit">Search</Button>
       </form>
+
+      <PopularCuisines cuisines={cuisines} onPick={onCuisinePicked} />
 
       {error && <Alert>{error}</Alert>}
 
