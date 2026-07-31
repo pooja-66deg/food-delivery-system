@@ -1,6 +1,7 @@
 """Schemas for the cart & checkout domain."""
 
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +33,7 @@ class UpdateCartItem(BaseModel):
 class CheckoutRequest(BaseModel):
     address_id: int
     price_hash: str
+    payment_method: Literal["COD", "CARD"] = "COD"
 
 
 class ValidatedOrderItem(BaseModel):

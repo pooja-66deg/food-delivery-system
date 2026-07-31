@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 
 import { App } from './App'
 import { AuthProvider } from './auth/AuthContext'
+import { CartProvider } from './cart/CartContext'
+import { NotificationsProvider } from './notifications/NotificationsContext'
 import './index.css'
 import './layout.css'
 
@@ -11,7 +13,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <CartProvider>
+          <NotificationsProvider>
+            <App />
+          </NotificationsProvider>
+        </CartProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

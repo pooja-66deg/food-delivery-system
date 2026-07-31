@@ -1,13 +1,35 @@
 """Request/response schemas for the users domain."""
 
+import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 # Roles a user may self-register as. "admin" is provisioned separately, never
 # via public registration.
-SelfServiceRole = Literal["customer", "restaurant"]
+SelfServiceRole = Literal["customer", "restaurant", "driver"]
+
+_NAME_RE = re.compile(r"[A-Za-z ]+")   # letters and spaces only — no digits/specials
+_PHONE_RE = re.compile(r"\+?\d+")       # digits only, optional leading +
+
+
+def _validate_name(v: str | None) -> str | None:
+    if v is None:
+        return v
+    s = v.strip()
+    if not _NAME_RE.fullmatch(s):
+        raise ValueError("must contain letters only (no numbers or special characters)")
+    return s
+
+
+def _validate_phone(v: str | None) -> str | None:
+    if v is None:
+        return v
+    s = v.strip()
+    if not _PHONE_RE.fullmatch(s):
+        raise ValueError("must be a numeric phone number (digits only, optional leading +)")
+    return s
 
 
 class UserRegister(BaseModel):
@@ -20,12 +42,50 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     role: SelfServiceRole = "customer"
 
+    _check_names = field_validator("first_name", "last_name")(_validate_name)
+    _check_phone = field_validator("phone")(_validate_phone)
+
+    @field_validator("password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        # bcrypt hashes at most 72 bytes; reject longer input as 422 rather
+        # than letting the hash call raise a 500 downstream.
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
+
 
 class LoginRequest(BaseModel):
     """Payload for email/password login."""
 
     email: EmailStr
     password: str
+
+
+class RefreshRequest(BaseModel):
+    """Payload carrying a refresh token."""
+
+    refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request a password-reset token for an email."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Complete a password reset with the token and a new password."""
+
+    token: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
 
 
 class TokenResponse(BaseModel):
@@ -71,6 +131,9 @@ class UserUpdate(BaseModel):
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     phone: str | None = Field(default=None, min_length=8, max_length=20)
+
+    _check_names = field_validator("first_name", "last_name")(_validate_name)
+    _check_phone = field_validator("phone")(_validate_phone)
 
 
 class AddressCreate(BaseModel):

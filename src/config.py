@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     api_title: str = "Food Delivery Platform"
     api_version: str = "0.1.0"
     environment: str = "development"
+    # Comma-separated list of allowed CORS origins (explicit — never "*" with credentials).
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    # Auth rate limiting (fixed window, per client IP)
+    auth_rate_max: int = 10
+    auth_rate_window_seconds: int = 60
+    password_reset_ttl_seconds: int = 900
 
     # Database
     database_url: str
@@ -33,6 +40,12 @@ class Settings(BaseSettings):
     otp_request_max: int = 3
     otp_request_window_seconds: int = 300
 
+    # Orders
+    restaurant_accept_timeout_seconds: int = 300
+
+    # Media (uploaded images)
+    media_root: str = "media"
+
     # Kafka
     kafka_brokers: str = "localhost:9092"
     kafka_consumer_group: str = "food-delivery-group"
@@ -43,6 +56,10 @@ class Settings(BaseSettings):
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None
+    # Email (SendGrid) + Push (FCM) — optional; senders log when unset.
+    sendgrid_api_key: Optional[str] = None
+    sendgrid_from_email: Optional[str] = None
+    fcm_server_key: Optional[str] = None
 
     # Logging
     log_level: str = "INFO"

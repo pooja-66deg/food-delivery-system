@@ -1,6 +1,6 @@
 // Typed bindings for the restaurants domain.
 
-import { request } from './client'
+import { request, upload } from './client'
 
 export interface Restaurant {
   id: number
@@ -13,6 +13,7 @@ export interface Restaurant {
   phone: string
   is_open: boolean
   min_order_amount: number
+  image_url?: string | null
 }
 
 export interface MenuItem {
@@ -22,6 +23,7 @@ export interface MenuItem {
   description: string | null
   price: number
   is_available: boolean
+  image_url?: string | null
 }
 
 export interface MenuCategory {
@@ -35,6 +37,24 @@ export interface RestaurantDetail extends Restaurant {
   menu: MenuCategory[]
 }
 
+export interface RestaurantCreateInput {
+  name: string
+  description?: string | null
+  cuisine?: string | null
+  city: string
+  address_line: string
+  phone: string
+  min_order_amount: number
+}
+
+export interface MenuItemCreateInput {
+  category_id: number
+  name: string
+  description?: string | null
+  price: number
+  is_available?: boolean
+}
+
 export const restaurantsApi = {
   list: (params?: { city?: string; search?: string }) => {
     const q = new URLSearchParams()
@@ -45,4 +65,26 @@ export const restaurantsApi = {
   },
 
   get: (id: number) => request<RestaurantDetail>(`/restaurants/${id}`, { auth: true }),
+
+  // Owner management
+  create: (body: RestaurantCreateInput) =>
+    request<Restaurant>('/restaurants', { method: 'POST', body, auth: true }),
+
+  update: (id: number, body: Partial<RestaurantCreateInput> & { is_open?: boolean }) =>
+    request<Restaurant>(`/restaurants/${id}`, { method: 'PATCH', body, auth: true }),
+
+  addCategory: (id: number, name: string) =>
+    request<MenuCategory>(`/restaurants/${id}/categories`, { method: 'POST', body: { name }, auth: true }),
+
+  addItem: (id: number, body: MenuItemCreateInput) =>
+    request<MenuItem>(`/restaurants/${id}/items`, { method: 'POST', body, auth: true }),
+
+  updateItem: (id: number, itemId: number, body: Partial<MenuItemCreateInput>) =>
+    request<MenuItem>(`/restaurants/${id}/items/${itemId}`, { method: 'PATCH', body, auth: true }),
+
+  uploadImage: (id: number, file: File) =>
+    upload<Restaurant>(`/restaurants/${id}/image`, file),
+
+  uploadItemImage: (id: number, itemId: number, file: File) =>
+    upload<MenuItem>(`/restaurants/${id}/items/${itemId}/image`, file),
 }

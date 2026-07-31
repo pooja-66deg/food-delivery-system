@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
+import type { SignupRole } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
@@ -13,6 +14,7 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const { saveSession } = useAuth()
 
+  const [role, setRole] = useState<SignupRole>('customer')
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -26,16 +28,26 @@ export function RegisterPage() {
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  // Names: letters and spaces only. Phone: digits with an optional leading '+'.
+  const onlyLetters = (v: string) => v.replace(/[^A-Za-z ]/g, '')
+  const onlyPhone = (v: string) => v.replace(/[^\d+]/g, '').replace(/(?!^)\+/g, '')
+  const setFiltered =
+    (key: keyof typeof form, filter: (v: string) => string) =>
+    (e: { target: { value: string } }) =>
+      setForm((f) => ({ ...f, [key]: filter(e.target.value) }))
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
     void (async () => {
       try {
-        await authApi.register(form)
+        await authApi.register({ ...form, role })
         const tokens = await authApi.login(form.email, form.password)
         await saveSession(tokens)
-        navigate('/restaurants')
+        // Send each role to its home screen.
+        const home = role === 'restaurant' ? '/manage' : role === 'driver' ? '/deliveries' : '/restaurants'
+        navigate(home)
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Something went wrong.')
       } finally {
@@ -55,7 +67,25 @@ export function RegisterPage() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
           <h2>Create your account</h2>
-          <p className="sub">A few details and your first order is minutes away.</p>
+          <p className="sub">
+            {role === 'restaurant'
+              ? 'List your kitchen and start taking orders.'
+              : role === 'driver'
+                ? 'Sign up to pick up and deliver orders.'
+                : 'A few details and your first order is minutes away.'}
+          </p>
+
+          <div className="tabs" style={{ marginBottom: '1.5rem' }}>
+            <button type="button" className="tab" data-active={role === 'customer'} onClick={() => setRole('customer')}>
+              Customer
+            </button>
+            <button type="button" className="tab" data-active={role === 'restaurant'} onClick={() => setRole('restaurant')}>
+              Restaurant
+            </button>
+            <button type="button" className="tab" data-active={role === 'driver'} onClick={() => setRole('driver')}>
+              Driver
+            </button>
+          </div>
 
           {error && <Alert>{error}</Alert>}
 
@@ -67,7 +97,9 @@ export function RegisterPage() {
                 autoComplete="given-name"
                 placeholder="Alex"
                 value={form.first_name}
-                onChange={set('first_name')}
+                onChange={setFiltered('first_name', onlyLetters)}
+                pattern="[A-Za-z ]+"
+                title="Letters only"
                 required
               />
               <Field
@@ -76,7 +108,9 @@ export function RegisterPage() {
                 autoComplete="family-name"
                 placeholder="Rivera"
                 value={form.last_name}
-                onChange={set('last_name')}
+                onChange={setFiltered('last_name', onlyLetters)}
+                pattern="[A-Za-z ]+"
+                title="Letters only"
                 required
               />
             </div>
@@ -94,10 +128,14 @@ export function RegisterPage() {
               label="Phone"
               name="phone"
               type="tel"
+              inputMode="numeric"
               autoComplete="tel"
-              placeholder="+1 555 123 4567"
+              placeholder="15551234567"
               value={form.phone}
-              onChange={set('phone')}
+              onChange={setFiltered('phone', onlyPhone)}
+              pattern="\+?[0-9]+"
+              title="Digits only (optional leading +)"
+              minLength={8}
               required
             />
             <Field

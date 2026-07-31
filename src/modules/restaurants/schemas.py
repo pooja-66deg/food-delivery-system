@@ -13,6 +13,8 @@ class RestaurantCreate(BaseModel):
     address_line: str = Field(..., min_length=1, max_length=255)
     phone: str = Field(..., min_length=8, max_length=20)
     min_order_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class RestaurantUpdate(BaseModel):
@@ -24,6 +26,8 @@ class RestaurantUpdate(BaseModel):
     phone: str | None = Field(default=None, min_length=8, max_length=20)
     is_open: bool | None = None
     min_order_amount: Decimal | None = Field(default=None, ge=0)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
 
 class RestaurantResponse(BaseModel):
@@ -39,6 +43,7 @@ class RestaurantResponse(BaseModel):
     phone: str
     is_open: bool
     min_order_amount: Decimal
+    image_url: str | None = None
 
 
 class CategoryCreate(BaseModel):
@@ -79,6 +84,7 @@ class MenuItemResponse(BaseModel):
     description: str | None
     price: Decimal
     is_available: bool
+    image_url: str | None = None
 
 
 class MenuCategoryWithItems(CategoryResponse):

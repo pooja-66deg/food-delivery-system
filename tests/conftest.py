@@ -5,6 +5,15 @@ the red-green loop needs no live infrastructure. A ``StaticPool`` keeps a single
 connection alive so the in-memory schema persists across the session.
 """
 
+import os
+
+# Test bootstrap: provide the settings the app requires at import time so a
+# fresh clone can run `pytest` with no manual env setup. Real values (or a
+# .env) still override these via setdefault.
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -19,6 +28,12 @@ from src.main import app
 # Import model modules so their tables register on Base.metadata.
 import src.modules.users.models  # noqa: F401,E402
 import src.modules.restaurants.models  # noqa: F401,E402
+import src.modules.orders.models  # noqa: F401,E402
+import src.modules.payments.models  # noqa: F401,E402
+import src.modules.delivery.models  # noqa: F401,E402
+import src.modules.notifications.models  # noqa: F401,E402
+import src.modules.events.models  # noqa: F401,E402
+import src.modules.reviews.models  # noqa: F401,E402
 
 
 @pytest.fixture
@@ -28,14 +43,9 @@ def client():
 
 
 @pytest_asyncio.fixture
-async def api_client():
-    """Async HTTP client wired to the app with in-memory DB + fake Redis.
-
-    Uses ASGITransport so the app and DB run on the same event loop; the app's
-    real DB/Redis/Kafka dependencies are overridden so no live infra is needed.
-    """
-    import fakeredis.aioredis
-
+async def _mem_engine():
+    """A single in-memory SQLite engine shared within one test (StaticPool keeps
+    one connection alive, so all consumers see the same data)."""
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -43,7 +53,20 @@ async def api_client():
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def api_client(_mem_engine):
+    """Async HTTP client wired to the app with in-memory DB + fake Redis.
+
+    Uses ASGITransport so the app and DB run on the same event loop; the app's
+    real DB/Redis/Kafka dependencies are overridden so no live infra is needed.
+    """
+    import fakeredis.aioredis
+
+    session_factory = async_sessionmaker(_mem_engine, class_=AsyncSession, expire_on_commit=False)
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
     async def _override_get_db():
@@ -62,7 +85,15 @@ async def api_client():
 
     app.dependency_overrides.clear()
     await redis.aclose()
-    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def app_session(_mem_engine):
+    """A DB session bound to the SAME engine as ``api_client`` in this test, for
+    seeding/inspecting data the app also sees (e.g. promoting a user to admin)."""
+    factory = async_sessionmaker(_mem_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session
 
 
 @pytest_asyncio.fixture

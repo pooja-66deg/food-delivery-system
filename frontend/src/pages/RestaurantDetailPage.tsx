@@ -5,12 +5,34 @@ import { motion } from 'framer-motion'
 import { restaurantsApi } from '../api/restaurants'
 import type { RestaurantDetail } from '../api/restaurants'
 import { ApiError } from '../api/client'
-import { Alert } from '../components/ui'
+import { useAuth } from '../auth/AuthContext'
+import { useCart } from '../cart/CartContext'
+import { Alert, Button } from '../components/ui'
 
 export function RestaurantDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { user } = useAuth()
+  const { add } = useCart()
   const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [adding, setAdding] = useState<number | null>(null)
+
+  const isCustomer = user?.role === 'customer'
+
+  async function handleAdd(itemId: number, name: string) {
+    setError(null)
+    setNotice(null)
+    setAdding(itemId)
+    try {
+      await add(itemId)
+      setNotice(`Added ${name} to your cart.`)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not add item.')
+    } finally {
+      setAdding(null)
+    }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -64,6 +86,9 @@ export function RestaurantDetailPage() {
         </div>
       </motion.div>
 
+      {notice && <Alert kind="ok">{notice}</Alert>}
+      {error && <Alert>{error}</Alert>}
+
       {restaurant.menu.length === 0 ? (
         <div className="empty">This kitchen hasn't published its menu yet.</div>
       ) : (
@@ -77,7 +102,19 @@ export function RestaurantDetailPage() {
                     <div className="menu-item-name">{item.name}</div>
                     {item.description && <div className="muted">{item.description}</div>}
                   </div>
-                  <div className="price">${Number(item.price).toFixed(2)}</div>
+                  <div className="menu-item-actions">
+                    <div className="price">${Number(item.price).toFixed(2)}</div>
+                    {isCustomer && (
+                      <Button
+                        variant="ghost"
+                        loading={adding === item.id}
+                        disabled={!item.is_available}
+                        onClick={() => handleAdd(item.id, item.name)}
+                      >
+                        {item.is_available ? 'Add' : 'Unavailable'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

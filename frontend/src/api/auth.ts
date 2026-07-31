@@ -30,12 +30,15 @@ export interface Address {
   is_default: boolean
 }
 
+export type SignupRole = 'customer' | 'restaurant' | 'driver'
+
 export interface RegisterInput {
   email: string
   phone: string
   first_name: string
   last_name: string
   password: string
+  role?: SignupRole
 }
 
 export interface AddressInput {
@@ -64,6 +67,15 @@ export const authApi = {
 
   verifyOtp: (phone: string, otp: string) =>
     request<Tokens>('/auth/otp/verify', { method: 'POST', body: { phone, otp } }),
+
+  forgotPassword: (email: string) =>
+    request<{ message: string; debug_token?: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    }),
+
+  resetPassword: (token: string, new_password: string) =>
+    request<void>('/auth/reset-password', { method: 'POST', body: { token, new_password } }),
 
   me: () => request<User>('/users/me', { auth: true }),
 
