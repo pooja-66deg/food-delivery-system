@@ -104,6 +104,9 @@ export const restaurantsApi = {
   updateItem: (id: number, itemId: number, body: Partial<MenuItemCreateInput>) =>
     request<MenuItem>(`/restaurants/${id}/items/${itemId}`, { method: 'PATCH', body, auth: true }),
 
+  deleteItem: (id: number, itemId: number) =>
+    request<void>(`/restaurants/${id}/items/${itemId}`, { method: 'DELETE', auth: true }),
+
   uploadImage: (id: number, file: File) =>
     upload<Restaurant>(`/restaurants/${id}/image`, file),
 
