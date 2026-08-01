@@ -46,6 +46,22 @@ class RestaurantResponse(BaseModel):
     image_url: str | None = None
 
 
+class RestaurantSuggestion(BaseModel):
+    """Trimmed payload for typeahead — enough to label a suggestion, no more."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    city: str
+    cuisine: str | None
+
+
+class CuisineCount(BaseModel):
+    cuisine: str
+    count: int
+
+
 class CategoryCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     sort_order: int = 0

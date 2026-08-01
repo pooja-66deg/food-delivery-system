@@ -425,6 +425,83 @@
   flex: 1;
   min-width: 180px;
 }
+/* The typeahead wraps its input, so the wrapper takes the flex slot the bare
+   input used to occupy. */
+.toolbar .suggest {
+  position: relative;
+  flex: 1;
+  min-width: 180px;
+}
+.suggest .input {
+  width: 100%;
+}
+.suggest-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  list-style: none;
+  padding: 0.3rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.suggest-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.suggest-option[data-active='true'] {
+  background: var(--paper-2);
+}
+.suggest-name {
+  font-weight: 600;
+}
+.suggest-meta {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* Popular cuisine chips sit directly under the toolbar, so tighten the gap
+   between them rather than reaching for a negative margin. */
+.toolbar:has(+ .cuisine-row) {
+  margin-bottom: 0.85rem;
+}
+.cuisine-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+}
+.cuisine-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.chip-button {
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.chip-button:hover {
+  border-color: var(--tomato);
+  background: var(--paper-2);
+}
+.chip-button:focus-visible {
+  outline: 2px solid var(--tomato);
+  outline-offset: 1px;
+}
 
 .rest-grid {
   display: grid;

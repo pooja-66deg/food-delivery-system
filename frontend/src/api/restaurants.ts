@@ -16,6 +16,19 @@ export interface Restaurant {
   image_url?: string | null
 }
 
+/** Trimmed restaurant shape returned by the typeahead endpoint. */
+export interface RestaurantSuggestion {
+  id: number
+  name: string
+  city: string
+  cuisine: string | null
+}
+
+export interface CuisineCount {
+  cuisine: string
+  count: number
+}
+
 export interface MenuItem {
   id: number
   category_id: number
@@ -63,6 +76,15 @@ export const restaurantsApi = {
     const qs = q.toString()
     return request<Restaurant[]>(`/restaurants${qs ? `?${qs}` : ''}`, { auth: true })
   },
+
+  suggest: (q: string, limit = 8) =>
+    request<RestaurantSuggestion[]>(
+      `/restaurants/suggest?q=${encodeURIComponent(q)}&limit=${limit}`,
+      { auth: true },
+    ),
+
+  popularCuisines: (limit = 8) =>
+    request<CuisineCount[]>(`/restaurants/cuisines/popular?limit=${limit}`, { auth: true }),
 
   get: (id: number) => request<RestaurantDetail>(`/restaurants/${id}`, { auth: true }),
 
