@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { Order } from '../api/orders'
 import { restaurantsApi } from '../api/restaurants'
 import type { MenuItem, Restaurant, RestaurantDetail } from '../api/restaurants'
 import { useAuth } from '../auth/AuthContext'
 import { normalizePhone, PHONE_ERROR } from '../lib/phone'
-import { Alert, Button, ConfirmDialog, PhoneField ,Field, Toast } from '../components/ui'
+import { Alert, Button, ConfirmDialog, EmptyState, Field, Loading, PhoneField, Toast } from '../components/ui'
 import { OrderOps } from '../components/OrderOps'
 import { useTimedNotice, type ToastType } from '../lib/useTimedNotice'
 
@@ -27,7 +27,7 @@ export function OwnerPage() {
       setMine(owned)
       if (selectedId === null && owned.length > 0) setSelectedId(owned[0].id)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load your restaurants.')
+      setError(errorMessage(e, 'Failed to load your restaurants.'))
     }
   }, [isOwner, user, selectedId])
 
@@ -40,7 +40,7 @@ export function OwnerPage() {
     return (
       <main className="app-main">
         <h1>Manage</h1>
-        <div className="empty">This area is for restaurant accounts.</div>
+        <EmptyState>This area is for restaurant accounts.</EmptyState>
       </main>
     )
   }
@@ -82,7 +82,7 @@ export function OwnerPage() {
 
         <section className="owner-panel">
           {selectedId === null ? (
-            <div className="empty">Select or create a restaurant to manage its menu.</div>
+            <EmptyState>Select or create a restaurant to manage its menu.</EmptyState>
           ) : (
             <>
               <IncomingOrders restaurantId={selectedId} />
@@ -124,7 +124,7 @@ function CreateRestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => voi
       setForm({ name: '', city: '', address_line: '', phone: '', min_order_amount: '0' })
       onCreated(r)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create restaurant.')
+      setError(errorMessage(err, 'Could not create restaurant.'))
     } finally {
       setBusy(false)
     }
@@ -176,7 +176,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
     try {
       setDetail(await restaurantsApi.get(restaurantId))
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load menu.')
+      setError(errorMessage(e, 'Failed to load menu.'))
     }
   }, [restaurantId])
 
@@ -191,7 +191,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       await load()
       onChanged()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not update.')
+      setError(errorMessage(e, 'Could not update.'))
     }
   }
 
@@ -203,7 +203,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       setCategoryName('')
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not add category.')
+      setError(errorMessage(e, 'Could not add category.'))
     }
   }
 
@@ -212,7 +212,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       await restaurantsApi.updateItem(restaurantId, itemId, { is_available: !available })
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not update item.')
+      setError(errorMessage(e, 'Could not update item.'))
     }
   }
 
@@ -232,7 +232,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       showToast('delete')
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not delete item.')
+      setError(errorMessage(e, 'Could not delete item.'))
     } finally {
       setDeleteBusy(false)
     }
@@ -252,7 +252,7 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       await restaurantsApi.uploadImage(restaurantId, file)
       await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Image upload failed.')
+      setError(errorMessage(err, 'Image upload failed.'))
     }
   }
 
@@ -263,12 +263,12 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       await restaurantsApi.uploadItemImage(restaurantId, itemId, file)
       await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Image upload failed.')
+      setError(errorMessage(err, 'Image upload failed.'))
     }
   }
 
   if (!detail) {
-    return <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+    return <Loading />
   }
 
   return (
@@ -398,7 +398,7 @@ function IncomingOrders({ restaurantId }: { restaurantId: number }) {
     try {
       setOrders(await ordersApi.forRestaurant(restaurantId))
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load orders.')
+      setError(errorMessage(e, 'Failed to load orders.'))
     }
   }, [restaurantId])
 
@@ -414,7 +414,7 @@ function IncomingOrders({ restaurantId }: { restaurantId: number }) {
       </div>
       {error && <Alert>{error}</Alert>}
       {!orders ? (
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       ) : (
         <OrderOps orders={orders} onChanged={load} />
       )}
@@ -463,7 +463,7 @@ function ItemForm({
         onDone('add')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : `Could not ${isEdit ? 'update' : 'add'} item.`)
+      setError(errorMessage(err, `Could not ${isEdit ? 'update' : 'add'} item.`))
     } finally {
       setBusy(false)
     }

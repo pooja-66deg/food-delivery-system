@@ -13,7 +13,7 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 # nginx:alpine substitutes ${PORT} from the environment into the rendered config.
-COPY deploy/gcp/nginx-spa.conf /etc/nginx/templates/default.conf.template
+COPY infra/gcp/nginx-spa.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 ENV PORT=8080
 EXPOSE 8080

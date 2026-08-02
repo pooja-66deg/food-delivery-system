@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from src.config import settings
-from src.infrastructure.database import Base
+from src.adapters.database import Base
 
 # Import every model module so Base.metadata is complete.
 import src.modules.users.models  # noqa: F401

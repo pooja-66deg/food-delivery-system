@@ -241,14 +241,14 @@ E2E browser testing, k6/Locust load testing at 100k req/s, and chaos engineering
 
 **Decision: GCP is the target cloud.** The MVP deploys serverless-first (Cloud Run); the same
 container images move to GKE later when the monolith is split — no rewrite. Deploy config lives in
-[`deploy/gcp/`](../deploy/gcp/) (Cloud Build pipeline + Cloud Run frontend image + setup guide).
+[`infra/gcp/`](../infra/gcp/) (Cloud Build pipeline + Cloud Run frontend image + setup guide).
 
 Mapping from our stack to GCP managed services:
 
 | Component | GCP service | Why |
 |-----------|-------------|-----|
 | FastAPI backend (container) | **Cloud Run** | Deploy our exact image; scales to zero, autoscales, HTTPS + no server ops |
-| React build (static) | **Firebase Hosting** or **Cloud Storage + Cloud CDN** (Cloud Run nginx used in `deploy/gcp/` for uniformity) | Global CDN, free TLS, cheap |
+| React build (static) | **Firebase Hosting** or **Cloud Storage + Cloud CDN** (Cloud Run nginx used in `infra/gcp/` for uniformity) | Global CDN, free TLS, cheap |
 | Docker images | **Artifact Registry** | Private registry + vulnerability scanning |
 | PostgreSQL | **Cloud SQL for PostgreSQL** | Managed backups/PITR, HA, read replicas; connect via unix socket / private IP |
 | Redis | **Memorystore for Redis** | Managed Redis over private IP (via Serverless VPC Access connector) |

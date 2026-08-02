@@ -4,10 +4,10 @@ import { motion } from 'framer-motion'
 
 import { restaurantsApi } from '../api/restaurants'
 import type { RestaurantDetail } from '../api/restaurants'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState, Loading } from '../components/ui'
 
 export function RestaurantDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -28,7 +28,7 @@ export function RestaurantDetailPage() {
       await add(itemId)
       setNotice(`Added ${name} to your cart.`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not add item.')
+      setError(errorMessage(e, 'Could not add item.'))
     } finally {
       setAdding(null)
     }
@@ -40,7 +40,7 @@ export function RestaurantDetailPage() {
     restaurantsApi
       .get(Number(id))
       .then(setRestaurant)
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Failed to load restaurant.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load restaurant.')))
   }, [id])
 
   if (error) {
@@ -55,9 +55,7 @@ export function RestaurantDetailPage() {
   if (!restaurant) {
     return (
       <main className="app-main">
-        <div className="empty">
-          <span className="spin" aria-hidden /> Loading…
-        </div>
+        <Loading />
       </main>
     )
   }
@@ -90,7 +88,7 @@ export function RestaurantDetailPage() {
       {error && <Alert>{error}</Alert>}
 
       {restaurant.menu.length === 0 ? (
-        <div className="empty">This kitchen hasn't published its menu yet.</div>
+        <EmptyState>This kitchen hasn't published its menu yet.</EmptyState>
       ) : (
         restaurant.menu.map((category) => (
           <section key={category.id} className="menu-section">

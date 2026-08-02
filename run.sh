@@ -15,7 +15,7 @@
 #
 # The backend needs PostgreSQL and Redis reachable. Start them yourself, or pass
 # --infra to bring them up with Docker. Connection settings default to the
-# values in docker-compose.yml and can be overridden via environment variables.
+# values in infra/compose/docker-compose.yml and can be overridden via environment variables.
 
 set -uo pipefail
 
@@ -48,7 +48,7 @@ case "$(uname -s)" in
 esac
 [ -x "$PYTHON" ] || PYTHON="python"   # fall back to system python
 
-# ---------- backend env defaults (mirror docker-compose.yml) ----------
+# ---------- backend env defaults (mirror infra/compose/docker-compose.yml) ----------
 export DATABASE_URL="${DATABASE_URL:-postgresql://fooduser:foodpass@localhost:5432/fooddelivery}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 export KAFKA_BROKERS="${KAFKA_BROKERS:-localhost:9092}"
@@ -68,7 +68,7 @@ fi
 if [ "$INFRA" = "1" ]; then
   if docker info >/dev/null 2>&1; then
     echo "[infra] bringing up Postgres/Redis/Kafka via docker compose..."
-    docker compose up -d postgres redis kafka || echo "[infra] docker compose failed; continuing."
+    docker compose -f infra/compose/docker-compose.yml up -d postgres redis kafka || echo "[infra] docker compose failed; continuing."
   else
     echo "[infra] Docker not available - start Postgres/Redis yourself."
   fi

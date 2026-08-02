@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { notificationsApi } from '../api/notifications'
 import type { Notification } from '../api/notifications'
 import { useAuth } from '../auth/AuthContext'
 import { useNotifications } from '../notifications/NotificationsContext'
-import { Alert } from '../components/ui'
+import { Alert, EmptyState, Loading } from '../components/ui'
 
 export function NotificationsPage() {
   const { user } = useAuth()
@@ -19,7 +19,7 @@ export function NotificationsPage() {
     notificationsApi
       .list()
       .then(setItems)
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Failed to load notifications.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load notifications.')))
     // Opening the inbox clears the unread badge.
     markAllSeen()
   }, [markAllSeen])
@@ -38,9 +38,9 @@ export function NotificationsPage() {
       <h1>Notifications</h1>
       {error && <Alert>{error}</Alert>}
       {!items ? (
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       ) : items.length === 0 ? (
-        <div className="empty">Nothing here yet. Order updates will show up here.</div>
+        <EmptyState>Nothing here yet. Order updates will show up here.</EmptyState>
       ) : (
         <div className="notif-list">
           {items.map((n) => {

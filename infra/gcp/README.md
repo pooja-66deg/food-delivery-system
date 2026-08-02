@@ -62,7 +62,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ```bash
 # First pass: deploy so the API gets a URL. Then re-run with _API_URL set so the
 # frontend is built pointing at it (or use a custom domain and set it once).
-gcloud builds submit --config deploy/gcp/cloudbuild.yaml --substitutions=\
+gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=\
 _REGION=$REGION,\
 _AR_REPO=food-delivery,\
 _CLOUDSQL_INSTANCE=$PROJECT_ID:$REGION:food-db,\

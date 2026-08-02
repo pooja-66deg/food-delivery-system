@@ -3,11 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { authApi } from '../api/auth'
 import type { Address } from '../api/auth'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { PaymentMethod } from '../api/orders'
 import { useCart } from '../cart/CartContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState } from '../components/ui'
 
 export function CartPage() {
   const { cart, refresh, update, remove } = useCart()
@@ -40,7 +40,7 @@ export function CartPage() {
       await refresh()
       navigate(`/orders/${order.id}`)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Checkout failed.')
+      setError(errorMessage(e, 'Checkout failed.'))
     } finally {
       setPlacing(false)
     }
@@ -55,9 +55,9 @@ export function CartPage() {
       {error && <Alert>{error}</Alert>}
 
       {empty ? (
-        <div className="empty">
+        <EmptyState>
           Your cart is empty. <Link to="/restaurants" className="back-link">Browse restaurants →</Link>
-        </div>
+        </EmptyState>
       ) : (
         <>
           <div className="cart-list">

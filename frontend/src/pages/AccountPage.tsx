@@ -4,9 +4,9 @@ import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
 import type { Address, AddressInput } from '../api/auth'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button, Field, PhoneField } from '../components/ui'
+import { Alert, Button, EmptyState, Field, Loading, PhoneField } from '../components/ui'
 import { filterNameInput } from '../lib/inputFilters'
 import { normalizePhone, PHONE_ERROR } from '../lib/phone'
 
@@ -88,7 +88,7 @@ function ProfilePanel() {
         setUser(updated)
         setMsg({ kind: 'ok', text: 'Profile updated.' })
       } catch (err) {
-        setMsg({ kind: 'error', text: err instanceof ApiError ? err.message : 'Update failed.' })
+        setMsg({ kind: 'error', text: errorMessage(err, 'Update failed.') })
       } finally {
         setBusy(false)
       }
@@ -152,7 +152,7 @@ function AddressPanel() {
     try {
       setAddresses(await authApi.listAddresses())
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load addresses.')
+      setError(errorMessage(err, 'Could not load addresses.'))
     }
   }
 
@@ -174,7 +174,7 @@ function AddressPanel() {
         setShowForm(false)
         await load()
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not save address.')
+        setError(errorMessage(err, 'Could not save address.'))
       } finally {
         setBusy(false)
       }
@@ -187,7 +187,7 @@ function AddressPanel() {
         await authApi.deleteAddress(id)
         await load()
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not delete address.')
+        setError(errorMessage(err, 'Could not delete address.'))
       }
     })()
   }
@@ -227,11 +227,9 @@ function AddressPanel() {
       )}
 
       {addresses === null ? (
-        <div className="empty">
-          <span className="spin" aria-hidden /> Loading…
-        </div>
+        <Loading />
       ) : addresses.length === 0 ? (
-        <div className="empty">No addresses yet. Add one to speed up checkout.</div>
+        <EmptyState>No addresses yet. Add one to speed up checkout.</EmptyState>
       ) : (
         <div className="address-list">
           {addresses.map((a) => (

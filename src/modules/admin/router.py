@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database import get_db
+from src.adapters.database import get_db
 from src.modules.admin import service
 from src.modules.admin.schemas import AdminOrderRow, AdminStats, AdminUserRow
 from src.modules.orders import service as order_service

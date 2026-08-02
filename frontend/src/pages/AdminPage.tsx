@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { adminApi } from '../api/admin'
 import type { AdminOrder, AdminStats, AdminUser } from '../api/admin'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState } from '../components/ui'
 import { statusLabel } from './orderStatus'
 
 const TERMINAL = new Set(['COMPLETED', 'CANCELLED', 'REJECTED'])
@@ -32,7 +32,7 @@ export function AdminPage() {
       setUsers(u)
       setOrders(o)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load admin data.')
+      setError(errorMessage(e, 'Failed to load admin data.'))
     }
   }, [isAdmin])
 
@@ -48,7 +48,7 @@ export function AdminPage() {
       setNotice(`Order #${id} cancelled.`)
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not cancel order.')
+      setError(errorMessage(e, 'Could not cancel order.'))
     }
   }
 
@@ -61,7 +61,7 @@ export function AdminPage() {
       setNotice(`Timeout sweep ran — ${expired} order(s) expired.`)
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Sweep failed.')
+      setError(errorMessage(e, 'Sweep failed.'))
     } finally {
       setBusy(false)
     }
@@ -71,7 +71,7 @@ export function AdminPage() {
     return (
       <main className="app-main">
         <h1>Admin</h1>
-        <div className="empty">This area is for admin accounts.</div>
+        <EmptyState>This area is for admin accounts.</EmptyState>
       </main>
     )
   }
@@ -130,7 +130,7 @@ export function AdminPage() {
                 </div>
                 <h2 className="admin-subhead">Orders by status</h2>
                 {Object.keys(stats.orders_by_status).length === 0 ? (
-                  <div className="empty">No orders placed yet.</div>
+                  <EmptyState>No orders placed yet.</EmptyState>
                 ) : (
                   <div className="rest-hero-meta">
                     {Object.entries(stats.orders_by_status).map(([s, c]) => (
@@ -147,7 +147,7 @@ export function AdminPage() {
           <>
             <div className="admin-section-head"><h1>Orders</h1></div>
             {orders.length === 0 ? (
-              <div className="empty">No orders yet.</div>
+              <EmptyState>No orders yet.</EmptyState>
             ) : (
               <div className="admin-table" role="table">
                 <div className="admin-row admin-head-row" role="row">

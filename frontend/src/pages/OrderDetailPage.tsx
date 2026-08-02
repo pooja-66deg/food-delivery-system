@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { ApiError } from '../api/client'
+import { ApiError, errorMessage } from '../api/client'
 import { deliveryApi } from '../api/delivery'
 import type { Tracking } from '../api/delivery'
 import { ordersApi } from '../api/orders'
@@ -10,7 +10,7 @@ import { paymentsApi } from '../api/payments'
 import { reviewsApi } from '../api/reviews'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, Loading } from '../components/ui'
 import { canCustomerCancel, statusLabel } from './orderStatus'
 
 const REVIEWABLE = new Set(['DELIVERED', 'COMPLETED'])
@@ -41,7 +41,7 @@ export function OrderDetailPage() {
       setOrder(o)
       setPayment(await paymentsApi.forOrder(o.id).catch(() => null))
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load order.')
+      setError(errorMessage(e, 'Failed to load order.'))
     }
   }, [id])
 
@@ -73,7 +73,7 @@ export function OrderDetailPage() {
       await ordersApi.cancel(order.id)
       await Promise.all([load(), refreshCart()])
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not cancel.')
+      setError(errorMessage(e, 'Could not cancel.'))
     } finally {
       setCancelling(false)
     }
@@ -87,7 +87,7 @@ export function OrderDetailPage() {
       await paymentsApi.retry(order.id)
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Retry failed.')
+      setError(errorMessage(e, 'Retry failed.'))
     } finally {
       setRetrying(false)
     }
@@ -106,7 +106,7 @@ export function OrderDetailPage() {
         setReviewed(true)
         setNotice('You have already reviewed this order.')
       } else {
-        setError(e instanceof ApiError ? e.message : 'Could not submit review.')
+        setError(errorMessage(e, 'Could not submit review.'))
       }
     } finally {
       setReviewing(false)
@@ -125,7 +125,7 @@ export function OrderDetailPage() {
   if (!order) {
     return (
       <main className="app-main">
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       </main>
     )
   }

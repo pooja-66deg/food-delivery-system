@@ -14,7 +14,7 @@ from testcontainers.postgres import PostgresContainer  # noqa: E402
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-from src.infrastructure.database import Base  # noqa: E402
+from src.adapters.database import Base  # noqa: E402
 import src.modules.users.models  # noqa: F401,E402
 import src.modules.restaurants.models  # noqa: F401,E402
 import src.modules.orders.models  # noqa: F401,E402

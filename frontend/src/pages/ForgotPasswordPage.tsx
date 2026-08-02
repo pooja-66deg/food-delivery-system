@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { BrandPanel } from '../components/BrandPanel'
 import { Alert, Button, Field } from '../components/ui'
 
@@ -24,7 +24,7 @@ export function ForgotPasswordPage() {
       setDebugToken(res.debug_token ?? null)
       setSent(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setError(errorMessage(err, 'Something went wrong.'))
     } finally {
       setBusy(false)
     }
