@@ -4,11 +4,12 @@ import { ApiError } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { Order } from '../api/orders'
 import { restaurantsApi } from '../api/restaurants'
-import type { Restaurant, RestaurantDetail } from '../api/restaurants'
+import type { MenuItem, Restaurant, RestaurantDetail } from '../api/restaurants'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button, Field, PhoneField } from '../components/ui'
-import { OrderOps } from '../components/OrderOps'
 import { normalizePhone, PHONE_ERROR } from '../lib/phone'
+import { Alert, Button, ConfirmDialog, PhoneField ,Field, Toast } from '../components/ui'
+import { OrderOps } from '../components/OrderOps'
+import { useTimedNotice, type ToastType } from '../lib/useTimedNotice'
 
 export function OwnerPage() {
   const { user } = useAuth()
@@ -159,7 +160,16 @@ function CreateRestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => voi
 function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChanged: () => void }) {
   const [detail, setDetail] = useState<RestaurantDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { toast, showToast, clearToast } = useTimedNotice()
   const [categoryName, setCategoryName] = useState('')
+  const [editingItemId, setEditingItemId] = useState<number | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  function clearFeedback() {
+    setError(null)
+    clearToast()
+  }
 
   const load = useCallback(async () => {
     setError(null)
@@ -206,6 +216,35 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
     }
   }
 
+  function requestDelete(itemId: number) {
+    clearFeedback()
+    setPendingDeleteId(itemId)
+  }
+
+  async function confirmDelete() {
+    if (pendingDeleteId === null) return
+    setDeleteBusy(true)
+    setError(null)
+    try {
+      await restaurantsApi.deleteItem(restaurantId, pendingDeleteId)
+      setEditingItemId((id) => (id === pendingDeleteId ? null : id))
+      setPendingDeleteId(null)
+      showToast('delete')
+      await load()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not delete item.')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
+  function handleItemSaved(type: ToastType) {
+    setEditingItemId(null)
+    setError(null)
+    showToast(type)
+    void load()
+  }
+
   async function uploadRestaurantImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -242,6 +281,20 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
       </div>
       {error && <Alert>{error}</Alert>}
 
+      {toast && (
+        <div className="toast-stack">
+          <Toast type={toast.type} message={toast.message} />
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="Delete Menu Item?"
+        loading={deleteBusy}
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={() => void confirmDelete()}
+      />
+
       <div className="image-field">
         {detail.image_url ? (
           <img className="image-thumb" src={`/api${detail.image_url}`} alt={`${detail.name} cover`} />
@@ -273,34 +326,62 @@ function MenuManager({ restaurantId, onChanged }: { restaurantId: number; onChan
             <h3>{cat.name}</h3>
             <div className="menu-items">
               {cat.items.map((item) => (
-                <div key={item.id} className="menu-item">
-                  <div className="menu-item-lead">
-                    {item.image_url ? (
-                      <img className="item-thumb" src={`/api${item.image_url}`} alt={item.name} />
-                    ) : (
-                      <div className="item-thumb item-placeholder" aria-hidden>🍽</div>
-                    )}
-                    <div>
-                      <div className="menu-item-name">{item.name}</div>
-                      <div className="muted">${Number(item.price).toFixed(2)}</div>
+                <div key={item.id}>
+                  <div className="menu-item">
+                    <div className="menu-item-lead">
+                      {item.image_url ? (
+                        <img className="item-thumb" src={`/api${item.image_url}`} alt={item.name} />
+                      ) : (
+                        <div className="item-thumb item-placeholder" aria-hidden>🍽</div>
+                      )}
+                      <div>
+                        <div className="menu-item-name">{item.name}</div>
+                        <div className="muted">${Number(item.price).toFixed(2)}</div>
+                      </div>
+                    </div>
+                    <div className="menu-item-actions">
+                      <label className="file-label file-label-sm">
+                        Photo
+                        <input type="file" accept="image/*" onChange={(e) => uploadItemImage(item.id, e)} />
+                      </label>
+                      <button
+                        className="link-btn"
+                        onClick={() => {
+                          clearFeedback()
+                          setEditingItemId(item.id)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="link-danger"
+                        onClick={() => toggleItem(item.id, item.is_available)}
+                      >
+                        {item.is_available ? 'Mark unavailable' : 'Mark available'}
+                      </button>
+                      <button
+                        className="link-danger"
+                        onClick={() => requestDelete(item.id)}
+                        aria-label={`Delete ${item.name}`}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
-                  <div className="menu-item-actions">
-                    <label className="file-label file-label-sm">
-                      Photo
-                      <input type="file" accept="image/*" onChange={(e) => uploadItemImage(item.id, e)} />
-                    </label>
-                    <button
-                      className="link-danger"
-                      onClick={() => toggleItem(item.id, item.is_available)}
-                    >
-                      {item.is_available ? 'Mark unavailable' : 'Mark available'}
-                    </button>
-                  </div>
+                  {editingItemId === item.id && (
+                    <ItemForm
+                      key={item.id}
+                      restaurantId={restaurantId}
+                      categoryId={cat.id}
+                      item={item}
+                      onDone={handleItemSaved}
+                      onCancel={() => setEditingItemId(null)}
+                    />
+                  )}
                 </div>
               ))}
             </div>
-            <AddItemForm restaurantId={restaurantId} categoryId={cat.id} onAdded={load} />
+            <ItemForm restaurantId={restaurantId} categoryId={cat.id} onDone={handleItemSaved} />
           </section>
         ))
       )}
@@ -341,17 +422,22 @@ function IncomingOrders({ restaurantId }: { restaurantId: number }) {
   )
 }
 
-function AddItemForm({
+function ItemForm({
   restaurantId,
   categoryId,
-  onAdded,
+  item,
+  onDone,
+  onCancel,
 }: {
   restaurantId: number
   categoryId: number
-  onAdded: () => void
+  item?: MenuItem
+  onDone: (type: ToastType) => void
+  onCancel?: () => void
 }) {
-  const [name, setName] = useState('')
-  const [price, setPrice] = useState('')
+  const isEdit = item != null
+  const [name, setName] = useState(item?.name ?? '')
+  const [price, setPrice] = useState(item ? String(item.price) : '')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -360,16 +446,24 @@ function AddItemForm({
     setError(null)
     setBusy(true)
     try {
-      await restaurantsApi.addItem(restaurantId, {
-        category_id: categoryId,
-        name: name.trim(),
-        price: Number(price),
-      })
-      setName('')
-      setPrice('')
-      onAdded()
+      if (isEdit) {
+        await restaurantsApi.updateItem(restaurantId, item.id, {
+          name: name.trim(),
+          price: Number(price),
+        })
+        onDone('edit')
+      } else {
+        await restaurantsApi.addItem(restaurantId, {
+          category_id: categoryId,
+          name: name.trim(),
+          price: Number(price),
+        })
+        setName('')
+        setPrice('')
+        onDone('add')
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add item.')
+      setError(err instanceof ApiError ? err.message : `Could not ${isEdit ? 'update' : 'add'} item.`)
     } finally {
       setBusy(false)
     }
@@ -397,7 +491,10 @@ function AddItemForm({
         required
       />
       {error && <Alert>{error}</Alert>}
-      <Button variant="ghost" loading={busy}>Add item</Button>
+      <Button variant="ghost" loading={busy}>{isEdit ? 'Save' : 'Add item'}</Button>
+      {isEdit && onCancel && (
+        <Button variant="ghost" type="button" onClick={onCancel}>Cancel</Button>
+      )}
     </form>
   )
 }

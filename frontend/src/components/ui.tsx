@@ -2,6 +2,13 @@ import { useState } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
 import { clampPhoneInput, DEFAULT_COUNTRY_CODE } from '../lib/phone'
+import type { ToastType } from '../lib/useTimedNotice'
+
+const TOAST_LABELS: Record<ToastType, string> = {
+  add: 'Added',
+  edit: 'Updated',
+  delete: 'Deleted',
+}
 
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string
@@ -141,4 +148,51 @@ export function Button({
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'ok'; children: ReactNode }) {
   return <div className={`alert alert-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>{children}</div>
+}
+
+export function Toast({ type, message }: { type: ToastType; message: string }) {
+  return (
+    <div className={`toast toast-${type}`} role="status" aria-live="polite">
+      <span className="toast-type">{TOAST_LABELS[type]}</span>
+      <span className="toast-message">{message}</span>
+    </div>
+  )
+}
+
+interface ConfirmDialogProps {
+  open: boolean
+  title: string
+  confirmLabel?: string
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  confirmLabel = 'Delete',
+  loading = false,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  if (!open) return null
+
+  return (
+    <div className="confirm-backdrop" onClick={onCancel} role="presentation">
+      <div
+        className="confirm-dialog card"
+        role="alertdialog"
+        aria-labelledby="confirm-dialog-title"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p id="confirm-dialog-title" className="confirm-title">{title}</p>
+        <div className="confirm-actions">
+          <Button variant="ghost" type="button" onClick={onCancel}>Cancel</Button>
+          <Button loading={loading} onClick={onConfirm}>{confirmLabel}</Button>
+        </div>
+      </div>
+    </div>
+  )
 }

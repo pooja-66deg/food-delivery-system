@@ -791,6 +791,63 @@
 .owner-inline-form { display: flex; gap: 0.6rem; align-items: center; margin: 0.75rem 0 1rem; flex-wrap: wrap; }
 .input-narrow { max-width: 120px; }
 
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(30, 24, 18, 0.45);
+}
+.confirm-dialog { width: min(100%, 22rem); padding: 1.25rem; }
+.confirm-title { margin: 0 0 1.25rem; font-weight: 700; font-size: 1.05rem; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
+.toast-stack {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  min-width: 280px;
+  max-width: 360px;
+  animation: toast-in 0.25s ease;
+}
+.toast-type {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+}
+.toast-add .toast-type { background: rgba(60, 110, 71, 0.15); color: var(--leaf); }
+.toast-edit .toast-type { background: rgba(231, 163, 36, 0.2); color: #8a5e0f; }
+.toast-delete .toast-type { background: rgba(180, 52, 31, 0.12); color: var(--danger); }
+.toast-message { font-size: 0.9rem; font-weight: 500; color: var(--ink); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 780px) {
   .owner-grid { grid-template-columns: 1fr; }
   .cart-row { grid-template-columns: 1fr auto; row-gap: 0.5rem; }
