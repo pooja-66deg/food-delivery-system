@@ -3,8 +3,8 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database import get_db
-from src.infrastructure.redis import get_redis
+from src.adapters.database import get_db
+from src.adapters.redis import get_redis
 from src.modules.cart import checkout as checkout_service
 from src.modules.cart import service as cart_service
 from src.modules.cart.schemas import AddToCart, CartView, CheckoutRequest, UpdateCartItem, ValidatedOrder

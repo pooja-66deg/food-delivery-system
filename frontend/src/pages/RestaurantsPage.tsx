@@ -5,8 +5,8 @@ import { motion } from 'framer-motion'
 
 import { restaurantsApi } from '../api/restaurants'
 import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/restaurants'
-import { ApiError } from '../api/client'
-import { Alert, Button } from '../components/ui'
+import { errorMessage } from '../api/client'
+import { Alert, Button, EmptyState, Loading } from '../components/ui'
 import { PopularCuisines } from '../components/PopularCuisines'
 import { SearchSuggest } from '../components/SearchSuggest'
 
@@ -27,7 +27,7 @@ export function RestaurantsPage() {
     try {
       setItems(await restaurantsApi.list({ search: term || undefined, city: place || undefined }))
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load restaurants.')
+      setError(errorMessage(e, 'Failed to load restaurants.'))
       setItems([])
     }
   }
@@ -93,11 +93,9 @@ export function RestaurantsPage() {
       {error && <Alert>{error}</Alert>}
 
       {items === null ? (
-        <div className="empty">
-          <span className="spin" aria-hidden /> Loading…
-        </div>
+        <Loading />
       ) : items.length === 0 ? (
-        <div className="empty">No restaurants found. Try a different search.</div>
+        <EmptyState>No restaurants found. Try a different search.</EmptyState>
       ) : (
         <div className="rest-grid">
           {items.map((r, i) => (

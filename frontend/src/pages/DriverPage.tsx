@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { deliveryApi } from '../api/delivery'
 import type { Delivery } from '../api/delivery'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState, Loading } from '../components/ui'
 
 const DESCRIPTIONS: Record<string, string> = {
   ASSIGNED: 'Offered to you — accept to take it',
@@ -27,7 +27,7 @@ export function DriverPage() {
     try {
       setAssignments(await deliveryApi.assignments())
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load assignments.')
+      setError(errorMessage(e, 'Failed to load assignments.'))
     }
   }, [isDriver])
 
@@ -51,7 +51,7 @@ export function DriverPage() {
       setNotice(`${MESSAGES[action]} #${orderId}.`)
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Action failed.')
+      setError(errorMessage(e, 'Action failed.'))
     } finally {
       setActingOn(null)
     }
@@ -61,7 +61,7 @@ export function DriverPage() {
     return (
       <main className="app-main">
         <h1>Deliveries</h1>
-        <div className="empty">This area is for driver accounts.</div>
+        <EmptyState>This area is for driver accounts.</EmptyState>
       </main>
     )
   }
@@ -77,9 +77,9 @@ export function DriverPage() {
       {notice && <Alert kind="ok">{notice}</Alert>}
 
       {!assignments ? (
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       ) : assignments.length === 0 ? (
-        <div className="empty">No active deliveries. New orders are assigned when a restaurant marks them ready.</div>
+        <EmptyState>No active deliveries. New orders are assigned when a restaurant marks them ready.</EmptyState>
       ) : (
         <div className="order-list">
           {assignments.map((d) => (

@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { BrandPanel } from '../components/BrandPanel'
 import { Alert, Button, Field, PasswordField } from '../components/ui'
 
@@ -26,7 +26,7 @@ export function ResetPasswordPage() {
       setDone(true)
       setTimeout(() => navigate('/login'), 1500)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+      setError(errorMessage(err, 'Something went wrong.'))
     } finally {
       setBusy(false)
     }

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database import get_db
+from src.adapters.database import get_db
 from src.modules.reviews import service
 from src.modules.reviews.schemas import ReviewCreate, ReviewRead
 from src.modules.users.dependencies import require_role

@@ -17,6 +17,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Message to show the user for a caught error.
+ *
+ * An ApiError already carries a message the backend wrote for humans, so it is
+ * shown as-is. Anything else is an unexpected failure whose message would mean
+ * nothing to a user, so the caller's fallback wins.
+ */
+export function errorMessage(err: unknown, fallback = 'Something went wrong.'): string {
+  return err instanceof ApiError ? err.message : fallback
+}
+
 let tokenGetter: () => string | null = () => null
 
 /** Register how the client obtains the current access token. */

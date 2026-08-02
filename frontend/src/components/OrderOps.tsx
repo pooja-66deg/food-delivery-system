@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { Order } from '../api/orders'
 import { statusLabel } from '../pages/orderStatus'
-import { Alert, Button } from './ui'
+import { Alert, Button, EmptyState } from './ui'
 
 /**
  * Restaurant-facing order list with the right action per status:
@@ -22,14 +22,14 @@ export function OrderOps({ orders, onChanged }: { orders: Order[]; onChanged: ()
       await action()
       await onChanged()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Action failed.')
+      setError(errorMessage(e, 'Action failed.'))
     } finally {
       setBusy(null)
     }
   }
 
   if (orders.length === 0) {
-    return <div className="empty">No orders yet.</div>
+    return <EmptyState>No orders yet.</EmptyState>
   }
 
   return (

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { OrderSummary } from '../api/orders'
-import { Alert } from '../components/ui'
+import { Alert, EmptyState, Loading } from '../components/ui'
 import { statusLabel } from './orderStatus'
 
 export function OrdersPage() {
@@ -15,7 +15,7 @@ export function OrdersPage() {
     ordersApi
       .list()
       .then(setOrders)
-      .catch((e) => setError(e instanceof ApiError ? e.message : 'Failed to load orders.'))
+      .catch((e) => setError(errorMessage(e, 'Failed to load orders.')))
   }, [])
 
   if (error) {
@@ -30,7 +30,7 @@ export function OrdersPage() {
   if (!orders) {
     return (
       <main className="app-main">
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       </main>
     )
   }
@@ -39,9 +39,9 @@ export function OrdersPage() {
     <main className="app-main">
       <h1>Your orders</h1>
       {orders.length === 0 ? (
-        <div className="empty">
+        <EmptyState>
           No orders yet. <Link to="/restaurants" className="back-link">Order something →</Link>
-        </div>
+        </EmptyState>
       ) : (
         <div className="order-list">
           {orders.map((o) => (

@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.core.ratelimit import enforce_rate_limit
-from src.infrastructure.database import get_db
-from src.infrastructure.redis import get_redis
+from src.adapters.database import get_db
+from src.adapters.redis import get_redis
 from src.modules.notifications import senders
 from src.modules.users import otp as otp_module
 from src.modules.users import profile as profile_service

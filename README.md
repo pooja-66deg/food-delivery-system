@@ -29,7 +29,7 @@ A food delivery platform built as a **modular monolith** (FastAPI) with a **Reac
 Requires Docker Desktop. From the repository root:
 
 ```bash
-docker compose up --build
+docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
 This starts PostgreSQL, Redis, the API (which runs `alembic upgrade head` before serving), and the frontend.
@@ -41,7 +41,11 @@ This starts PostgreSQL, Redis, the API (which runs `alembic upgrade head` before
 | Interactive API docs (Swagger) | http://localhost:8000/docs |
 | Health check | http://localhost:8000/health |
 
-Stop with `Ctrl+C`; remove containers/volumes with `docker compose down -v`.
+Stop with `Ctrl+C`; remove containers/volumes with
+`docker compose -f infra/compose/docker-compose.yml down -v`.
+
+> The compose file lives under `infra/` (see **Project layout**), so it needs the `-f` flag.
+> `./run.sh --infra` passes it for you.
 
 > Kafka is disabled by default in the compose file (`KAFKA_BROKERS=disabled`); the app runs fine without it. Event publishing is a no-op until a broker is configured.
 
@@ -54,7 +58,7 @@ Run the databases in Docker, and the backend + frontend on your machine for hot 
 ### 1. Start infrastructure
 
 ```bash
-docker compose up -d postgres redis
+docker compose -f infra/compose/docker-compose.yml up -d postgres redis
 ```
 
 ### 2. Backend
@@ -118,7 +122,7 @@ alembic revision --autogenerate -m "describe change"   # create a new migration
 alembic current               # show the currently-applied revision
 ```
 
-`docker compose up` runs `alembic upgrade head` automatically before starting the API. Tests create their own in-memory schema and do not require migrations.
+Compose runs `alembic upgrade head` automatically before starting the API. Tests create their own in-memory schema and do not require migrations.
 
 ---
 
@@ -167,7 +171,7 @@ flake8 src
 ```
 src/
   core/            # jwt, security, exceptions, rate limiting
-  infrastructure/  # database, redis, kafka
+  adapters/        # database, redis, kafka clients — how the app reaches backing services
   modules/
     users/         # auth, OTP, profiles, addresses, roles
     restaurants/   # profiles, categories, menu items
@@ -178,6 +182,10 @@ src/
     notifications/ # per-status customer notifications (log channel)
     events/        # transactional outbox + Kafka relay
 alembic/           # migrations
+infra/             # build & deploy artifacts — Docker, compose, Cloud Build
+  compose/         #   local stack (docker-compose.yml)
+  docker/          #   API + frontend images, nginx config
+  gcp/             #   Cloud Build pipeline, Cloud Run frontend image
 frontend/src/      # React app (pages, api bindings, auth + cart context)
 tests/             # unit (sqlite/fakeredis) + integration (Testcontainers)
 docs/              # architecture, implementation plan, specs & plans

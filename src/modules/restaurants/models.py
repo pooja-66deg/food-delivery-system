@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.infrastructure.database import Base
+from src.adapters.database import Base
 
 
 def _utcnow() -> datetime:

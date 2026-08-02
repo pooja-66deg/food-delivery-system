@@ -1,3 +1,16 @@
+# Local development stack.
+#
+# This file lives under infra/, so every host path below is relative to
+# infra/compose/ — "../.." is the repository root. Run it from anywhere with:
+#   docker compose -f infra/compose/docker-compose.yml up --build
+# or let run.sh do it for you.
+#
+# The project name is pinned rather than derived. Compose would otherwise name
+# the project after this file's directory ("compose"), which would rename the
+# volumes and strand the Postgres data anyone already has from when this file
+# sat in the repository root.
+name: food-delivery-system
+
 services:
   # PostgreSQL Database
   postgres:
@@ -56,8 +69,8 @@ services:
   # API Service
   api:
     build:
-      context: .
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
     container_name: fooddelivery_api
     depends_on:
       postgres:
@@ -74,17 +87,17 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./src:/app/src
-      - ./alembic:/app/alembic
-      - ./alembic.ini:/app/alembic.ini
+      - ../../src:/app/src
+      - ../../alembic:/app/alembic
+      - ../../alembic.ini:/app/alembic.ini
     # Apply DB migrations before serving (schema is no longer created at runtime).
     command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
 
   # Customer Web App (built + served by nginx, proxies /api to the backend)
   frontend:
     build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
+      context: ../..
+      dockerfile: infra/docker/frontend.Dockerfile
     container_name: fooddelivery_frontend
     depends_on:
       - api

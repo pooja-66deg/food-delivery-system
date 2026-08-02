@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database import get_db
-from src.infrastructure.redis import get_redis
+from src.adapters.database import get_db
+from src.adapters.redis import get_redis
 from src.modules.cart.schemas import CheckoutRequest
 from src.modules.orders import service
 from src.modules.orders.models import OrderStatus

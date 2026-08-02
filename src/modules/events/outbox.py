@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.kafka import send_event
+from src.adapters.kafka import send_event
 from src.modules.events.models import OutboxEvent
 
 

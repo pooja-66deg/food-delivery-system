@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { Order } from '../api/orders'
 import { restaurantsApi } from '../api/restaurants'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState, Loading } from '../components/ui'
 import { OrderOps } from '../components/OrderOps'
 
 export function RestaurantOrdersPage() {
@@ -25,7 +25,7 @@ export function RestaurantOrdersPage() {
       const merged = lists.flat().sort((a, b) => b.id - a.id)
       setOrders(merged)
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load orders.')
+      setError(errorMessage(e, 'Failed to load orders.'))
     }
   }, [isOwner, user])
 
@@ -37,7 +37,7 @@ export function RestaurantOrdersPage() {
     return (
       <main className="app-main">
         <h1>Orders</h1>
-        <div className="empty">This area is for restaurant accounts.</div>
+        <EmptyState>This area is for restaurant accounts.</EmptyState>
       </main>
     )
   }
@@ -50,7 +50,7 @@ export function RestaurantOrdersPage() {
       </div>
       {error && <Alert>{error}</Alert>}
       {!orders ? (
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       ) : (
         <OrderOps orders={orders} onChanged={load} />
       )}

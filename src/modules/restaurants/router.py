@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
-from src.infrastructure.database import get_db
+from src.adapters.database import get_db
 from src.modules.restaurants import menu as menu_service
 from src.modules.restaurants import service
 from src.modules.restaurants.models import MenuItem

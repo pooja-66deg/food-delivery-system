@@ -10,9 +10,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from src.config import settings
-from src.infrastructure.database import engine
-from src.infrastructure.redis import init_redis, close_redis
-from src.infrastructure.kafka import init_kafka, close_kafka
+from src.adapters.database import engine
+from src.adapters.redis import init_redis, close_redis
+from src.adapters.kafka import init_kafka, close_kafka
 from src.core.exceptions import AppException
 from src.modules.users.router import auth_router, users_router
 from src.modules.restaurants.router import router as restaurants_router

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { paymentsApi } from '../api/payments'
 import type { Payment } from '../api/payments'
-import { Alert, Button } from '../components/ui'
+import { Alert, Button, EmptyState, Loading } from '../components/ui'
 
 export function PaymentsPage() {
   const [items, setItems] = useState<Payment[] | null>(null)
@@ -16,7 +16,7 @@ export function PaymentsPage() {
     try {
       setItems(await paymentsApi.history())
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load payments.')
+      setError(errorMessage(e, 'Failed to load payments.'))
     }
   }, [])
 
@@ -30,7 +30,7 @@ export function PaymentsPage() {
       await paymentsApi.retry(orderId)
       await load()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Retry failed.')
+      setError(errorMessage(e, 'Retry failed.'))
     } finally {
       setRetrying(null)
     }
@@ -41,9 +41,9 @@ export function PaymentsPage() {
       <h1>Payments</h1>
       {error && <Alert>{error}</Alert>}
       {!items ? (
-        <div className="empty"><span className="spin" aria-hidden /> Loading…</div>
+        <Loading />
       ) : items.length === 0 ? (
-        <div className="empty">No payments yet.</div>
+        <EmptyState>No payments yet.</EmptyState>
       ) : (
         <div className="admin-table" role="table">
           <div className="admin-row pay-row admin-head-row" role="row">

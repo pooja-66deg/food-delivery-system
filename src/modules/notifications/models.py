@@ -5,7 +5,7 @@ from enum import Enum
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.infrastructure.database import Base
+from src.adapters.database import Base
 
 
 def _utcnow() -> datetime:

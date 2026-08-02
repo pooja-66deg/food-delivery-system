@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ForbiddenException, UnauthorizedException
 from src.core.jwt import verify_token
-from src.infrastructure.database import get_db
+from src.adapters.database import get_db
 from src.modules.users.models import User
 
 _bearer = HTTPBearer(auto_error=False)

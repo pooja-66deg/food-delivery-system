@@ -22,7 +22,7 @@
 
 3. Start Docker services:
    ```bash
-   docker-compose up -d
+   docker compose -f infra/compose/docker-compose.yml up -d
    ```
 
 4. Install dependencies:

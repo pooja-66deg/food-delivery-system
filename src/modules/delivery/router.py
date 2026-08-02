@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.infrastructure.database import get_db
-from src.infrastructure.redis import get_redis
+from src.adapters.database import get_db
+from src.adapters.redis import get_redis
 from src.modules.delivery import location, service
 from src.modules.delivery.schemas import DeliveryRead
 from src.modules.users.dependencies import get_current_user, require_role

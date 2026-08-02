@@ -1,11 +1,11 @@
 # Cloud Build pipeline: test -> build -> push to Artifact Registry -> deploy to Cloud Run.
 #
-# Trigger:  gcloud builds submit --config deploy/gcp/cloudbuild.yaml \
+# Trigger:  gcloud builds submit --config infra/gcp/cloudbuild.yaml \
 #             --substitutions=_REGION=us-central1,_AR_REPO=food-delivery,\
 # _CLOUDSQL_INSTANCE=PROJECT:us-central1:food-db,_VPC_CONNECTOR=food-connector,\
 # _API_URL=https://food-api-xxxx.run.app
 #
-# One-time infrastructure setup lives in deploy/gcp/README.md.
+# One-time infrastructure setup lives in infra/gcp/README.md.
 
 substitutions:
   _REGION: us-central1
@@ -43,7 +43,7 @@ steps:
     args:
       - build
       - -f
-      - docker/Dockerfile
+      - infra/docker/Dockerfile
       - -t
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
       - .
@@ -54,7 +54,7 @@ steps:
     args:
       - build
       - -f
-      - deploy/gcp/frontend.Dockerfile
+      - infra/gcp/frontend.Dockerfile
       - --build-arg
       - "VITE_API_URL=${_API_URL}"
       - -t

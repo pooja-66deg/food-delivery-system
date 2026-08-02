@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 
 import { authApi } from '../api/auth'
 import type { SignupRole } from '../api/auth'
-import { ApiError } from '../api/client'
+import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
 import { Alert, Button, Field, PasswordField, PhoneField } from '../components/ui'
@@ -53,7 +53,7 @@ export function RegisterPage() {
         const home = role === 'restaurant' ? '/manage' : role === 'driver' ? '/deliveries' : '/restaurants'
         navigate(home)
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Something went wrong.')
+        setError(errorMessage(err, 'Something went wrong.'))
       } finally {
         setBusy(false)
       }

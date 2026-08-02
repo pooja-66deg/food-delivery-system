@@ -41,14 +41,6 @@ interface PhoneFieldProps extends Omit<FieldProps, 'value' | 'onChange' | 'leadi
   onChange: (value: string) => void
 }
 
-/**
- * Phone input that shows the country code it will apply — "+91" sits inside the
- * field so the number people see is the number they'll be registered with.
- *
- * The badge disappears the moment someone types their own "+<code>", because at
- * that point it would be claiming a prefix the value isn't going to get. See
- * lib/phone.ts for the rule both cases follow.
- */
 export function PhoneField({ label, value, onChange, id, name, ...rest }: PhoneFieldProps) {
   const fieldId = id ?? name
   const prefixId = `${fieldId}-country-code`
@@ -81,11 +73,6 @@ export function PhoneField({ label, value, onChange, id, name, ...rest }: PhoneF
 
 type PasswordFieldProps = Omit<FieldProps, 'type' | 'trailing'>
 
-/**
- * Password input with a show/hide toggle, so people can check what they typed.
- * The toggle is a real button with an accessible name, and is type="button" so
- * revealing the password never submits the form.
- */
 export function PasswordField(props: PasswordFieldProps) {
   const [visible, setVisible] = useState(false)
   const action = visible ? 'Hide password' : 'Show password'
@@ -148,6 +135,26 @@ export function Button({
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'ok'; children: ReactNode }) {
   return <div className={`alert alert-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>{children}</div>
+}
+
+/**
+ * The "nothing to show here" slot every list falls back to — a missing record,
+ * an empty result, a section the current role can't use.
+ */
+export function EmptyState({ children }: { children: ReactNode }) {
+  return <div className="empty">{children}</div>
+}
+
+/**
+ * Placeholder while a list or detail view is still fetching. role="status" so
+ * screen readers announce the wait instead of hitting silence.
+ */
+export function Loading({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <div className="empty" role="status">
+      <span className="spin" aria-hidden /> {label}
+    </div>
+  )
 }
 
 export function Toast({ type, message }: { type: ToastType; message: string }) {
