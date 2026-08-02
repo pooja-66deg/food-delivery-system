@@ -7,7 +7,8 @@ import { authApi } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
-import { Alert, Button, Field, PasswordField } from '../components/ui'
+import { Alert, Button, Field, PasswordField, PhoneField } from '../components/ui'
+import { normalizePhone, PHONE_ERROR } from '../lib/phone'
 
 type Mode = 'password' | 'otp'
 type OtpStep = 'request' | 'verify'
@@ -60,8 +61,16 @@ export function LoginPage() {
 
   const handleRequestOtp = (e: FormEvent) => {
     e.preventDefault()
+    const normalized = normalizePhone(phone)
+    if (normalized === null) {
+      setError(PHONE_ERROR)
+      return
+    }
+    // Keep the canonical form in state so the verify step and the "code sent
+    // to …" label both use the number the code was actually issued against.
+    setPhone(normalized)
     void run(async () => {
-      const res = await authApi.requestOtp(phone)
+      const res = await authApi.requestOtp(normalized)
       setDebugOtp(res.debug_otp ?? null)
       setOtpStep('verify')
     })
@@ -132,14 +141,11 @@ export function LoginPage() {
             <div className="form-stack" style={{ marginTop: error ? '1rem' : 0 }}>
               {otpStep === 'request' ? (
                 <form className="form-stack" onSubmit={handleRequestOtp}>
-                  <Field
+                  <PhoneField
                     label="Phone number"
                     name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="+1 555 123 4567"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={setPhone}
                     required
                   />
                   <Button type="submit" block loading={busy}>

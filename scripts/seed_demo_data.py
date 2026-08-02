@@ -17,13 +17,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.infrastructure.database import async_session
+from src.core.phone import normalize_phone
 from src.modules.restaurants.models import Restaurant
 from src.modules.users.models import User
 from src.modules.users.service import hash_password
 
 DEMO_OWNER_EMAIL = "demo.owner@example.com"
-DEMO_OWNER_PHONE = "+15550100100"
+# Seeding writes to the models directly, so it misses the schema-level
+# normalization every API caller goes through — apply it here too, or the demo
+# owner is the one account whose number isn't canonical.
+DEMO_OWNER_PHONE = normalize_phone("9876500100")
 DEMO_OWNER_PASSWORD = "supersecret1"
+
+DEMO_RESTAURANT_PHONE = normalize_phone("9876500000")
 
 # Spread across cities and cuisines so city filtering, cuisine search, and the
 # popular-cuisine ordering all have something meaningful to show.
@@ -75,7 +81,7 @@ async def seed(session: AsyncSession) -> int:
                 city=city,
                 description=description,
                 address_line=f"{index + 1} Market Street",
-                phone="+15550000000",
+                phone=DEMO_RESTAURANT_PHONE,
                 is_open=True,
                 min_order_amount=Decimal("10.00"),
             )

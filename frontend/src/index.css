@@ -164,6 +164,16 @@ a:hover {
 .field-control .input {
   padding-right: 2.9rem;
 }
+.field-prefix {
+  position: absolute;
+  left: 0.95rem;
+  font-size: 1rem;
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+.field-control[data-leading] .input {
+  padding-left: 3.2rem;
+}
 .field-affix {
   position: absolute;
   right: 0.35rem;

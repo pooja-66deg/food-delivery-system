@@ -2,7 +2,9 @@
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from src.core.phone import normalize_optional_phone
 
 
 class RestaurantCreate(BaseModel):
@@ -11,10 +13,12 @@ class RestaurantCreate(BaseModel):
     cuisine: str | None = Field(default=None, max_length=80)
     city: str = Field(..., min_length=1, max_length=100)
     address_line: str = Field(..., min_length=1, max_length=255)
-    phone: str = Field(..., min_length=8, max_length=20)
+    phone: str
     min_order_amount: Decimal = Field(default=Decimal("0"), ge=0)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    _check_phone = field_validator("phone")(normalize_optional_phone)
 
 
 class RestaurantUpdate(BaseModel):
@@ -23,8 +27,10 @@ class RestaurantUpdate(BaseModel):
     cuisine: str | None = Field(default=None, max_length=80)
     city: str | None = Field(default=None, min_length=1, max_length=100)
     address_line: str | None = Field(default=None, min_length=1, max_length=255)
-    phone: str | None = Field(default=None, min_length=8, max_length=20)
+    phone: str | None = None
     is_open: bool | None = None
+
+    _check_phone = field_validator("phone")(normalize_optional_phone)
     min_order_amount: Decimal | None = Field(default=None, ge=0)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)

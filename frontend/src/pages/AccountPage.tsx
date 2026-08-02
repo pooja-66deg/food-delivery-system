@@ -6,8 +6,9 @@ import { authApi } from '../api/auth'
 import type { Address, AddressInput } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button, Field } from '../components/ui'
-import { filterNameInput, filterPhoneInput } from '../lib/inputFilters'
+import { Alert, Button, Field, PhoneField } from '../components/ui'
+import { filterNameInput } from '../lib/inputFilters'
+import { normalizePhone, PHONE_ERROR } from '../lib/phone'
 
 const EMPTY_ADDRESS: AddressInput = {
   label: 'home',
@@ -18,9 +19,6 @@ const EMPTY_ADDRESS: AddressInput = {
   is_default: false,
 }
 
-// Every role gets an account page, but only customers order food, so only they
-// have delivery addresses. Anything role-specific is derived here rather than
-// scattered through the panels.
 const ROLE_LABELS: Record<string, string> = {
   customer: 'Customer account',
   restaurant: 'Restaurant account',
@@ -77,11 +75,16 @@ function ProfilePanel() {
 
   const save = (e: FormEvent) => {
     e.preventDefault()
+    const phone = normalizePhone(form.phone)
+    if (phone === null) {
+      setMsg({ kind: 'error', text: PHONE_ERROR })
+      return
+    }
     setBusy(true)
     setMsg(null)
     void (async () => {
       try {
-        const updated = await authApi.updateProfile(form)
+        const updated = await authApi.updateProfile({ ...form, phone })
         setUser(updated)
         setMsg({ kind: 'ok', text: 'Profile updated.' })
       } catch (err) {
@@ -119,16 +122,11 @@ function ProfilePanel() {
             required
           />
         </div>
-        <Field
+        <PhoneField
           label="Phone"
           name="phone"
-          type="tel"
-          inputMode="numeric"
           value={form.phone}
-          onChange={setFiltered('phone', filterPhoneInput)}
-          pattern="\+?[0-9]+"
-          title="Digits only (optional leading +)"
-          minLength={8}
+          onChange={(phone) => setForm((f) => ({ ...f, phone }))}
           required
         />
         <div className="field">

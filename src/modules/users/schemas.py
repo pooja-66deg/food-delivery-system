@@ -6,12 +6,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from src.core.phone import normalize_optional_phone
+
 # Roles a user may self-register as. "admin" is provisioned separately, never
 # via public registration.
 SelfServiceRole = Literal["customer", "restaurant", "driver"]
 
 _NAME_RE = re.compile(r"[A-Za-z ]+")   # letters and spaces only — no digits/specials
-_PHONE_RE = re.compile(r"\+?\d+")       # digits only, optional leading +
 
 
 def _validate_name(v: str | None) -> str | None:
@@ -23,20 +24,16 @@ def _validate_name(v: str | None) -> str | None:
     return s
 
 
-def _validate_phone(v: str | None) -> str | None:
-    if v is None:
-        return v
-    s = v.strip()
-    if not _PHONE_RE.fullmatch(s):
-        raise ValueError("must be a numeric phone number (digits only, optional leading +)")
-    return s
+# Every phone entering the users domain lands in E.164 (see src/core/phone.py),
+# so OTP keys and the User.phone uniqueness constraint agree on one spelling.
+_validate_phone = normalize_optional_phone
 
 
 class UserRegister(BaseModel):
     """Payload for email/password registration."""
 
     email: EmailStr
-    phone: str = Field(..., min_length=8, max_length=20)
+    phone: str
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
@@ -100,14 +97,18 @@ class TokenResponse(BaseModel):
 class OTPRequest(BaseModel):
     """Payload to request an OTP."""
 
-    phone: str = Field(..., min_length=8, max_length=20)
+    phone: str
+
+    _check_phone = field_validator("phone")(_validate_phone)
 
 
 class OTPVerify(BaseModel):
     """Payload to verify an OTP and log in."""
 
-    phone: str = Field(..., min_length=8, max_length=20)
+    phone: str
     otp: str = Field(..., min_length=4, max_length=10)
+
+    _check_phone = field_validator("phone")(_validate_phone)
 
 
 class UserResponse(BaseModel):
@@ -130,7 +131,7 @@ class UserUpdate(BaseModel):
 
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
-    phone: str | None = Field(default=None, min_length=8, max_length=20)
+    phone: str | None = None
 
     _check_names = field_validator("first_name", "last_name")(_validate_name)
     _check_phone = field_validator("phone")(_validate_phone)

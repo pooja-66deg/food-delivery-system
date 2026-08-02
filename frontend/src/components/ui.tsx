@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
+import { clampPhoneInput, DEFAULT_COUNTRY_CODE } from '../lib/phone'
 import type { ToastType } from '../lib/useTimedNotice'
 
 const TOAST_LABELS: Record<ToastType, string> = {
@@ -11,18 +12,20 @@ const TOAST_LABELS: Record<ToastType, string> = {
 
 interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string
-  /** Control rendered on top of the input's trailing edge, e.g. a password toggle. */
   trailing?: ReactNode
+  leading?: ReactNode
 }
 
-export function Field({ label, id, name, trailing, ...rest }: FieldProps) {
+export function Field({ label, id, name, trailing, leading, ...rest }: FieldProps) {
   const fieldId = id ?? name
   const input = <input id={fieldId} name={name} className="input" {...rest} />
+  const wrapped = leading !== undefined || trailing !== undefined
   return (
     <div className="field">
       <label htmlFor={fieldId}>{label}</label>
-      {trailing ? (
-        <div className="field-control">
+      {wrapped ? (
+        <div className="field-control" data-leading={leading ? '' : undefined}>
+          {leading}
           {input}
           {trailing}
         </div>
@@ -30,6 +33,49 @@ export function Field({ label, id, name, trailing, ...rest }: FieldProps) {
         input
       )}
     </div>
+  )
+}
+
+interface PhoneFieldProps extends Omit<FieldProps, 'value' | 'onChange' | 'leading' | 'trailing' | 'type'> {
+  value: string
+  onChange: (value: string) => void
+}
+
+/**
+ * Phone input that shows the country code it will apply — "+91" sits inside the
+ * field so the number people see is the number they'll be registered with.
+ *
+ * The badge disappears the moment someone types their own "+<code>", because at
+ * that point it would be claiming a prefix the value isn't going to get. See
+ * lib/phone.ts for the rule both cases follow.
+ */
+export function PhoneField({ label, value, onChange, id, name, ...rest }: PhoneFieldProps) {
+  const fieldId = id ?? name
+  const prefixId = `${fieldId}-country-code`
+  const usesDefaultCode = !value.trim().startsWith('+')
+
+  return (
+    <Field
+      {...rest}
+      label={label}
+      id={fieldId}
+      name={name}
+      type="tel"
+      inputMode="tel"
+      autoComplete="tel"
+      placeholder={rest.placeholder ?? '9876543210'}
+      title={`10 digits for India (+${DEFAULT_COUNTRY_CODE} is added automatically), or +<country code> and the number`}
+      value={value}
+      onChange={(e) => onChange(clampPhoneInput(e.target.value))}
+      aria-describedby={usesDefaultCode ? prefixId : undefined}
+      leading={
+        usesDefaultCode ? (
+          <span className="field-prefix" id={prefixId}>
+            +{DEFAULT_COUNTRY_CODE}
+          </span>
+        ) : null
+      }
+    />
   )
 }
 
