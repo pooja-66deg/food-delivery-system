@@ -1,9 +1,12 @@
 // Keystroke filters for name and phone inputs.
 //
-// These mirror _NAME_RE (`[A-Za-z ]+`) and _PHONE_RE (`\+?\d+`) in
+// filterNameInput mirrors _NAME_RE (`[A-Za-z ]+`) in
 // src/modules/users/schemas.py, which the API enforces on both UserRegister
 // and UserUpdate. Filtering here means the user never gets a 422 for a
 // character the field was never going to accept.
+//
+// Phone *shape* is a separate concern — see lib/phone.ts, which turns whatever
+// survives this filter into E.164 on submit.
 
 /** Letters and spaces only — drops digits and special characters. */
 export function filterNameInput(value: string): string {

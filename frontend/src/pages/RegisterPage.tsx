@@ -8,8 +8,9 @@ import type { SignupRole } from '../api/auth'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { BrandPanel } from '../components/BrandPanel'
-import { Alert, Button, Field, PasswordField } from '../components/ui'
-import { filterNameInput, filterPhoneInput } from '../lib/inputFilters'
+import { Alert, Button, Field, PasswordField, PhoneField } from '../components/ui'
+import { filterNameInput } from '../lib/inputFilters'
+import { normalizePhone, PHONE_ERROR } from '../lib/phone'
 
 export function RegisterPage() {
   const navigate = useNavigate()
@@ -36,11 +37,16 @@ export function RegisterPage() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
+    const phone = normalizePhone(form.phone)
+    if (phone === null) {
+      setError(PHONE_ERROR)
+      return
+    }
     setBusy(true)
     setError(null)
     void (async () => {
       try {
-        await authApi.register({ ...form, role })
+        await authApi.register({ ...form, phone, role })
         const tokens = await authApi.login(form.email, form.password)
         await saveSession(tokens)
         // Send each role to its home screen.
@@ -122,18 +128,11 @@ export function RegisterPage() {
               onChange={set('email')}
               required
             />
-            <Field
+            <PhoneField
               label="Phone"
               name="phone"
-              type="tel"
-              inputMode="numeric"
-              autoComplete="tel"
-              placeholder="15551234567"
               value={form.phone}
-              onChange={setFiltered('phone', filterPhoneInput)}
-              pattern="\+?[0-9]+"
-              title="Digits only (optional leading +)"
-              minLength={8}
+              onChange={(phone) => setForm((f) => ({ ...f, phone }))}
               required
             />
             <PasswordField

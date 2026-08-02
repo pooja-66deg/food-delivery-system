@@ -6,8 +6,9 @@ import type { Order } from '../api/orders'
 import { restaurantsApi } from '../api/restaurants'
 import type { Restaurant, RestaurantDetail } from '../api/restaurants'
 import { useAuth } from '../auth/AuthContext'
-import { Alert, Button, Field } from '../components/ui'
+import { Alert, Button, Field, PhoneField } from '../components/ui'
 import { OrderOps } from '../components/OrderOps'
+import { normalizePhone, PHONE_ERROR } from '../lib/phone'
 
 export function OwnerPage() {
   const { user } = useAuth()
@@ -104,6 +105,11 @@ function CreateRestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => voi
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    const phone = normalizePhone(form.phone)
+    if (phone === null) {
+      setError(PHONE_ERROR)
+      return
+    }
     setError(null)
     setBusy(true)
     try {
@@ -111,7 +117,7 @@ function CreateRestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => voi
         name: form.name,
         city: form.city,
         address_line: form.address_line,
-        phone: form.phone,
+        phone,
         min_order_amount: Number(form.min_order_amount) || 0,
       })
       setForm({ name: '', city: '', address_line: '', phone: '', min_order_amount: '0' })
@@ -130,7 +136,13 @@ function CreateRestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => voi
       <Field label="Name" value={form.name} onChange={set('name')} required />
       <Field label="City" value={form.city} onChange={set('city')} required />
       <Field label="Address" value={form.address_line} onChange={set('address_line')} required />
-      <Field label="Phone" value={form.phone} onChange={set('phone')} required />
+      <PhoneField
+        label="Phone"
+        name="phone"
+        value={form.phone}
+        onChange={(phone) => setForm((f) => ({ ...f, phone }))}
+        required
+      />
       <Field
         label="Minimum order amount"
         type="number"
