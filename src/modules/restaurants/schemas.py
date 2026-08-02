@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core.phone import normalize_optional_phone
 
+
 class RestaurantCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=150)
     description: str | None = None
