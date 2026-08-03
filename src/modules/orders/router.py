@@ -1,5 +1,6 @@
 """HTTP routes for the orders domain."""
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
@@ -33,8 +34,9 @@ async def checkout(data: CheckoutRequest, user: User = Depends(require_role("cus
 
 @router.get("", response_model=list[OrderSummary])
 async def list_my_orders(limit: int = 20, offset: int = 0,
+                         scope: Literal["active", "past", "all"] = "all",
                          user: User = Depends(require_role("customer")), session: AsyncSession = Depends(get_db)):
-    return await service.list_orders(session, user.id, limit, offset)
+    return await service.list_orders(session, user.id, limit, offset, scope)
 
 
 @router.get("/restaurant/{restaurant_id}", response_model=list[OrderRead])
@@ -80,4 +82,11 @@ async def set_status(order_id: int, body: StatusBody,
 async def expire_acceptances(user: User = Depends(require_role("admin")),
                              session: AsyncSession = Depends(get_db)):
     count = await service.expire_pending_acceptances(session, now=datetime.now(timezone.utc))
+    return {"expired": count}
+
+
+@router.post("/internal/expire-unpaid")
+async def expire_unpaid(user: User = Depends(require_role("admin")),
+                        session: AsyncSession = Depends(get_db)):
+    count = await service.expire_unpaid_orders(session, now=datetime.now(timezone.utc))
     return {"expired": count}

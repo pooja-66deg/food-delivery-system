@@ -18,7 +18,12 @@ async def get_payment(session: AsyncSession, order_id: int) -> Payment | None:
 async def create_payment_for_order(
     session: AsyncSession, order, provider: PaymentProvider | None = None
 ) -> Payment:
-    """Idempotent: returns the existing payment if one already exists for the order."""
+    """Idempotent: returns the existing payment if one already exists for the order.
+
+    When the provider needs the customer to confirm (a card PaymentIntent), the
+    returned object carries the ``client_secret`` as a transient attribute — read
+    it with ``client_secret_of``. It is never written to the database.
+    """
     existing = await get_payment(session, order.id)
     if existing is not None:
         return existing
@@ -37,7 +42,17 @@ async def create_payment_for_order(
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
+    payment.client_secret = result.client_secret
     return payment
+
+
+def client_secret_of(payment: Payment | None) -> str | None:
+    """The confirmation secret attached by ``create_payment_for_order``, if any.
+
+    Absent for a payment loaded from the database — the secret only exists for
+    the response that created it.
+    """
+    return getattr(payment, "client_secret", None)
 
 
 async def capture_payment(session: AsyncSession, order) -> Payment | None:
@@ -70,6 +85,36 @@ async def retry_payment(session: AsyncSession, order, provider: PaymentProvider 
     payment.provider_ref = result.reference
     await session.commit()
     await session.refresh(payment)
+    return payment
+
+
+async def resume_card_payment(
+    session: AsyncSession, order, provider: PaymentProvider | None = None
+) -> Payment | None:
+    """Hand back a confirmation secret for an order still awaiting card payment.
+
+    The secret from checkout is never stored, so a customer who closed the tab
+    has no way back to it. This mints a fresh PaymentIntent for the same order
+    and points the payment row at it; the abandoned one expires on its own.
+
+    Returns the payment unchanged when there is nothing to pay — a settled
+    order, or one that was never on card.
+    """
+    payment = await get_payment(session, order.id)
+    if payment is None:
+        return None
+    if payment.provider != "CARD" or order.status != "PAYMENT_PENDING":
+        return payment
+
+    provider = provider or provider_for("CARD")
+    result = await provider.authorize(order.total, idempotency_key=f"order-{order.id}-resume")
+    payment.status = (
+        PaymentTxStatus.AUTHORIZED.value if result.ok else PaymentTxStatus.FAILED.value
+    )
+    payment.provider_ref = result.reference
+    await session.commit()
+    await session.refresh(payment)
+    payment.client_secret = result.client_secret
     return payment
 
 

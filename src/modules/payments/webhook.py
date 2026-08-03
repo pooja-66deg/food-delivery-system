@@ -1,0 +1,120 @@
+"""Stripe webhook: signature verification and event handling.
+
+Verification is implemented against Stripe's documented scheme rather than
+through the SDK, so the endpoint is real security even where the SDK is not
+installed — and so it can be tested with a signed fixture.
+"""
+
+import hashlib
+import hmac
+import logging
+from datetime import datetime, timezone
+from typing import Any, Mapping
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.core.exceptions import AppException
+from src.modules.payments.models import Payment, PaymentTxStatus
+
+logger = logging.getLogger(__name__)
+
+_SEEN_KEY = "stripe:evt:{event_id}"
+_SEEN_TTL = 7 * 86400
+
+SUCCEEDED = "payment_intent.succeeded"
+FAILED = "payment_intent.payment_failed"
+
+
+class WebhookError(AppException):
+    """The request could not be trusted. Always a 400 — Stripe retries 5xx."""
+
+    def __init__(self, message: str):
+        super().__init__(message, status_code=400)
+
+
+def verify_signature(
+    payload: bytes,
+    header: str | None,
+    secret: str | None,
+    now: datetime | None = None,
+    tolerance_seconds: int = 300,
+) -> None:
+    """Raise WebhookError unless ``header`` is a valid signature for ``payload``.
+
+    The header looks like ``t=1699999999,v1=<hex>`` and may carry several ``v1``
+    values during a secret rotation; any one matching is enough.
+    """
+    if not secret:
+        # Nothing to verify against means nothing can be trusted.
+        raise WebhookError("Webhook signing secret is not configured")
+    if not header:
+        raise WebhookError("Missing signature header")
+
+    timestamp, signatures = _parse(header)
+    if timestamp is None or not signatures:
+        raise WebhookError("Malformed signature header")
+
+    now = now or datetime.now(timezone.utc)
+    if abs(int(now.timestamp()) - timestamp) > tolerance_seconds:
+        # Stops a captured request being replayed later.
+        raise WebhookError("Signature timestamp outside the tolerance window")
+
+    expected = hmac.new(
+        secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + payload, hashlib.sha256
+    ).hexdigest()
+    if not any(hmac.compare_digest(expected, candidate) for candidate in signatures):
+        raise WebhookError("Signature mismatch")
+
+
+def _parse(header: str) -> tuple[int | None, list[str]]:
+    timestamp: int | None = None
+    signatures: list[str] = []
+    for part in header.split(","):
+        key, _, value = part.strip().partition("=")
+        if key == "t":
+            try:
+                timestamp = int(value)
+            except ValueError:
+                return None, []
+        elif key == "v1":
+            signatures.append(value)
+    return timestamp, signatures
+
+
+async def handle_event(session: AsyncSession, redis, event: Mapping[str, Any]) -> str:
+    """Apply a verified event. Returns a short outcome for logging/response.
+
+    Every outcome is a success from Stripe's point of view: anything that is not
+    2xx is retried, and an event we cannot act on will never succeed on a retry.
+    """
+    event_id = event.get("id")
+    event_type = event.get("type")
+
+    if event_id and not await redis.set(_SEEN_KEY.format(event_id=event_id), "1",
+                                        nx=True, ex=_SEEN_TTL):
+        return "duplicate"
+
+    if event_type not in (SUCCEEDED, FAILED):
+        return "ignored"
+
+    intent_id = event.get("data", {}).get("object", {}).get("id")
+    payment = await session.scalar(select(Payment).where(Payment.provider_ref == intent_id))
+    if payment is None:
+        # Not an order of ours (or one already cleaned up). Nothing to retry.
+        logger.info("[payments:webhook] no payment for intent %s", intent_id)
+        return "unknown"
+
+    if event_type == FAILED:
+        payment.status = PaymentTxStatus.FAILED.value
+        await session.commit()
+        return "failed"
+
+    payment.status = PaymentTxStatus.SUCCEEDED.value
+    await session.commit()
+
+    # Imported here rather than at module scope: orders imports payments.
+    from src.modules.orders import service as order_service
+
+    await order_service.mark_paid(session, payment.order_id)
+    return "paid"
