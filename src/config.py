@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     auth_rate_max: int = 10
     auth_rate_window_seconds: int = 60
     password_reset_ttl_seconds: int = 900
+    email_verification_ttl_seconds: int = 86400
+    # Base URL the reset / verification links point at (the SPA, not the API).
+    frontend_base_url: str = "http://localhost:5173"
 
     # Database
     database_url: str

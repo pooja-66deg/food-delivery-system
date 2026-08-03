@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from './components/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { AccountPage } from './pages/AccountPage'
+import { AccountPage } from './pages/account/AccountPage'
 import { AdminPage } from './pages/AdminPage'
 import { CartPage } from './pages/CartPage'
 import { DriverPage } from './pages/DriverPage'
@@ -18,6 +18,7 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { RestaurantOrdersPage } from './pages/RestaurantOrdersPage'
 import { RestaurantsPage } from './pages/RestaurantsPage'
 import { RestaurantDetailPage } from './pages/RestaurantDetailPage'
+import { VerifyEmailPage } from './pages/VerifyEmailPage'
 
 export function App() {
   return (
@@ -26,6 +27,8 @@ export function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      {/* Public: the link is opened from a mail client that may not be signed in. */}
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>

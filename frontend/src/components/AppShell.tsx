@@ -48,7 +48,7 @@ export function AppShell() {
             <div className="sidebar-user-name">{user?.first_name} {user?.last_name}</div>
             <div className="muted" style={{ textTransform: 'capitalize' }}>{user?.role}</div>
           </div>
-          <button className="sidebar-signout" onClick={logout} title="Sign out" aria-label="Sign out">
+          <button className="sidebar-signout" onClick={() => void logout()} title="Sign out" aria-label="Sign out">
             ⏻
           </button>
         </div>

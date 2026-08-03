@@ -384,6 +384,16 @@
   color: var(--danger);
   background: rgba(180, 52, 31, 0.1);
 }
+.address-card .addr-actions {
+  display: flex;
+  align-self: flex-start;
+  gap: 0.15rem;
+}
+/* Editing is not destructive, so it must not borrow the delete affordance. */
+.addr-actions .icon-btn:first-child:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.06);
+}
 
 .empty {
   text-align: center;

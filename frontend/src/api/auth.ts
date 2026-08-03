@@ -10,6 +10,7 @@ export interface User {
   last_name: string
   role: string
   is_active: boolean
+  is_email_verified: boolean
   created_at: string
 }
 
@@ -50,6 +51,9 @@ export interface AddressInput {
   is_default: boolean
 }
 
+/** Partial edit of an existing address; omitted fields are left alone. */
+export type AddressUpdate = Partial<AddressInput>
+
 export type ProfileUpdate = Partial<Pick<User, 'first_name' | 'last_name' | 'phone'>>
 
 export const authApi = {
@@ -77,6 +81,27 @@ export const authApi = {
   resetPassword: (token: string, new_password: string) =>
     request<void>('/auth/reset-password', { method: 'POST', body: { token, new_password } }),
 
+  // Sent with auth so the backend revokes the access token as well as the
+  // refresh token — clearing storage alone leaves the bearer usable.
+  logout: (refresh_token: string) =>
+    request<void>('/auth/logout', { method: 'POST', body: { refresh_token }, auth: true }),
+
+  changePassword: (current_password: string, new_password: string) =>
+    request<Tokens>('/users/me/change-password', {
+      method: 'POST',
+      body: { current_password, new_password },
+      auth: true,
+    }),
+
+  requestEmailVerification: () =>
+    request<{ message: string; debug_token?: string }>('/auth/verify-email/request', {
+      method: 'POST',
+      auth: true,
+    }),
+
+  confirmEmailVerification: (token: string) =>
+    request<void>('/auth/verify-email/confirm', { method: 'POST', body: { token } }),
+
   me: () => request<User>('/users/me', { auth: true }),
 
   updateProfile: (input: ProfileUpdate) =>
@@ -86,6 +111,9 @@ export const authApi = {
 
   addAddress: (input: AddressInput) =>
     request<Address>('/users/me/addresses', { method: 'POST', body: input, auth: true }),
+
+  updateAddress: (id: number, input: AddressUpdate) =>
+    request<Address>(`/users/me/addresses/${id}`, { method: 'PATCH', body: input, auth: true }),
 
   deleteAddress: (id: number) =>
     request<void>(`/users/me/addresses/${id}`, { method: 'DELETE', auth: true }),

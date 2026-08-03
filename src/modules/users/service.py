@@ -1,7 +1,6 @@
 """Business logic for the users domain."""
 
-import hashlib
-import secrets
+from typing import Any, Mapping
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -12,20 +11,20 @@ from src.core.exceptions import ConflictException, UnauthorizedException
 from src.core.jwt import create_access_token, create_refresh_token, verify_token
 from src.core.security import hash_password, verify_password
 from src.modules.users import otp as otp_module
+from src.modules.users import tokens as token_store
 from src.modules.users.models import User
 from src.modules.users.schemas import TokenResponse, UserRegister
 
 __all__ = [
     "register_user", "login", "login_with_otp", "refresh_tokens", "logout",
     "request_password_reset", "reset_password", "verify_password",
+    "change_password", "request_email_verification", "verify_email",
+    "is_revoked", "generation_matches",
 ]
 
 _BLOCKLIST_KEY = "jwt:blocklist:{jti}"
-_RESET_KEY = "pwd_reset:{token_hash}"
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+RESET_PREFIX = "pwd_reset"
+VERIFY_PREFIX = "email_verify"
 
 
 async def request_password_reset(session: AsyncSession, redis, email: str) -> str | None:
@@ -38,40 +37,86 @@ async def request_password_reset(session: AsyncSession, redis, email: str) -> st
     user = await session.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active:
         return None
-    token = secrets.token_urlsafe(32)
-    await redis.set(
-        _RESET_KEY.format(token_hash=_hash_token(token)),
-        str(user.id),
-        ex=settings.password_reset_ttl_seconds,
+    return await token_store.issue_single_use(
+        redis, RESET_PREFIX, user.id, settings.password_reset_ttl_seconds
     )
-    return token
 
 
 async def reset_password(session: AsyncSession, redis, token: str, new_password: str) -> None:
     """Consume a reset token and set a new password. Raises UnauthorizedException
-    if the token is missing/expired. Revokes the token after use."""
-    key = _RESET_KEY.format(token_hash=_hash_token(token))
-    user_id = await redis.get(key)
+    if the token is missing/expired. Revokes the token after use, and evicts
+    every existing session — whoever locked the user out loses their access."""
+    user_id = await token_store.consume_single_use(redis, RESET_PREFIX, token)
     if user_id is None:
         raise UnauthorizedException("Invalid or expired reset token")
-    user = await session.get(User, int(user_id))
+    user = await session.get(User, user_id)
     if user is None:
         raise UnauthorizedException("Invalid or expired reset token")
     user.hashed_password = hash_password(new_password)
+    user.session_generation += 1
     await session.commit()
-    await redis.delete(key)
 
 
-async def _blocklist(redis, jti: str) -> None:
-    await redis.set(
-        _BLOCKLIST_KEY.format(jti=jti), "1",
-        ex=settings.jwt_refresh_expiration_days * 86400,
+async def change_password(
+    session: AsyncSession, user: User, current_password: str, new_password: str
+) -> TokenResponse:
+    """Change the password of a signed-in user and evict every other session.
+
+    Returns a fresh token pair carrying the new generation, so the caller stays
+    signed in on the device that made the change.
+    """
+    if not verify_password(current_password, user.hashed_password):
+        raise UnauthorizedException("Current password is incorrect")
+    user.hashed_password = hash_password(new_password)
+    user.session_generation += 1
+    await session.commit()
+    await session.refresh(user)
+    return _issue_tokens(user)
+
+
+async def request_email_verification(redis, user: User) -> str:
+    """Issue a single-use verification token for the user's email address."""
+    return await token_store.issue_single_use(
+        redis, VERIFY_PREFIX, user.id, settings.email_verification_ttl_seconds
     )
+
+
+async def verify_email(session: AsyncSession, redis, token: str) -> None:
+    """Consume a verification token and mark the address verified. Raises
+    UnauthorizedException if the token is missing, expired, or already spent."""
+    user_id = await token_store.consume_single_use(redis, VERIFY_PREFIX, token)
+    if user_id is None:
+        raise UnauthorizedException("Invalid or expired verification token")
+    user = await session.get(User, user_id)
+    if user is None:
+        raise UnauthorizedException("Invalid or expired verification token")
+    user.is_email_verified = True
+    await session.commit()
+
+
+async def _blocklist(redis, jti: str, ttl_seconds: int) -> None:
+    await redis.set(_BLOCKLIST_KEY.format(jti=jti), "1", ex=ttl_seconds)
+
+
+async def is_revoked(redis, jti: str | None) -> bool:
+    """True if this token's jti has been blocklisted by a logout."""
+    if not jti:
+        return False
+    return await redis.get(_BLOCKLIST_KEY.format(jti=jti)) is not None
+
+
+def generation_matches(payload: Mapping[str, Any], user: User) -> bool:
+    """True if the token was minted for the user's current session generation.
+
+    A missing ``gen`` claim reads as 0 — the default — so tokens issued before
+    this claim existed keep working until the first eviction.
+    """
+    return int(payload.get("gen") or 0) == user.session_generation
 
 
 def _issue_tokens(user: User) -> TokenResponse:
     """Build an access/refresh token pair for a user."""
-    claims = {"sub": str(user.id), "role": user.role}
+    claims = {"sub": str(user.id), "role": user.role, "gen": user.session_generation}
     return TokenResponse(
         access_token=create_access_token(claims),
         refresh_token=create_refresh_token(claims),
@@ -119,7 +164,7 @@ async def refresh_tokens(session: AsyncSession, redis, refresh_token: str) -> To
         raise UnauthorizedException("Invalid token type")
 
     jti = payload.get("jti")
-    if jti and await redis.get(_BLOCKLIST_KEY.format(jti=jti)):
+    if await is_revoked(redis, jti):
         raise UnauthorizedException("Token revoked")
 
     try:
@@ -130,22 +175,35 @@ async def refresh_tokens(session: AsyncSession, redis, refresh_token: str) -> To
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise UnauthorizedException("User not found or inactive")
+    if not generation_matches(payload, user):
+        raise UnauthorizedException("Session expired")
 
     if jti:
-        await _blocklist(redis, jti)  # rotation: the presented refresh token can't be reused
+        # rotation: the presented refresh token can't be reused
+        await _blocklist(redis, jti, settings.jwt_refresh_expiration_days * 86400)
     return _issue_tokens(user)
 
 
-async def logout(redis, refresh_token: str) -> None:
-    """Revoke a refresh token by blocklisting its jti. Silently ignores tokens
-    that are already invalid/expired."""
+async def logout(redis, refresh_token: str, access_token: str | None = None) -> None:
+    """Revoke the presented tokens by blocklisting their jtis.
+
+    Both are revoked: dropping only the refresh token would leave the access
+    token usable for the rest of its lifetime. Tokens that are already invalid
+    or expired are ignored.
+    """
+    await _revoke(redis, refresh_token, settings.jwt_refresh_expiration_days * 86400)
+    if access_token:
+        await _revoke(redis, access_token, settings.jwt_expiration_minutes * 60)
+
+
+async def _revoke(redis, token: str, ttl_seconds: int) -> None:
     try:
-        payload = verify_token(refresh_token)
+        payload = verify_token(token)
     except UnauthorizedException:
         return
     jti = payload.get("jti")
     if jti:
-        await _blocklist(redis, jti)
+        await _blocklist(redis, jti, ttl_seconds)
 
 
 async def login(session: AsyncSession, email: str, password: str) -> TokenResponse:

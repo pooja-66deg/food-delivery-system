@@ -85,6 +85,26 @@ class ResetPasswordRequest(BaseModel):
         return v
 
 
+class ChangePasswordRequest(BaseModel):
+    """Payload for an authenticated password change."""
+
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
+
+
+class VerifyEmailRequest(BaseModel):
+    """Payload carrying an email-verification token."""
+
+    token: str = Field(..., min_length=8)
+
+
 class TokenResponse(BaseModel):
     """Issued JWT pair."""
 
@@ -123,6 +143,7 @@ class UserResponse(BaseModel):
     last_name: str
     role: str
     is_active: bool
+    is_email_verified: bool
     created_at: datetime
 
 
@@ -146,6 +167,18 @@ class AddressCreate(BaseModel):
     city: str = Field(..., min_length=1, max_length=100)
     postal_code: str = Field(..., min_length=1, max_length=20)
     is_default: bool = False
+
+
+class AddressUpdate(BaseModel):
+    """Editable fields of an existing address. Omitted fields are left alone;
+    ``line2`` is the one field an explicit null clears."""
+
+    label: str | None = Field(default=None, min_length=1, max_length=50)
+    line1: str | None = Field(default=None, min_length=1, max_length=255)
+    line2: str | None = Field(default=None, max_length=255)
+    city: str | None = Field(default=None, min_length=1, max_length=100)
+    postal_code: str | None = Field(default=None, min_length=1, max_length=20)
+    is_default: bool | None = None
 
 
 class AddressResponse(BaseModel):

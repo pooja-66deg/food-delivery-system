@@ -26,27 +26,48 @@ def _creds(token: str) -> HTTPAuthorizationCredentials:
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_returns_user_for_valid_token(db_session):
+async def test_get_current_user_returns_user_for_valid_token(db_session, fake_redis):
     user = await service.register_user(db_session, _registration())
     token = create_access_token({"sub": str(user.id), "role": user.role})
 
-    result = await dependencies.get_current_user(_creds(token), db_session)
+    result = await dependencies.get_current_user(_creds(token), db_session, fake_redis)
 
     assert result.id == user.id
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_rejects_missing_credentials(db_session):
+async def test_get_current_user_rejects_missing_credentials(db_session, fake_redis):
     with pytest.raises(UnauthorizedException):
-        await dependencies.get_current_user(None, db_session)
+        await dependencies.get_current_user(None, db_session, fake_redis)
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_rejects_unknown_user(db_session):
+async def test_get_current_user_rejects_unknown_user(db_session, fake_redis):
     token = create_access_token({"sub": "99999", "role": "customer"})
 
     with pytest.raises(UnauthorizedException):
-        await dependencies.get_current_user(_creds(token), db_session)
+        await dependencies.get_current_user(_creds(token), db_session, fake_redis)
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_a_revoked_token(db_session, fake_redis):
+    user = await service.register_user(db_session, _registration())
+    token = create_access_token({"sub": str(user.id), "role": user.role})
+    await service.logout(fake_redis, "not-a-refresh-token", access_token=token)
+
+    with pytest.raises(UnauthorizedException):
+        await dependencies.get_current_user(_creds(token), db_session, fake_redis)
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_a_stale_generation(db_session, fake_redis):
+    user = await service.register_user(db_session, _registration())
+    token = create_access_token({"sub": str(user.id), "role": user.role, "gen": 0})
+    user.session_generation = 1
+    await db_session.commit()
+
+    with pytest.raises(UnauthorizedException):
+        await dependencies.get_current_user(_creds(token), db_session, fake_redis)
 
 
 @pytest.mark.asyncio

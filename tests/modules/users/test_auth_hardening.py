@@ -39,6 +39,29 @@ async def test_logout_revokes_refresh_token(api_client):
 
 
 @pytest.mark.asyncio
+async def test_logout_revokes_the_access_token_too(api_client):
+    """Clearing the refresh token is not enough — the bearer token has up to 30
+    minutes left on it."""
+    await _register(api_client)
+    login = (await api_client.post("/auth/login", json={"email": "u@x.com", "password": "supersecret1"})).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+    assert (await api_client.get("/users/me", headers=headers)).status_code == 200
+
+    await api_client.post("/auth/logout", json={"refresh_token": login["refresh_token"]}, headers=headers)
+
+    assert (await api_client.get("/users/me", headers=headers)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_without_bearer_still_revokes_the_refresh_token(api_client):
+    await _register(api_client)
+    login = (await api_client.post("/auth/login", json={"email": "u@x.com", "password": "supersecret1"})).json()
+
+    assert (await api_client.post("/auth/logout", json={"refresh_token": login["refresh_token"]})).status_code == 204
+    assert (await api_client.post("/auth/refresh", json={"refresh_token": login["refresh_token"]})).status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_access_token_rejected_at_refresh(api_client):
     await _register(api_client)
     login = (await api_client.post("/auth/login", json={"email": "u@x.com", "password": "supersecret1"})).json()
