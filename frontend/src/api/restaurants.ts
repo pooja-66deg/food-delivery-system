@@ -35,7 +35,12 @@ export interface MenuItem {
   name: string
   description: string | null
   price: number
+  /** The owner's manual switch. */
   is_available: boolean
+  /** null means stock is not tracked for this item. */
+  stock_quantity: number | null
+  /** Server-derived: is_available AND stock allows it. Customers read this. */
+  in_stock: boolean
   image_url?: string | null
 }
 
@@ -66,6 +71,13 @@ export interface MenuItemCreateInput {
   description?: string | null
   price: number
   is_available?: boolean
+  /** Send null to leave stock untracked, or stop tracking it. */
+  stock_quantity?: number | null
+}
+
+export interface CategoryUpdateInput {
+  name?: string
+  sort_order?: number
 }
 
 export const restaurantsApi = {
@@ -97,6 +109,20 @@ export const restaurantsApi = {
 
   addCategory: (id: number, name: string) =>
     request<MenuCategory>(`/restaurants/${id}/categories`, { method: 'POST', body: { name }, auth: true }),
+
+  updateCategory: (id: number, categoryId: number, body: CategoryUpdateInput) =>
+    request<MenuCategory>(`/restaurants/${id}/categories/${categoryId}`, {
+      method: 'PATCH',
+      body,
+      auth: true,
+    }),
+
+  // 409 when the category still holds items — the message names the count.
+  deleteCategory: (id: number, categoryId: number) =>
+    request<void>(`/restaurants/${id}/categories/${categoryId}`, {
+      method: 'DELETE',
+      auth: true,
+    }),
 
   addItem: (id: number, body: MenuItemCreateInput) =>
     request<MenuItem>(`/restaurants/${id}/items`, { method: 'POST', body, auth: true }),

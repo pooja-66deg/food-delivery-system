@@ -53,6 +53,11 @@ class MenuItem(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    # Owner's manual switch. The system never rewrites it, so "turned off" stays
+    # distinguishable from "sold out".
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # NULL means stock is not tracked for this item — the default, and how every
+    # item that predates inventory behaves.
+    stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

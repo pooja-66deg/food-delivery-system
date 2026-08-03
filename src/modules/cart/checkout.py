@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.exceptions import AppException, NotFoundException
 from src.modules.cart import service as cart_service
 from src.modules.cart.schemas import CheckoutRequest, ValidatedOrder, ValidatedOrderItem
+from src.modules.restaurants import inventory
 from src.modules.restaurants.models import MenuItem
 from src.modules.restaurants.service import get_restaurant
 from src.modules.users.models import Address, User
@@ -39,7 +40,7 @@ async def validate_checkout(
     if not restaurant.is_open:
         raise CheckoutError("RESTAURANT_CLOSED", "This restaurant is currently closed.")
 
-    # 2. All items still available?
+    # 2. All items still available — and enough of them left?
     rows = {
         m.id: m
         for m in await _items_by_ids(session, [i.menu_item_id for i in cart.items])
@@ -48,6 +49,13 @@ async def validate_checkout(
         item = rows.get(line.menu_item_id)
         if item is None or not item.is_available:
             raise CheckoutError("ITEM_OUT_OF_STOCK", f"'{line.name}' is no longer available.")
+        if inventory.shortfall(item, line.quantity):
+            # Same code as above: the client's handling is identical, and the
+            # message carries the detail.
+            raise CheckoutError(
+                "ITEM_OUT_OF_STOCK",
+                f"Only {item.stock_quantity} left of '{line.name}'.",
+            )
 
     # 3. Prices unchanged since the customer last saw them?
     if request.price_hash != cart.price_hash:

@@ -5,14 +5,15 @@ All mutating operations verify the caller owns the restaurant (via
 public.
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.exceptions import NotFoundException
+from src.core.exceptions import ConflictException, NotFoundException
 from src.modules.restaurants import service
 from src.modules.restaurants.models import MenuCategory, MenuItem
 from src.modules.restaurants.schemas import (
     CategoryCreate,
+    CategoryUpdate,
     MenuCategoryWithItems,
     MenuItemCreate,
     MenuItemResponse,
@@ -39,6 +40,44 @@ async def list_categories(session: AsyncSession, restaurant_id: int) -> list[Men
         .order_by(MenuCategory.sort_order, MenuCategory.id)
     )
     return list(await session.scalars(stmt))
+
+
+async def update_category(
+    session: AsyncSession, user: User, restaurant_id: int, category_id: int, data: CategoryUpdate
+) -> MenuCategory:
+    """Rename or reorder a category. Omitted fields are left alone."""
+    await service.owned_restaurant(session, user, restaurant_id)
+    category = await _category_in_restaurant(session, restaurant_id, category_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(category, field, value)
+    await session.commit()
+    await session.refresh(category)
+    return category
+
+
+async def delete_category(
+    session: AsyncSession, user: User, restaurant_id: int, category_id: int
+) -> None:
+    """Delete an empty category.
+
+    A category holding items is refused rather than cascaded — one stray click
+    must not erase a whole menu section. The owner moves or deletes the items
+    first.
+    """
+    await service.owned_restaurant(session, user, restaurant_id)
+    category = await _category_in_restaurant(session, restaurant_id, category_id)
+
+    held = await session.scalar(
+        select(func.count()).select_from(MenuItem).where(MenuItem.category_id == category_id)
+    )
+    if held:
+        raise ConflictException(
+            f"'{category.name}' still has {held} item(s). Move or delete them first."
+        )
+
+    await session.delete(category)
+    await session.commit()
 
 
 async def _category_in_restaurant(session: AsyncSession, restaurant_id: int, category_id: int) -> MenuCategory:
