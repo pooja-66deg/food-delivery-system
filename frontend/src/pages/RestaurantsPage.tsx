@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { restaurantsApi } from '../api/restaurants'
 import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/restaurants'
 import { errorMessage } from '../api/client'
-import { Alert, Button, EmptyState, Loading } from '../components/ui'
+import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { PopularCuisines } from '../components/PopularCuisines'
 import { SearchSuggest } from '../components/SearchSuggest'
 
@@ -106,6 +106,7 @@ export function RestaurantsPage() {
               transition={{ duration: 0.35, delay: Math.min(i * 0.04, 0.3) }}
             >
               <Link to={`/restaurants/${r.id}`} className="rest-card">
+                <Thumb url={r.image_url} alt={`${r.name} cover`} variant="cover" />
                 <div className="rest-card-top">
                   <span className={`badge ${r.is_open ? 'badge-open' : 'badge-closed'}`}>
                     {r.is_open ? 'Open' : 'Closed'}

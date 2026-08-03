@@ -16,6 +16,7 @@ from src.modules.restaurants.storage import save_image
 from src.modules.restaurants.schemas import (
     CategoryCreate,
     CategoryResponse,
+    CategoryUpdate,
     CuisineCount,
     MenuItemCreate,
     MenuItemResponse,
@@ -128,6 +129,30 @@ async def add_category(
     session: AsyncSession = Depends(get_db),
 ):
     return await menu_service.add_category(session, user, restaurant_id, data)
+
+
+@router.patch("/{restaurant_id}/categories/{category_id}", response_model=CategoryResponse)
+async def update_category(
+    restaurant_id: int,
+    category_id: int,
+    data: CategoryUpdate,
+    user: User = Depends(owner_only),
+    session: AsyncSession = Depends(get_db),
+):
+    return await menu_service.update_category(session, user, restaurant_id, category_id, data)
+
+
+@router.delete(
+    "/{restaurant_id}/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_category(
+    restaurant_id: int,
+    category_id: int,
+    user: User = Depends(owner_only),
+    session: AsyncSession = Depends(get_db),
+):
+    # 409 when the category still holds items — see menu_service.delete_category.
+    await menu_service.delete_category(session, user, restaurant_id, category_id)
 
 
 # ---------- Menu: items ----------

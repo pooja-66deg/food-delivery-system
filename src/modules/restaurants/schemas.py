@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from src.core.phone import normalize_optional_phone
 
@@ -73,6 +73,13 @@ class CategoryCreate(BaseModel):
     sort_order: int = 0
 
 
+class CategoryUpdate(BaseModel):
+    """Editable category fields; omitted fields are left alone."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    sort_order: int | None = None
+
+
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +94,8 @@ class MenuItemCreate(BaseModel):
     description: str | None = None
     price: Decimal = Field(..., gt=0)
     is_available: bool = True
+    # Omit (or send null) to leave stock untracked.
+    stock_quantity: int | None = Field(default=None, ge=0)
 
 
 class MenuItemUpdate(BaseModel):
@@ -95,6 +104,8 @@ class MenuItemUpdate(BaseModel):
     description: str | None = None
     price: Decimal | None = Field(default=None, gt=0)
     is_available: bool | None = None
+    # An explicit null stops tracking stock for this item.
+    stock_quantity: int | None = Field(default=None, ge=0)
 
 
 class MenuItemResponse(BaseModel):
@@ -106,7 +117,18 @@ class MenuItemResponse(BaseModel):
     description: str | None
     price: Decimal
     is_available: bool
+    stock_quantity: int | None = None
     image_url: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def in_stock(self) -> bool:
+        """Whether a customer can order this right now.
+
+        One field for clients to read: the owner's switch and the stock count
+        both have to allow it. Untracked stock never blocks.
+        """
+        return self.is_available and (self.stock_quantity is None or self.stock_quantity > 0)
 
 
 class MenuCategoryWithItems(CategoryResponse):

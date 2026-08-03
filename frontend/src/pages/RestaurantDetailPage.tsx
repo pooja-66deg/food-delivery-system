@@ -7,7 +7,10 @@ import type { RestaurantDetail } from '../api/restaurants'
 import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
-import { Alert, Button, EmptyState, Loading } from '../components/ui'
+import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
+
+/** Show the count only when it is low enough to influence a decision. */
+const LOW_STOCK_AT = 5
 
 export function RestaurantDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -71,6 +74,7 @@ export function RestaurantDetailPage() {
         transition={{ duration: 0.45 }}
       >
         <div className="rest-hero-head">
+          <Thumb url={restaurant.image_url} alt={`${restaurant.name} cover`} variant="cover" />
           <h1>{restaurant.name}</h1>
           <span className={`badge ${restaurant.is_open ? 'badge-open' : 'badge-closed'}`}>
             {restaurant.is_open ? 'Open now' : 'Closed'}
@@ -96,9 +100,20 @@ export function RestaurantDetailPage() {
             <div className="menu-items">
               {category.items.map((item) => (
                 <div key={item.id} className="menu-item">
-                  <div>
-                    <div className="menu-item-name">{item.name}</div>
-                    {item.description && <div className="muted">{item.description}</div>}
+                  <div className="menu-item-lead">
+                    <Thumb url={item.image_url} alt={item.name} />
+                    <div>
+                      <div className="menu-item-name">
+                        {item.name}
+                        {!item.in_stock && <span className="badge badge-closed">Out of stock</span>}
+                      </div>
+                      {item.description && <div className="muted">{item.description}</div>}
+                      {item.in_stock &&
+                        item.stock_quantity !== null &&
+                        item.stock_quantity <= LOW_STOCK_AT && (
+                          <div className="muted">Only {item.stock_quantity} left</div>
+                        )}
+                    </div>
                   </div>
                   <div className="menu-item-actions">
                     <div className="price">${Number(item.price).toFixed(2)}</div>
@@ -106,10 +121,10 @@ export function RestaurantDetailPage() {
                       <Button
                         variant="ghost"
                         loading={adding === item.id}
-                        disabled={!item.is_available}
+                        disabled={!item.in_stock}
                         onClick={() => handleAdd(item.id, item.name)}
                       >
-                        {item.is_available ? 'Add' : 'Unavailable'}
+                        {item.in_stock ? 'Add' : 'Unavailable'}
                       </Button>
                     )}
                   </div>

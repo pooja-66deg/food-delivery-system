@@ -632,6 +632,9 @@
   border-radius: var(--r-md);
 }
 .menu-item-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 600;
   margin-bottom: 0.15rem;
 }
@@ -1045,8 +1048,14 @@ textarea.input { resize: vertical; font-family: var(--font-body); }
 }
 .delivery-actions { display: flex; gap: 0.5rem; }
 
-/* images (owner) */
+/* images (owner + customer) */
 .image-field { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+/* On a browse card the cover is a banner, not a chip — it spans the card and
+   sits above the padded content. */
+.rest-card .image-thumb {
+  width: 100%; height: 132px; margin-bottom: 0.9rem;
+}
+.rest-hero-head .image-thumb { flex: none; }
 .image-thumb { width: 96px; height: 72px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); }
 .image-placeholder { display: flex; align-items: center; justify-content: center; color: var(--ink-faint); background: var(--paper-2); font-size: 0.8rem; }
 .menu-item-lead { display: flex; align-items: center; gap: 0.8rem; }

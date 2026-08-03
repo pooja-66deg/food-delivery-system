@@ -20,11 +20,23 @@ from src.modules.orders.state_machine import OrderError
 from src.modules.events import outbox
 from src.modules.notifications import service as notification_service
 from src.modules.payments import service as payment_service
+from src.modules.restaurants import inventory
 from src.modules.restaurants import service as restaurant_service
 from src.modules.restaurants.models import Restaurant
 
 _LOCK_KEY = "order_lock:{user_id}"
 _LOCK_TTL = 10
+
+
+async def _restore_stock(session: AsyncSession, order: Order) -> None:
+    """Put a cancelled order's stock back, in the caller's transaction.
+
+    The lines are queried rather than read off ``order.items`` because the
+    cancel paths fetch the order with ``session.get`` and lazy loading is not
+    available on an async session.
+    """
+    lines = list(await session.scalars(select(OrderItem).where(OrderItem.order_id == order.id)))
+    await inventory.restore_order(session, lines)
 
 
 def _emit_status(session: AsyncSession, order: Order) -> None:
@@ -75,6 +87,9 @@ async def create_order_from_checkout(
             )
         session.add(order)
         await session.flush()  # assign order.id before writing events
+
+        # Take the stock in the same transaction as the order itself.
+        await inventory.apply_order(session, validated.items)
 
         # Record the CREATED baseline event, then advance COD to PAYMENT_SUCCESS.
         session.add(
@@ -162,6 +177,7 @@ async def cancel_by_customer(session: AsyncSession, user, order_id: int) -> Orde
     order.cancelled_by = Actor.CUSTOMER.value
     refund = sm.refund_on_cancel(current, Actor.CUSTOMER)
     _record_refund(order, refund)
+    await _restore_stock(session, order)
     _emit_status(session, order)
     await session.commit()
     if refund == RefundStatus.FULL:
@@ -189,6 +205,7 @@ async def reject_by_restaurant(session: AsyncSession, user, order_id: int, reaso
     order.cancelled_by = Actor.RESTAURANT.value
     order.cancel_reason = reason
     _record_refund(order, RefundStatus.FULL)  # kitchen rejection always refunds
+    await _restore_stock(session, order)
     _emit_status(session, order)
     await session.commit()
     await payment_service.refund_payment(session, order)
@@ -207,6 +224,7 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         order.cancelled_by = Actor.RESTAURANT.value
         refund = sm.refund_on_cancel(current, Actor.RESTAURANT)
         _record_refund(order, refund)
+        await _restore_stock(session, order)
     _emit_status(session, order)
     await session.commit()
     if to == OrderStatus.DELIVERED:
@@ -246,6 +264,7 @@ async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> in
                             reason="restaurant acceptance timeout")
         order.cancelled_by = Actor.SYSTEM.value
         _record_refund(order, RefundStatus.FULL)
+        await _restore_stock(session, order)
         _emit_status(session, order)
     await session.commit()
     for order in stale:
