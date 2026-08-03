@@ -15,7 +15,8 @@ interface AuthState {
   saveSession: (tokens: Tokens) => Promise<void>
   refreshUser: () => Promise<void>
   setUser: (user: User) => void
-  logout: () => void
+  replaceTokens: (tokens: Tokens) => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
@@ -58,10 +59,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refreshUser],
   )
 
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(REFRESH_KEY)
-    setUser(null)
+  /** Swap in a pair the server minted mid-session (e.g. after a password
+   * change, which invalidates every earlier token). */
+  const replaceTokens = useCallback((tokens: Tokens) => {
+    localStorage.setItem(TOKEN_KEY, tokens.access_token)
+    localStorage.setItem(REFRESH_KEY, tokens.refresh_token)
+  }, [])
+
+  const logout = useCallback(async () => {
+    const refresh = localStorage.getItem(REFRESH_KEY)
+    try {
+      // Revokes both tokens server-side. Dropping them locally is not enough:
+      // a copied token would stay valid until it expired on its own.
+      if (refresh) await authApi.logout(refresh)
+    } catch {
+      // A failed call must never strand the user signed in — clear regardless.
+    } finally {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_KEY)
+      setUser(null)
+    }
   }, [])
 
   const value: AuthState = {
@@ -71,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession,
     refreshUser,
     setUser,
+    replaceTokens,
     logout,
   }
 

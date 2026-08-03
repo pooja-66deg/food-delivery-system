@@ -13,17 +13,21 @@ from src.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Used when a caller does not name one. Account mail (reset, verification)
+# always passes its own — a reset link titled "Order update" reads as phishing.
+DEFAULT_SUBJECT = "Order update"
+
 
 class NotificationSender(Protocol):
     channel: str
 
-    async def send(self, to: str, message: str) -> bool: ...
+    async def send(self, to: str, message: str, subject: str | None = None) -> bool: ...
 
 
 class LogSender:
     channel = "LOG"
 
-    async def send(self, to: str, message: str) -> bool:
+    async def send(self, to: str, message: str, subject: str | None = None) -> bool:
         logger.info("[notify:LOG] to=%s :: %s", to, message)
         return True
 
@@ -31,7 +35,7 @@ class LogSender:
 class SmsSender:
     channel = "SMS"
 
-    async def send(self, to: str, message: str) -> bool:
+    async def send(self, to: str, message: str, subject: str | None = None) -> bool:
         """Send via Twilio when credentials are configured; otherwise log.
 
         The Twilio SDK is an optional dependency — if it isn't installed or the
@@ -59,7 +63,7 @@ class SmsSender:
 class EmailSender:
     channel = "EMAIL"
 
-    async def send(self, to: str, message: str) -> bool:
+    async def send(self, to: str, message: str, subject: str | None = None) -> bool:
         """Send via SendGrid when configured; otherwise log. Failures degrade to
         False rather than raising."""
         key, sender = settings.sendgrid_api_key, settings.sendgrid_from_email
@@ -69,7 +73,8 @@ class EmailSender:
                 from sendgrid.helpers.mail import Mail
 
                 client = sendgrid.SendGridAPIClient(key)
-                mail = Mail(from_email=sender, to_emails=to, subject="Order update",
+                mail = Mail(from_email=sender, to_emails=to,
+                            subject=subject or DEFAULT_SUBJECT,
                             plain_text_content=message)
                 await asyncio.to_thread(lambda: client.send(mail))
                 logger.info("[notify:EMAIL] sent via SendGrid to %s", to)
@@ -84,7 +89,7 @@ class EmailSender:
 class PushSender:
     channel = "PUSH"
 
-    async def send(self, to: str, message: str) -> bool:
+    async def send(self, to: str, message: str, subject: str | None = None) -> bool:
         """Send a push via FCM (legacy HTTP) when a server key is configured;
         otherwise log. ``to`` is a device token."""
         key = settings.fcm_server_key
@@ -116,6 +121,7 @@ def get_sender(channel: str) -> NotificationSender:
     return _SENDERS.get(channel, _SENDERS["LOG"])
 
 
-async def dispatch(channel: str, to: str, message: str) -> bool:
-    """Send ``message`` to ``to`` over ``channel`` (best-effort)."""
-    return await get_sender(channel).send(to, message)
+async def dispatch(channel: str, to: str, message: str, subject: str | None = None) -> bool:
+    """Send ``message`` to ``to`` over ``channel`` (best-effort). ``subject`` is
+    honoured by channels that have one (email); the rest ignore it."""
+    return await get_sender(channel).send(to, message, subject)

@@ -2,23 +2,26 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AccountPage } from '../../src/pages/AccountPage'
+import { AccountPage } from '../../../src/pages/account/AccountPage'
 
 const mocks = vi.hoisted(() => ({
   user: null as Record<string, unknown> | null,
   setUser: () => {},
 }))
 
-vi.mock('../../src/auth/AuthContext', () => ({
-  useAuth: () => ({ user: mocks.user, setUser: mocks.setUser }),
+vi.mock('../../../src/auth/AuthContext', () => ({
+  useAuth: () => ({ user: mocks.user, setUser: mocks.setUser, replaceTokens: () => {} }),
 }))
 
-vi.mock('../../src/api/auth', () => ({
+vi.mock('../../../src/api/auth', () => ({
   authApi: {
     listAddresses: () => Promise.resolve([]),
     updateProfile: () => Promise.resolve(mocks.user),
     addAddress: () => Promise.resolve({}),
+    updateAddress: () => Promise.resolve({}),
     deleteAddress: () => Promise.resolve(),
+    changePassword: () => Promise.resolve({}),
+    requestEmailVerification: () => Promise.resolve({ message: 'sent' }),
   },
 }))
 
@@ -31,6 +34,7 @@ function signedInAs(role: string) {
     last_name: 'Rivera',
     role,
     is_active: true,
+    is_email_verified: true,
     created_at: '2026-01-01T00:00:00Z',
   }
 }
@@ -68,6 +72,18 @@ describe('AccountPage role awareness', () => {
 
     expect(screen.queryByRole('heading', { name: /delivery addresses/i })).not.toBeInTheDocument()
   })
+
+  it.each(['customer', 'driver', 'restaurant', 'admin'])(
+    'offers a password change to a %s',
+    (role) => {
+      // Unlike addresses, a password is every role's business.
+      signedInAs(role)
+
+      render(<AccountPage />)
+
+      expect(screen.getByRole('heading', { name: /^password$/i })).toBeInTheDocument()
+    },
+  )
 })
 
 describe('AccountPage profile form input filtering', () => {

@@ -15,14 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.exceptions import ForbiddenException, UnauthorizedException
 from src.core.jwt import verify_token
 from src.adapters.database import get_db
+from src.adapters.redis import get_redis
+from src.modules.users import service
 from src.modules.users.models import User
 
-_bearer = HTTPBearer(auto_error=False)
+# Public so routes that work with or without a session (logout) can read the
+# header without demanding a valid token.
+optional_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer),
     session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
 ) -> User:
     """Resolve the authenticated user from a Bearer access token."""
     if credentials is None:
@@ -31,6 +36,10 @@ async def get_current_user(
     payload = verify_token(credentials.credentials)
     if payload.get("type") != "access":
         raise UnauthorizedException("Invalid token type")
+
+    # Logout blocklists the access token, not just the refresh token.
+    if await service.is_revoked(redis, payload.get("jti")):
+        raise UnauthorizedException("Token revoked")
 
     subject = payload.get("sub")
     if subject is None:
@@ -43,6 +52,10 @@ async def get_current_user(
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise UnauthorizedException("User not found or inactive")
+    # A password change or reset bumps the generation, evicting every token
+    # minted before it.
+    if not service.generation_matches(payload, user):
+        raise UnauthorizedException("Session expired")
     return user
 
 
