@@ -45,6 +45,9 @@ class Settings(BaseSettings):
 
     # Orders
     restaurant_accept_timeout_seconds: int = 300
+    # How long a card order may sit unpaid before it is cancelled and its stock
+    # reservation released.
+    payment_window_seconds: int = 900
 
     # Media (uploaded images)
     media_root: str = "media"
@@ -56,6 +59,10 @@ class Settings(BaseSettings):
     # Third-party Services
     stripe_api_key: Optional[str] = None
     stripe_secret_key: Optional[str] = None
+    # Signing secret for the /payments/webhook endpoint. Without it no webhook
+    # can be verified, so none is trusted.
+    stripe_webhook_secret: Optional[str] = None
+    stripe_webhook_tolerance_seconds: int = 300
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None

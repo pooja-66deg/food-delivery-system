@@ -14,3 +14,6 @@ class PaymentRead(BaseModel):
     status: str
     provider_ref: str | None
     created_at: datetime
+    # Only ever set by the resume endpoint, for a card payment still awaiting
+    # confirmation. Never stored.
+    client_secret: str | None = None

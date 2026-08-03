@@ -32,6 +32,9 @@ uvicorn src.main:app --reload   # needs Postgres + Redis running
 - `VITE_API_URL` — override the API base (default `/api`, which the dev proxy
   forwards to the backend). Set it for production builds pointing at a real API
   origin. See `.env.example`.
+- `VITE_STRIPE_PUBLISHABLE_KEY` — enables card payments. With it unset the card
+  option is hidden and cash on delivery is the only method, so the app runs with
+  no payment configuration at all.
 
 ## Scripts
 

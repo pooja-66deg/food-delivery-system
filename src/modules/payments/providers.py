@@ -21,6 +21,10 @@ class ProviderResult:
     ok: bool
     reference: str | None = None
     status: str = ""
+    # Handed to the browser to confirm the payment. Never persisted. A provider
+    # that settles without the customer's involvement leaves this None, which is
+    # the signal that there is nothing left to confirm.
+    client_secret: str | None = None
 
 
 class PaymentProvider(Protocol):
@@ -78,7 +82,10 @@ class StripeProvider:
                     idempotency_key=idempotency_key,
                 )
             )
-            return ProviderResult(ok=True, reference=intent.id, status=intent.status)
+            return ProviderResult(
+                ok=True, reference=intent.id, status=intent.status,
+                client_secret=intent.client_secret,
+            )
         except Exception as exc:  # noqa: BLE001 — never let payment setup crash checkout
             logger.error("[payments:STRIPE] authorize failed: %s", exc)
             return ProviderResult(ok=False, status="error")

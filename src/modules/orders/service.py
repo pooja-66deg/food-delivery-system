@@ -14,12 +14,14 @@ from src.modules.cart import service as cart_service
 from src.modules.cart.schemas import CheckoutRequest
 from src.modules.orders import state_machine as sm
 from src.modules.orders.models import (
-    Actor, Order, OrderItem, OrderStatus, OrderStatusEvent, PaymentStatus, RefundStatus,
+    Actor, Order, OrderItem, OrderStatus, OrderStatusEvent, PaymentMethod, PaymentStatus,
+    RefundStatus,
 )
 from src.modules.orders.state_machine import OrderError
 from src.modules.events import outbox
 from src.modules.notifications import service as notification_service
 from src.modules.payments import service as payment_service
+from src.modules.payments.models import PaymentTxStatus
 from src.modules.restaurants import inventory
 from src.modules.restaurants import service as restaurant_service
 from src.modules.restaurants.models import Restaurant
@@ -48,6 +50,39 @@ def _emit_status(session: AsyncSession, order: Order) -> None:
         session, "order-events", str(order.id),
         {"order_id": order.id, "status": order.status, "customer_id": order.customer_id},
     )
+
+
+async def _notify_restaurant(session: AsyncSession, order: Order) -> None:
+    """Tell the owner an order is waiting. Only ever called for a paid order —
+    the kitchen must not start cooking something nobody has paid for."""
+    restaurant = await session.get(Restaurant, order.restaurant_id)
+    if restaurant is not None:
+        notification_service.add_notification(
+            session, restaurant.owner_id, "order.new",
+            f"New order #{order.id} — {order.total} to prepare.", order.id,
+        )
+
+
+async def mark_paid(session: AsyncSession, order_id: int) -> Order:
+    """Move an order from PAYMENT_PENDING to PAYMENT_SUCCESS.
+
+    Called by the payments webhook once money has actually moved, and by
+    checkout when the provider settles without the customer's involvement.
+    Idempotent: an order that is already past payment is returned untouched.
+    """
+    order = await session.get(Order, order_id)
+    if order is None:
+        raise NotFoundException("Order", str(order_id))
+    if order.status != OrderStatus.PAYMENT_PENDING.value:
+        return await _load_full(session, order_id)
+
+    sm.apply_transition(session, order, OrderStatus.PAYMENT_SUCCESS, Actor.SYSTEM,
+                        reason="payment confirmed")
+    order.payment_status = PaymentStatus.SUCCESS.value
+    _emit_status(session, order)
+    await _notify_restaurant(session, order)
+    await session.commit()
+    return await _load_full(session, order_id)
 
 
 async def _load_full(session: AsyncSession, order_id: int) -> Order:
@@ -91,53 +126,92 @@ async def create_order_from_checkout(
         # Take the stock in the same transaction as the order itself.
         await inventory.apply_order(session, validated.items)
 
-        # Record the CREATED baseline event, then advance COD to PAYMENT_SUCCESS.
+        # Record the CREATED baseline event, then advance as far as the payment
+        # method allows. COD is collected on delivery, so it counts as settled
+        # now; a card order waits until the customer has actually paid.
         session.add(
             OrderStatusEvent(order_id=order.id, from_status=None,
                              to_status=OrderStatus.CREATED.value, actor=Actor.SYSTEM.value)
         )
         sm.apply_transition(session, order, OrderStatus.PAYMENT_PENDING, Actor.SYSTEM)
-        sm.apply_transition(session, order, OrderStatus.PAYMENT_SUCCESS, Actor.SYSTEM,
-                            reason="COD: to be collected on delivery")
-        order.payment_status = PaymentStatus.SUCCESS.value
+        if order.payment_method == PaymentMethod.COD.value:
+            sm.apply_transition(session, order, OrderStatus.PAYMENT_SUCCESS, Actor.SYSTEM,
+                                reason="COD: to be collected on delivery")
+            order.payment_status = PaymentStatus.SUCCESS.value
 
         _emit_status(session, order)
-        # Alert the restaurant owner that a new order has arrived.
-        restaurant = await session.get(Restaurant, order.restaurant_id)
-        if restaurant is not None:
-            notification_service.add_notification(
-                session, restaurant.owner_id, "order.new",
-                f"New order #{order.id} — {order.total} to prepare.", order.id,
-            )
+        if order.status == OrderStatus.PAYMENT_SUCCESS.value:
+            await _notify_restaurant(session, order)
         await session.commit()
         await cart_service.clear_cart(redis, user.id)
         loaded = await _load_full(session, order.id)
-        # Record the (COD) payment for this order — idempotent per order.
-        await payment_service.create_payment_for_order(session, loaded)
+
+        # Set up the payment — idempotent per order. A provider that needs the
+        # customer to confirm hands back a secret; one that settles by itself
+        # does not, and the order is done the moment it is authorized.
+        payment = await payment_service.create_payment_for_order(session, loaded)
+        secret = payment_service.client_secret_of(payment)
+        if (
+            loaded.status == OrderStatus.PAYMENT_PENDING.value
+            and secret is None
+            and payment.status != PaymentTxStatus.FAILED.value
+        ):
+            loaded = await mark_paid(session, loaded.id)
+
+        # Transient, response-only: the secret is handed to the browser and
+        # never written to the database.
+        loaded.payment_client_secret = secret
         return loaded
     finally:
         await redis.delete(lock_key)
 
 
-async def list_orders(session: AsyncSession, customer_id: int, limit: int = 20, offset: int = 0):
+# An order in one of these has nothing left to happen to it.
+FINISHED = (
+    OrderStatus.DELIVERED.value,
+    OrderStatus.CANCELLED.value,
+    OrderStatus.REJECTED.value,
+)
+
+
+async def list_orders(
+    session: AsyncSession, customer_id: int, limit: int = 20, offset: int = 0,
+    scope: str = "all",
+):
+    """A customer's orders, newest first.
+
+    ``scope`` splits the list the way the orders tab does: "active" is anything
+    still in flight, "past" is everything finished. Filtering here rather than
+    in the client keeps pagination honest.
+    """
     stmt = (
         select(Order)
         .where(Order.customer_id == customer_id)
         .options(selectinload(Order.items), selectinload(Order.events))
         .order_by(Order.created_at.desc(), Order.id.desc())
-        .limit(limit).offset(offset)
     )
-    return list(await session.scalars(stmt))
+    if scope == "active":
+        stmt = stmt.where(Order.status.notin_(FINISHED))
+    elif scope == "past":
+        stmt = stmt.where(Order.status.in_(FINISHED))
+    return list(await session.scalars(stmt.limit(limit).offset(offset)))
 
 
 async def list_orders_for_restaurant(
     session: AsyncSession, user, restaurant_id: int, limit: int = 50, offset: int = 0
 ) -> list[Order]:
-    """Orders for a restaurant the caller owns (or admin), newest first."""
+    """Orders for a restaurant the caller owns (or admin), newest first.
+
+    Unpaid orders are withheld: a card order that has not been paid for yet may
+    never be, and the kitchen must not start cooking it.
+    """
     await restaurant_service.owned_restaurant(session, user, restaurant_id)  # 404/403
     stmt = (
         select(Order)
         .where(Order.restaurant_id == restaurant_id)
+        .where(Order.status.notin_((
+            OrderStatus.CREATED.value, OrderStatus.PAYMENT_PENDING.value,
+        )))
         .options(selectinload(Order.items), selectinload(Order.events))
         .order_by(Order.created_at.desc(), Order.id.desc())
         .limit(limit).offset(offset)
@@ -250,6 +324,32 @@ async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) 
     if to == OrderStatus.DELIVERED:
         await payment_service.settle_payment(session, order)
     return await _load_full(session, order_id)
+
+
+async def expire_unpaid_orders(session: AsyncSession, now: datetime) -> int:
+    """Cancel card orders that were never paid for.
+
+    Phase E reserves stock the moment an order is created, so an abandoned
+    checkout would hold that reservation forever. Cancelling through the normal
+    path restores it and tells the customer why.
+    """
+    cutoff = now - timedelta(seconds=settings.payment_window_seconds)
+    stmt = select(Order).where(
+        Order.status == OrderStatus.PAYMENT_PENDING.value,
+        Order.updated_at < cutoff,
+    )
+    stale = list(await session.scalars(stmt))
+    for order in stale:
+        sm.apply_transition(session, order, OrderStatus.CANCELLED, Actor.SYSTEM,
+                            reason="payment was not completed in time")
+        order.cancelled_by = Actor.SYSTEM.value
+        order.cancel_reason = "payment was not completed in time"
+        # Nothing was ever captured, so there is nothing to refund.
+        _record_refund(order, RefundStatus.NONE)
+        await _restore_stock(session, order)
+        _emit_status(session, order)
+    await session.commit()
+    return len(stale)
 
 
 async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> int:

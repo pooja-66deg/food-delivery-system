@@ -36,6 +36,8 @@ export interface Order {
   created_at: string
   items: OrderItem[]
   events: OrderEvent[]
+  /** Set on the checkout response when the customer still has to confirm. */
+  payment_client_secret?: string | null
 }
 
 export interface OrderSummary {
@@ -54,9 +56,14 @@ export interface Payment {
   status: string
   provider_ref: string | null
   created_at: string
+  /** Only returned by `resume`, for an order still awaiting card payment. */
+  client_secret?: string | null
 }
 
 export type PaymentMethod = 'COD' | 'CARD'
+
+/** Which slice of the customer's history to list. */
+export type OrderScope = 'active' | 'past' | 'all'
 
 export const ordersApi = {
   checkout: (address_id: number, price_hash: string, payment_method: PaymentMethod = 'COD') =>
@@ -66,7 +73,8 @@ export const ordersApi = {
       auth: true,
     }),
 
-  list: () => request<OrderSummary[]>('/orders', { auth: true }),
+  list: (scope: OrderScope = 'all') =>
+    request<OrderSummary[]>(`/orders?scope=${scope}`, { auth: true }),
 
   forRestaurant: (restaurantId: number) =>
     request<Order[]>(`/orders/restaurant/${restaurantId}`, { auth: true }),
@@ -76,6 +84,10 @@ export const ordersApi = {
   cancel: (id: number) => request<Order>(`/orders/${id}/cancel`, { method: 'POST', auth: true }),
 
   payment: (orderId: number) => request<Payment>(`/payments/order/${orderId}`, { auth: true }),
+
+  /** Mint a fresh confirmation secret for an order left unpaid. */
+  resumePayment: (orderId: number) =>
+    request<Payment>(`/payments/order/${orderId}/resume`, { method: 'POST', auth: true }),
 
   // Restaurant/admin actions
   accept: (id: number) => request<Order>(`/orders/${id}/accept`, { method: 'POST', auth: true }),
