@@ -8,6 +8,9 @@ import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
+import { RatingStars } from '../reviews/RatingStars'
+import { RatingSummary } from '../reviews/RatingSummary'
+import { ReviewsSection } from '../reviews/ReviewsSection'
 
 /** Show the count only when it is low enough to influence a decision. */
 const LOW_STOCK_AT = 5
@@ -82,6 +85,11 @@ export function RestaurantDetailPage() {
         </div>
         {restaurant.description && <p className="muted">{restaurant.description}</p>}
         <div className="rest-hero-meta">
+          {restaurant.rating_average !== null && (
+            <span className="chip">
+              <RatingStars value={restaurant.rating_average} /> {restaurant.rating_average}
+            </span>
+          )}
           {restaurant.cuisine && <span className="chip">{restaurant.cuisine}</span>}
           <span className="chip">{restaurant.city}</span>
           <span className="chip">Min order ${Number(restaurant.min_order_amount).toFixed(2)}</span>
@@ -134,6 +142,17 @@ export function RestaurantDetailPage() {
           </section>
         ))
       )}
+
+      <section className="menu-section">
+        <h2>Ratings</h2>
+        <RatingSummary
+          average={restaurant.rating_average}
+          count={restaurant.review_count}
+          breakdown={restaurant.rating_breakdown}
+        />
+      </section>
+
+      <ReviewsSection restaurantId={restaurant.id} />
     </main>
   )
 }

@@ -1,5 +1,5 @@
 """HTTP routes for the reviews domain."""
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.adapters.database import get_db
@@ -21,5 +21,11 @@ async def create_review(
 
 
 @router.get("/restaurant/{restaurant_id}", response_model=list[ReviewRead])
-async def list_restaurant_reviews(restaurant_id: int, session: AsyncSession = Depends(get_db)):
-    return await service.list_for_restaurant(session, restaurant_id)
+async def list_restaurant_reviews(
+    restaurant_id: int,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_db),
+):
+    # Public: a rating is part of choosing a restaurant, so it must not need a login.
+    return await service.list_for_restaurant(session, restaurant_id, limit, offset)

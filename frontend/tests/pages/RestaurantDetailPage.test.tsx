@@ -20,6 +20,12 @@ vi.mock('../../src/cart/CartContext', () => ({
   useCart: () => ({ add: () => Promise.resolve() }),
 }))
 
+// The page now renders the reviews section, which fetches its own list. Its
+// behaviour is covered by tests/reviews/ReviewsSection.test.tsx.
+vi.mock('../../src/api/reviews', () => ({
+  reviewsApi: { forRestaurant: () => Promise.resolve([]) },
+}))
+
 function item(overrides: Record<string, unknown> = {}) {
   return {
     id: 11,
@@ -48,6 +54,9 @@ function withMenu(items: Record<string, unknown>[], restaurant: Record<string, u
     is_open: true,
     min_order_amount: 5,
     image_url: null,
+    rating_average: null,
+    review_count: 0,
+    rating_breakdown: { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 },
     menu: [{ id: 3, name: 'Mains', sort_order: 0, items }],
     ...restaurant,
   }

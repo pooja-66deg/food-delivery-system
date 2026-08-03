@@ -50,6 +50,10 @@ class RestaurantResponse(BaseModel):
     is_open: bool
     min_order_amount: Decimal
     image_url: str | None = None
+    # Aggregated from reviews on read. None (not 0.0) when nothing is rated yet
+    # — a zero would read as a terrible restaurant rather than a new one.
+    rating_average: float | None = None
+    review_count: int = 0
 
 
 class RestaurantSuggestion(BaseModel):
@@ -137,3 +141,6 @@ class MenuCategoryWithItems(CategoryResponse):
 
 class RestaurantDetail(RestaurantResponse):
     menu: list[MenuCategoryWithItems] = []
+    # Star -> number of reviews, all five stars always present. Distinguishes a
+    # consistent 4.3 from a polarised one.
+    rating_breakdown: dict[int, int] = {}
