@@ -19,9 +19,9 @@ substitutions:
 options:
   logging: CLOUD_LOGGING_ONLY
 
-images:
-  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
-  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
+# NOTE: images are pushed by explicit steps below, not by a top-level `images:`
+# block. That block only runs after every step succeeds, so the deploy steps
+# would try to pull tags that do not exist in Artifact Registry yet.
 
 steps:
   # 1. Run the test suite (uses in-memory SQLite + fakeredis, so no live infra needed).
@@ -48,6 +48,12 @@ steps:
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
       - .
 
+  - id: push-api
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
+
   # 3. Build + push the frontend image (API URL baked in at build time).
   - id: build-frontend
     name: gcr.io/cloud-builders/docker
@@ -60,6 +66,12 @@ steps:
       - -t
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
       - .
+
+  - id: push-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
 
   # 4. Deploy the API to Cloud Run (secrets + Cloud SQL + Memorystore via VPC).
   - id: deploy-api
@@ -78,7 +90,7 @@ steps:
       - --vpc-egress=private-ranges-only
       - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092
       - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest
-    waitFor: ["test", "build-api"]
+    waitFor: ["test", "push-api"]
 
   # 5. Deploy the frontend to Cloud Run (static SPA served by nginx).
   - id: deploy-frontend
@@ -92,4 +104,4 @@ steps:
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-    waitFor: ["build-frontend"]
+    waitFor: ["push-frontend"]
