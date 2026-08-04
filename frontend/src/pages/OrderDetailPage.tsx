@@ -10,6 +10,7 @@ import { paymentsApi } from '../api/payments'
 import { reviewsApi } from '../api/reviews'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
+import { DeliveryMap } from '../components/DeliveryMap'
 import { Alert, Button, Loading } from '../components/ui'
 import { canCustomerCancel, statusLabel } from './orderStatus'
 
@@ -160,19 +161,7 @@ export function OrderDetailPage() {
         </Alert>
       )}
 
-      {tracking && (
-        <div className="track-card">
-          <span className="track-pulse" aria-hidden />
-          <div>
-            <div className="menu-item-name">Out for delivery</div>
-            <div className="muted">
-              {tracking.location
-                ? `Driver near ${tracking.location.latitude.toFixed(4)}, ${tracking.location.longitude.toFixed(4)}`
-                : 'Locating your driver…'}
-            </div>
-          </div>
-        </div>
-      )}
+      {tracking && <DeliveryMap tracking={tracking} />}
 
       <section className="menu-section">
         <h2>Items</h2>

@@ -51,6 +51,7 @@ def _no_third_party_credentials(monkeypatch):
         "stripe_api_key", "stripe_secret_key", "stripe_webhook_secret",
         "twilio_account_sid", "twilio_auth_token", "twilio_phone_number",
         "sendgrid_api_key", "sendgrid_from_email", "fcm_server_key",
+        "google_maps_api_key",
     ):
         monkeypatch.setattr(settings, field, None)
 

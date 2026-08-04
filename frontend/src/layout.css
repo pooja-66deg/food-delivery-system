@@ -1072,11 +1072,18 @@
 .notif-body { min-width: 0; }
 
 /* live tracking card */
+/* The tracking card stacks: an optional map canvas above, the status line
+   below. Without a maps key only the line renders, and the card looks the same
+   as it did before the map existed. */
 .track-card {
-  display: flex; align-items: center; gap: 0.9rem;
+  display: flex; flex-direction: column; gap: 0.9rem;
   padding: 1rem 1.15rem; margin-bottom: 1.25rem;
   border: 1px solid var(--line); border-radius: var(--r-md);
   background: rgba(60, 110, 71, 0.08);
+}
+.track-line { display: flex; align-items: center; gap: 0.9rem; }
+.track-map {
+  width: 100%; height: 260px; border-radius: var(--r-sm); overflow: hidden;
 }
 .track-pulse {
   width: 0.8rem; height: 0.8rem; border-radius: 50%; background: var(--leaf); flex: none;
@@ -1178,3 +1185,29 @@ textarea.input { resize: vertical; font-family: var(--font-body); }
   justify-content: center;
   box-shadow: 0 0 0 2px var(--paper);
 }
+
+/* driver location sharing */
+.share-card {
+  display: flex; align-items: center; gap: 0.9rem;
+  padding: 0.9rem 1.15rem; margin-bottom: 1rem;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: rgba(255,255,255,0.5);
+}
+.share-switch {
+  flex: none; width: 44px; height: 26px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--paper-3);
+  position: relative; cursor: pointer; transition: background 150ms var(--ease);
+}
+.share-switch[data-on='true'] { background: var(--leaf); border-color: var(--leaf); }
+.share-switch:disabled { opacity: 0.5; cursor: not-allowed; }
+.share-knob {
+  position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--paper); box-shadow: var(--shadow-sm);
+  transition: transform 150ms var(--ease);
+}
+.share-switch[data-on='true'] .share-knob { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) {
+  .share-switch, .share-knob { transition: none; }
+}
+
+.track-body { display: grid; gap: 0.25rem; }

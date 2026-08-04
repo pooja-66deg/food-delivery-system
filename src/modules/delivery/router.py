@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.adapters.database import get_db
 from src.adapters.redis import get_redis
 from src.modules.delivery import location, service
-from src.modules.delivery.schemas import DeliveryRead
+from src.modules.delivery.schemas import DeliveryRead, TrackingRead
 from src.modules.users.dependencies import get_current_user, require_role
 from src.modules.users.models import User
 
@@ -51,8 +51,9 @@ async def nearby(
 
 
 @router.post("/orders/{order_id}/accept", response_model=DeliveryRead)
-async def accept(order_id: int, driver: User = Depends(_driver), session: AsyncSession = Depends(get_db)):
-    return await service.accept_assignment(session, driver, order_id)
+async def accept(order_id: int, driver: User = Depends(_driver),
+                 session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    return await service.accept_assignment(session, driver, order_id, redis=redis)
 
 
 @router.post("/orders/{order_id}/reject", response_model=DeliveryRead)
@@ -62,16 +63,18 @@ async def reject(order_id: int, driver: User = Depends(_driver),
 
 
 @router.post("/orders/{order_id}/pickup", response_model=DeliveryRead)
-async def pickup(order_id: int, driver: User = Depends(_driver), session: AsyncSession = Depends(get_db)):
-    return await service.pickup(session, driver, order_id)
+async def pickup(order_id: int, driver: User = Depends(_driver),
+                 session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    return await service.pickup(session, driver, order_id, redis=redis)
 
 
 @router.post("/orders/{order_id}/deliver", response_model=DeliveryRead)
-async def deliver(order_id: int, driver: User = Depends(_driver), session: AsyncSession = Depends(get_db)):
-    return await service.deliver(session, driver, order_id)
+async def deliver(order_id: int, driver: User = Depends(_driver),
+                  session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
+    return await service.deliver(session, driver, order_id, redis=redis)
 
 
-@router.get("/orders/{order_id}/tracking")
+@router.get("/orders/{order_id}/tracking", response_model=TrackingRead)
 async def tracking(
     order_id: int,
     user: User = Depends(get_current_user),
