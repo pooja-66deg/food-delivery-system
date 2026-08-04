@@ -339,6 +339,184 @@
   justify-content: space-between;
 }
 
+/* Favourite heart on a restaurant card. Pushed to the right of the badge row
+   and sized for a comfortable tap target. */
+.fav-btn {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 1.35rem;
+  line-height: 1;
+  padding: 0.15rem 0.3rem;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: color 0.16s var(--ease), transform 0.16s var(--ease);
+}
+.fav-btn:hover {
+  color: var(--tomato);
+  transform: scale(1.1);
+}
+.fav-btn.fav-on {
+  color: var(--tomato);
+}
+
+/* Review editing, owner replies, and the edit-mode star picker. */
+.review-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+.review-editor textarea {
+  resize: vertical;
+  font: inherit;
+}
+.review-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.review-reply {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-left: 3px solid var(--tomato);
+  background: var(--paper-2);
+  border-radius: var(--r-sm);
+  font-size: 0.93rem;
+}
+.star-picker {
+  display: inline-flex;
+  gap: 0.1rem;
+}
+.star-btn {
+  border: none;
+  background: none;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0 0.05rem;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.star-btn.star-on {
+  color: var(--saffron);
+}
+
+/* Browse facets — chip rows for rating/price/diet plus a sort select. */
+.browse-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.25rem 0 1.4rem;
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.filter-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  min-width: 3.6rem;
+}
+.chip-btn {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.chip-btn:hover {
+  border-color: var(--line-strong);
+}
+.chip-btn.chip-on {
+  background: var(--tomato);
+  border-color: var(--tomato);
+  color: #fff;
+}
+.filter-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.filter-sort .input {
+  width: auto;
+  font-weight: 400;
+  padding-block: 0.4rem;
+}
+.result-count {
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+}
+.matched-dishes {
+  font-style: italic;
+}
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.6rem;
+}
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.check-inline input[type='checkbox'] {
+  accent-color: var(--tomato);
+  cursor: pointer;
+}
+
+/* Notification channel toggles — one row per channel, label and hint on the
+   left, the switch on the right. */
+.pref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.pref-row:last-child {
+  border-bottom: none;
+}
+.pref-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  cursor: pointer;
+}
+.pref-row .pref-label {
+  font-weight: 600;
+}
+.pref-row .muted {
+  font-size: 0.88rem;
+}
+.pref-row input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  accent-color: var(--tomato);
+  cursor: pointer;
+}
+
 .address-list {
   display: flex;
   flex-direction: column;

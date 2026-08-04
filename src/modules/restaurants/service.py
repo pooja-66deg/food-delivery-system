@@ -60,20 +60,6 @@ def _matches_term(term: str):
     return or_(Restaurant.name.ilike(pattern), Restaurant.cuisine.ilike(pattern))
 
 
-async def list_restaurants(
-    session: AsyncSession, city: str | None = None, search: str | None = None
-) -> list[Restaurant]:
-    stmt = select(Restaurant)
-    if city and city.strip():
-        # Case-insensitive and partial, matching how the name field behaves —
-        # both are free-text inputs, so "metro" should find "Metropolis".
-        stmt = stmt.where(Restaurant.city.ilike(f"%{city.strip()}%"))
-    if search and search.strip():
-        stmt = stmt.where(_matches_term(search.strip()))
-    stmt = stmt.order_by(Restaurant.name)
-    return list(await session.scalars(stmt))
-
-
 async def suggest_restaurants(
     session: AsyncSession, q: str, limit: int = 8
 ) -> list[Restaurant]:

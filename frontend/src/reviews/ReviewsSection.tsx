@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { errorMessage } from '../api/client'
 import { reviewsApi } from '../api/reviews'
 import type { Review } from '../api/reviews'
+import { useAuth } from '../auth/AuthContext'
 import { Alert, Button, Loading } from '../components/ui'
-import { RatingStars } from './RatingStars'
+import { ReviewCard } from './ReviewCard'
 
 const PAGE = 5
 
@@ -15,7 +16,15 @@ const PAGE = 5
  * state through; the rating summary comes from the restaurant payload instead,
  * which is why this only ever asks for the list.
  */
-export function ReviewsSection({ restaurantId }: { restaurantId: number }) {
+export function ReviewsSection({
+  restaurantId,
+  ownerId,
+}: {
+  restaurantId: number
+  /** Who owns the restaurant, so the reply control shows for them only. */
+  ownerId?: number
+}) {
+  const { user } = useAuth()
   const [reviews, setReviews] = useState<Review[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -44,6 +53,17 @@ export function ReviewsSection({ restaurantId }: { restaurantId: number }) {
     void loadPage(0)
   }, [loadPage])
 
+  // Who the viewer is decides which controls each card offers. The server
+  // enforces the same rules; this only avoids showing a button that would 403.
+  const isAdmin = user?.role === 'admin'
+  const canReply = isAdmin || (user?.role === 'restaurant' && user.id === ownerId)
+
+  const replaceReview = (updated: Review) =>
+    setReviews((current) => (current ?? []).map((r) => (r.id === updated.id ? updated : r)))
+
+  const dropReview = (reviewId: number) =>
+    setReviews((current) => (current ?? []).filter((r) => r.id !== reviewId))
+
   return (
     <section className="menu-section">
       <h2>Reviews</h2>
@@ -57,16 +77,20 @@ export function ReviewsSection({ restaurantId }: { restaurantId: number }) {
       ) : (
         <>
           <div className="review-list">
-            {reviews.map((review) => (
-              <article key={review.id} className="review-card">
-                <div className="review-head">
-                  <span className="menu-item-name">{review.reviewer_name}</span>
-                  <RatingStars value={review.rating} />
-                  <span className="muted">{new Date(review.created_at).toLocaleDateString()}</span>
-                </div>
-                {review.comment && <p className="review-comment">{review.comment}</p>}
-              </article>
-            ))}
+            {reviews.map((review) => {
+              const mine = user?.id === review.customer_id
+              return (
+                <ReviewCard
+                  key={review.id}
+                  review={review}
+                  mine={mine}
+                  canReply={canReply}
+                  canDelete={mine || isAdmin}
+                  onChanged={replaceReview}
+                  onDeleted={dropReview}
+                />
+              )
+            })}
           </div>
 
           {maybeMore && (

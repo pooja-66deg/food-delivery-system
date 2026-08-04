@@ -28,6 +28,10 @@ class Restaurant(Base):
     min_order_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # How far this restaurant delivers, in km. NULL means "not set" and falls
+    # back to DELIVERY_DEFAULT_RADIUS_KM rather than to unlimited — see
+    # restaurants.zones.effective_radius_km.
+    delivery_radius_km: Mapped[float | None] = mapped_column(Float, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -59,5 +63,9 @@ class MenuItem(Base):
     # NULL means stock is not tracked for this item — the default, and how every
     # item that predates inventory behaves.
     stock_quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # False rather than nullable: "we do not know" and "not vegetarian" have to
+    # be the same answer, because a diner filtering for vegetarian food must
+    # never be shown an unlabelled dish as if it qualified.
+    is_vegetarian: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)

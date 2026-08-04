@@ -105,11 +105,11 @@ async def test_popular_cuisines_counts_and_orders(seeded, api_client):
 async def test_browse_city_filter_ignores_case(seeded, api_client):
     resp = await api_client.get("/restaurants", params={"city": "metropolis"})
 
-    assert {r["name"] for r in resp.json()} == {"Pizza Palace", "Pasta Place", "Curry Corner"}
+    assert {r["name"] for r in resp.json()["items"]} == {"Pizza Palace", "Pasta Place", "Curry Corner"}
 
 
 @pytest.mark.asyncio
 async def test_browse_search_matches_cuisine(seeded, api_client):
     resp = await api_client.get("/restaurants", params={"search": "japanese"})
 
-    assert {r["name"] for r in resp.json()} == {"Sushi Spot"}
+    assert {r["name"] for r in resp.json()["items"]} == {"Sushi Spot"}

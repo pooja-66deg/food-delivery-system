@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundException
 from src.adapters.database import get_db
+from src.modules.restaurants import discovery
 from src.modules.restaurants import menu as menu_service
 from src.modules.restaurants import service
 from src.modules.restaurants.models import MenuItem
@@ -23,6 +24,7 @@ from src.modules.restaurants.schemas import (
     MenuItemUpdate,
     RestaurantCreate,
     RestaurantDetail,
+    RestaurantPage,
     RestaurantResponse,
     RestaurantSuggestion,
     RestaurantUpdate,
@@ -37,15 +39,45 @@ owner_only = require_role("restaurant", "admin")
 
 
 # ---------- Public browsing ----------
-@router.get("", response_model=list[RestaurantResponse])
+@router.get("", response_model=RestaurantPage)
 async def list_restaurants(
     city: str | None = Query(default=None),
-    search: str | None = Query(default=None),
+    search: str | None = Query(
+        default=None, description="Matches restaurant name, cuisine, or a dish on the menu"
+    ),
+    cuisine: str | None = Query(default=None),
+    min_rating: float | None = Query(default=None, ge=1, le=5),
+    price_band: int | None = Query(default=None, ge=1, le=discovery.MAX_PRICE_BAND),
+    vegetarian_only: bool = Query(default=False),
+    open_only: bool = Query(default=False),
+    # Anchored: an unanchored alternation matches substrings, so "xratingx"
+    # would pass validation and then silently fall back to the default sort.
+    sort: str = Query(
+        default=discovery.DEFAULT_SORT, pattern=f"^({'|'.join(discovery.SORTS)})$"
+    ),
+    limit: int = Query(default=discovery.DEFAULT_LIMIT, ge=1, le=discovery.MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_db),
 ):
-    found = await service.list_restaurants(session, city=city, search=search)
-    await service.attach_ratings(session, found)
-    return found
+    """Browse and search restaurants.
+
+    Returns a page plus the total match count — see ``RestaurantPage`` for why
+    this is an envelope rather than a bare list.
+    """
+    result = await discovery.search(
+        session, city=city, search=search, cuisine=cuisine, min_rating=min_rating,
+        price_band=price_band, vegetarian_only=vegetarian_only, open_only=open_only,
+        sort=sort, limit=limit, offset=offset,
+    )
+    await service.attach_ratings(session, result.items)
+    await discovery.attach_price_bands(session, result.items)
+    await discovery.attach_matched_items(session, result.items, search)
+    return RestaurantPage(
+        items=[RestaurantResponse.model_validate(r) for r in result.items],
+        total=result.total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ---------- Discovery ----------

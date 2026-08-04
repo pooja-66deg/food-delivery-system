@@ -7,6 +7,7 @@ import type { RestaurantDetail } from '../../api/restaurants'
 import { Alert, Button, ConfirmDialog, FilePicker, Loading, Thumb, Toast } from '../../components/ui'
 import { useTimedNotice, type ToastType } from '../../lib/useTimedNotice'
 import { CategoryPanel } from './CategoryPanel'
+import { DeliveryZonePanel } from './DeliveryZonePanel'
 
 export function MenuManager({
   restaurantId,
@@ -153,6 +154,15 @@ export function MenuManager({
           onPick={(file) => void uploadCoverImage(file)}
         />
       </div>
+
+      <DeliveryZonePanel
+        restaurantId={restaurantId}
+        radiusKm={detail.delivery_radius_km}
+        onSaved={() => {
+          void load()
+          onChanged()
+        }}
+      />
 
       <form className="owner-inline-form" onSubmit={addCategory}>
         <input

@@ -20,7 +20,9 @@ export function OwnerPage() {
   const loadMine = useCallback(async () => {
     if (!isOwner || !user) return
     try {
-      const all = await restaurantsApi.list()
+      // Browse is paged; an owner's own restaurants are few, so one large page
+      // covers them. There is no "mine" endpoint to ask for directly.
+      const all = (await restaurantsApi.list({ limit: 100 })).items
       const owned = all.filter((r) => r.owner_id === user.id || user.role === 'admin')
       setMine(owned)
       if (selectedId === null && owned.length > 0) setSelectedId(owned[0].id)

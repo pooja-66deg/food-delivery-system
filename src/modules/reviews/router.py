@@ -4,8 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.adapters.database import get_db
 from src.modules.reviews import service
-from src.modules.reviews.schemas import ReviewCreate, ReviewRead
-from src.modules.users.dependencies import require_role
+from src.modules.reviews.schemas import (
+    ReviewCreate,
+    ReviewRead,
+    ReviewReply,
+    ReviewUpdate,
+)
+from src.modules.users.dependencies import get_current_user, require_role
 from src.modules.users.models import User
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
@@ -29,3 +34,40 @@ async def list_restaurant_reviews(
 ):
     # Public: a rating is part of choosing a restaurant, so it must not need a login.
     return await service.list_for_restaurant(session, restaurant_id, limit, offset)
+
+
+@router.patch("/{review_id}", response_model=ReviewRead)
+async def update_review(
+    review_id: int,
+    data: ReviewUpdate,
+    user: User = Depends(require_role("customer")),
+    session: AsyncSession = Depends(get_db),
+):
+    """Revise your own review. Only the author may edit."""
+    return await service.update_review(
+        session, user, review_id, data.rating, data.comment,
+        # "comment" absent means leave it; present-and-null means clear it.
+        comment_set="comment" in data.model_fields_set,
+    )
+
+
+@router.delete("/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_review(
+    review_id: int,
+    # Any authenticated role reaches the handler; the service allows the author
+    # or an admin and rejects everyone else.
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    await service.delete_review(session, user, review_id)
+
+
+@router.post("/{review_id}/reply", response_model=ReviewRead)
+async def reply_to_review(
+    review_id: int,
+    data: ReviewReply,
+    user: User = Depends(require_role("restaurant", "admin")),
+    session: AsyncSession = Depends(get_db),
+):
+    """Answer a review of your restaurant. Replying again replaces the answer."""
+    return await service.reply_to_review(session, user, review_id, data.reply)

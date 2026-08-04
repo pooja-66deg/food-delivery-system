@@ -7,6 +7,7 @@ import pytest
 from src.modules.cart import checkout, service as cart
 from src.modules.cart.checkout import CheckoutError
 from src.modules.cart.schemas import CheckoutRequest
+from src.modules.delivery.providers import Coordinate
 from src.modules.restaurants import menu, service as rest_service
 from src.modules.restaurants.schemas import (
     CategoryCreate,
@@ -25,12 +26,17 @@ async def _make_user(db_session, email, phone, role="customer"):
     )
 
 
-async def _setup(db_session, *, city="Metropolis", min_order="5.00", is_open=True):
+async def _setup(
+    db_session, *, city="Metropolis", min_order="5.00", is_open=True, coords=None, radius_km=None
+):
     owner = await _make_user(db_session, "owner@example.com", "+15558000001", role="restaurant")
     customer = await _make_user(db_session, "cust@example.com", "+15558000002")
+    latitude, longitude = coords if coords else (None, None)
     r = await rest_service.create_restaurant(
         db_session, owner,
-        RestaurantCreate(name="Pizza", city=city, address_line="1 St", phone="+15550000000", min_order_amount=Decimal(min_order)),
+        RestaurantCreate(name="Pizza", city=city, address_line="1 St", phone="+15550000000",
+                         min_order_amount=Decimal(min_order), latitude=latitude,
+                         longitude=longitude, delivery_radius_km=radius_km),
     )
     await rest_service.update_restaurant(db_session, r.id, owner, RestaurantUpdate(is_open=is_open))
     cat = await menu.add_category(db_session, owner, r.id, CategoryCreate(name="Mains"))
@@ -124,6 +130,75 @@ async def test_checkout_zone_match_is_case_insensitive(fake_redis, db_session):
     )
     order = await _checkout(fake_redis, db_session, customer, addr)  # no CheckoutError
     assert order.address_id == addr.id
+
+
+class _FixedGeocoder:
+    """Geocodes every address to one point, so a test can place an address
+    precisely instead of depending on a live geocoder."""
+
+    def __init__(self, latitude: float, longitude: float):
+        self.point = Coordinate(latitude=latitude, longitude=longitude)
+
+    async def geocode(self, line1: str, city: str, postal_code: str) -> Coordinate:
+        return self.point
+
+
+# Restaurant origin, a point ~4.5 km from it, and one ~44 km from it.
+_ORIGIN = (21.1702, 72.8311)
+_NEAR = (21.2000, 72.8400)
+_FAR = (21.5650, 72.8311)
+
+
+async def _placed_address(db_session, customer, point, *, city="Metropolis", label="geo"):
+    return await profile.add_address(
+        db_session, customer,
+        AddressCreate(label=label, line1="1 Geo St", city=city, postal_code="12345"),
+        geocoder=_FixedGeocoder(*point),
+    )
+
+
+@pytest.mark.asyncio
+async def test_checkout_rejected_when_geocoded_address_is_beyond_the_radius(
+    fake_redis, db_session
+):
+    """Same city, 44 km away — the case the old city match let through."""
+    owner, customer, r, item, _ = await _setup(db_session, coords=_ORIGIN, radius_km=10)
+    await cart.add_item(fake_redis, db_session, customer.id, item.id, 1)
+    far = await _placed_address(db_session, customer, _FAR)
+
+    with pytest.raises(CheckoutError) as exc:
+        await _checkout(fake_redis, db_session, customer, far)
+
+    assert exc.value.code == "ADDRESS_OUT_OF_ZONE"
+    # The message names the numbers so the customer can judge another address.
+    assert "km" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_checkout_accepts_a_nearby_address_in_a_different_city(fake_redis, db_session):
+    """The other half of the change: a neighbouring town within range works."""
+    owner, customer, r, item, _ = await _setup(db_session, coords=_ORIGIN, radius_km=10)
+    await cart.add_item(fake_redis, db_session, customer.id, item.id, 1)
+    near = await _placed_address(db_session, customer, _NEAR, city="Gotham")
+
+    order = await _checkout(fake_redis, db_session, customer, near)  # no CheckoutError
+
+    assert order.address_id == near.id
+
+
+@pytest.mark.asyncio
+async def test_checkout_still_uses_city_when_the_restaurant_is_ungeocoded(
+    fake_redis, db_session
+):
+    """A restaurant with no coordinates cannot measure anything, so the city
+    match stays in force even for a precisely-placed address."""
+    owner, customer, r, item, _ = await _setup(db_session)  # no coords
+    await cart.add_item(fake_redis, db_session, customer.id, item.id, 1)
+    far_but_same_city = await _placed_address(db_session, customer, _FAR)
+
+    order = await _checkout(fake_redis, db_session, customer, far_but_same_city)
+
+    assert order.address_id == far_but_same_city.id
 
 
 @pytest.mark.asyncio

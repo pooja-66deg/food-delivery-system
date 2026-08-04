@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { cartApi } from '../api/cart'
 import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { OrderScope, OrderSummary } from '../api/orders'
@@ -21,6 +22,10 @@ export function OrdersPage() {
   const [error, setError] = useState<string | null>(null)
   // The order whose card step is open, with a freshly minted secret.
   const [paying, setPaying] = useState<{ orderId: number; clientSecret: string } | null>(null)
+  // Lines a reorder could not carry over, shown before the customer reaches the
+  // cart so a short refill is never a surprise at checkout.
+  const [reorderNotice, setReorderNotice] = useState<string[] | null>(null)
+  const [reordering, setReordering] = useState<number | null>(null)
 
   const load = useCallback(async (which: Exclude<OrderScope, 'all'>) => {
     setOrders(null)
@@ -68,6 +73,26 @@ export function OrdersPage() {
     )
   }
 
+  async function reorder(orderId: number) {
+    setError(null)
+    setReorderNotice(null)
+    setReordering(orderId)
+    try {
+      const result = await cartApi.reorder(orderId)
+      if (result.skipped.length > 0) {
+        // Stay put and say what is missing; going straight to the cart would
+        // hide the fact that the order came back incomplete.
+        setReorderNotice(result.skipped)
+      } else {
+        navigate('/cart')
+      }
+    } catch (e) {
+      setError(errorMessage(e, 'Could not reorder that.'))
+    } finally {
+      setReordering(null)
+    }
+  }
+
   const active = TABS.find((t) => t.scope === scope)
 
   return (
@@ -92,6 +117,13 @@ export function OrdersPage() {
 
       {error && <Alert>{error}</Alert>}
 
+      {reorderNotice && (
+        <Alert kind="ok">
+          Added what is still available. Not carried over: {reorderNotice.join('; ')}.{' '}
+          <Link to="/cart" className="back-link">Go to cart →</Link>
+        </Alert>
+      )}
+
       {orders === null ? (
         <Loading />
       ) : orders.length === 0 ? (
@@ -114,6 +146,15 @@ export function OrdersPage() {
               {o.status === 'PAYMENT_PENDING' && (
                 <Button variant="ghost" onClick={() => void startPayment(o.id)}>
                   Pay now
+                </Button>
+              )}
+              {scope === 'past' && (
+                <Button
+                  variant="ghost"
+                  loading={reordering === o.id}
+                  onClick={() => void reorder(o.id)}
+                >
+                  Reorder
                 </Button>
               )}
             </div>

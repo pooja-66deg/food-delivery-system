@@ -32,10 +32,20 @@ const PIZZA = {
   min_order_amount: 10,
   rating_average: null,
   review_count: 0,
+  price_band: 2,
+  matched_items: [],
 }
 
+/** Browse returns a page envelope; helper keeps the fixtures readable. */
+const page = (items: unknown[], total = items.length) => ({
+  items,
+  total,
+  limit: 12,
+  offset: 0,
+})
+
 beforeEach(() => {
-  mocks.list.mockReset().mockResolvedValue([PIZZA])
+  mocks.list.mockReset().mockResolvedValue(page([PIZZA]))
   mocks.suggest.mockReset().mockResolvedValue([])
   mocks.popularCuisines.mockReset().mockResolvedValue([])
 })
@@ -59,7 +69,7 @@ describe('RestaurantsPage', () => {
   })
 
   it('shows the empty state when nothing matches', async () => {
-    mocks.list.mockResolvedValue([])
+    mocks.list.mockResolvedValue(page([]))
     renderPage()
 
     expect(await screen.findByText(/no restaurants found/i)).toBeInTheDocument()
@@ -79,7 +89,9 @@ describe('RestaurantsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Italian' }))
 
     await waitFor(() =>
-      expect(mocks.list).toHaveBeenLastCalledWith({ search: 'Italian', city: undefined }),
+      expect(mocks.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'Italian', city: undefined }),
+      ),
     )
   })
 
@@ -91,7 +103,9 @@ describe('RestaurantsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() =>
-      expect(mocks.list).toHaveBeenLastCalledWith({ search: undefined, city: 'gotham' }),
+      expect(mocks.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: undefined, city: 'gotham' }),
+      ),
     )
   })
 
@@ -102,7 +116,8 @@ describe('RestaurantsPage', () => {
     renderPage()
     await screen.findByText('Pizza Palace')
 
-    await userEvent.type(screen.getByRole('combobox'), 'piz')
+    // Named explicitly: the sort control is a combobox too.
+    await userEvent.type(screen.getByRole('combobox', { name: /search/i }), 'piz')
     await userEvent.click(await screen.findByRole('option', { name: /Pizza Palace/ }))
 
     expect(await screen.findByText('detail page')).toBeInTheDocument()
@@ -123,7 +138,7 @@ describe('RestaurantsPage', () => {
   })
 
   it('shows a rated card with its stars and count', async () => {
-    mocks.list.mockResolvedValue([{ ...PIZZA, rating_average: 4.5, review_count: 2 }])
+    mocks.list.mockResolvedValue(page([{ ...PIZZA, rating_average: 4.5, review_count: 2 }]))
     renderPage()
 
     await screen.findByText('Pizza Palace')
@@ -138,5 +153,82 @@ describe('RestaurantsPage', () => {
     await screen.findByText('Pizza Palace')
     expect(screen.getByText('New')).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /out of 5/ })).not.toBeInTheDocument()
+  })
+  it('shows the total match count and a load-more control when the page is short', async () => {
+    mocks.list.mockResolvedValue(page([PIZZA], 30))
+    renderPage()
+
+    expect(await screen.findByText(/30 kitchens/)).toBeInTheDocument()
+    expect(screen.getByText(/showing 1/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument()
+  })
+
+  it('hides load-more once every match is on screen', async () => {
+    renderPage()
+
+    await screen.findByText('Pizza Palace')
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
+  it('load-more appends the next page at the right offset', async () => {
+    const second = { ...PIZZA, id: 8, name: 'Second Spot' }
+    mocks.list.mockResolvedValueOnce(page([PIZZA], 2)).mockResolvedValueOnce(page([second], 2))
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Second Spot')).toBeInTheDocument()
+    // The first card stays — this is "load more", not "replace".
+    expect(screen.getByText('Pizza Palace')).toBeInTheDocument()
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 1 }))
+  })
+
+  it('a facet change refetches from the top with the facet applied', async () => {
+    renderPage()
+    await screen.findByText('Pizza Palace')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Vegetarian' }))
+
+    await waitFor(() =>
+      expect(mocks.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ vegetarian_only: true, offset: 0 }),
+      ),
+    )
+  })
+
+  it('names the dishes that made a restaurant match', async () => {
+    mocks.list.mockResolvedValue(
+      page([{ ...PIZZA, matched_items: ['Margherita', 'Marinara'] }]),
+    )
+    renderPage()
+
+    expect(await screen.findByText(/Serves Margherita, Marinara/)).toBeInTheDocument()
+  })
+
+  it('summarises a long dish match instead of listing everything', async () => {
+    mocks.list.mockResolvedValue(
+      page([{ ...PIZZA, matched_items: ['A', 'B', 'C', 'D', 'E'] }]),
+    )
+    renderPage()
+
+    expect(await screen.findByText(/Serves A, B, C \+2 more/)).toBeInTheDocument()
+  })
+
+  it('shows the price band on a card', async () => {
+    renderPage()
+
+    await screen.findByText('Pizza Palace')
+    expect(screen.getByText(/Metropolis · \$\$/)).toBeInTheDocument()
+  })
+
+  it('the empty state names the search that found nothing', async () => {
+    mocks.list.mockResolvedValue(page([]))
+    renderPage()
+    await screen.findByText(/no restaurants found/i)
+
+    await userEvent.type(screen.getByRole('combobox', { name: /search/i }), 'biryani')
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(await screen.findByText(/Nothing matched .biryani./)).toBeInTheDocument()
   })
 })

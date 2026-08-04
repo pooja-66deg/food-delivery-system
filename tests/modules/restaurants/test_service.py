@@ -52,17 +52,8 @@ async def test_get_restaurant_missing_raises(db_session):
         await service.get_restaurant(db_session, 999)
 
 
-@pytest.mark.asyncio
-async def test_list_restaurants_filters_by_city_and_search(db_session):
-    owner = await _owner(db_session)
-    await service.create_restaurant(db_session, owner, _restaurant(name="Pizza Palace", city="Metropolis"))
-    await service.create_restaurant(db_session, owner, _restaurant(name="Sushi Spot", city="Gotham"))
-    await service.create_restaurant(db_session, owner, _restaurant(name="Pizza Hub", city="Metropolis"))
-
-    assert len(await service.list_restaurants(db_session)) == 3
-    assert len(await service.list_restaurants(db_session, city="Metropolis")) == 2
-    pizzas = await service.list_restaurants(db_session, search="pizza")
-    assert {r.name for r in pizzas} == {"Pizza Palace", "Pizza Hub"}
+# Browsing and filtering moved to restaurants.discovery — see
+# tests/modules/restaurants/test_discovery.py and test_search.py.
 
 
 @pytest.mark.asyncio

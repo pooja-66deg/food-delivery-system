@@ -87,7 +87,7 @@ async def test_browse_list_carries_the_rating(api_client):
     for rating in (5, 4):
         await _review(api_client, owner, cust, rid, item_id, rating)
 
-    listed = (await api_client.get("/restaurants", headers=cust)).json()
+    listed = (await api_client.get("/restaurants", headers=cust)).json()["items"]
     mine = next(r for r in listed if r["id"] == rid)
 
     assert mine["rating_average"] == 4.5
@@ -100,7 +100,7 @@ async def test_unreviewed_restaurant_reports_null_not_zero(api_client):
     cust = await _login(api_client, "customer", "c4@x.com", "+15559640008")
     rid, _ = await _restaurant(api_client, owner)
 
-    listed = (await api_client.get("/restaurants", headers=cust)).json()
+    listed = (await api_client.get("/restaurants", headers=cust)).json()["items"]
     mine = next(r for r in listed if r["id"] == rid)
 
     assert mine["rating_average"] is None

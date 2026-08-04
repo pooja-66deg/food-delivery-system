@@ -105,6 +105,10 @@ export function SearchSuggest({
       <input
         className="input"
         role="combobox"
+        // A placeholder is not an accessible name: it is not exposed to every
+        // screen reader and vanishes once typing starts. The page also has other
+        // comboboxes now (the sort select), so this box needs to be nameable.
+        aria-label={placeholder}
         aria-expanded={expanded}
         aria-controls={listId}
         aria-autocomplete="list"

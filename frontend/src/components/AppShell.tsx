@@ -32,6 +32,7 @@ export function AppShell() {
               {count > 0 && <span className="nav-badge">{count}</span>}
             </NavLink>
           )}
+          {isCustomer && <NavLink to="/favorites">Favourites</NavLink>}
           {isCustomer && <NavLink to="/orders">Orders</NavLink>}
           {isCustomer && <NavLink to="/payments">Payments</NavLink>}
           {isDriver && <NavLink to="/deliveries">Deliveries</NavLink>}

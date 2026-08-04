@@ -12,6 +12,7 @@ from src.core.exceptions import AppException, NotFoundException
 from src.modules.cart import service as cart_service
 from src.modules.cart.schemas import CheckoutRequest, ValidatedOrder, ValidatedOrderItem
 from src.modules.restaurants import inventory
+from src.modules.restaurants import zones
 from src.modules.restaurants.models import MenuItem
 from src.modules.restaurants.service import get_restaurant
 from src.modules.users.models import Address, User
@@ -61,16 +62,16 @@ async def validate_checkout(
     if request.price_hash != cart.price_hash:
         raise CheckoutError("PRICE_MISMATCH_REFRESH", "Prices changed. Please review your cart.")
 
-    # 4. Delivery address serviceable? (MVP zone = same city as the restaurant,
-    #    matched case-insensitively and trimmed so "Surat" / "surat" / " surat "
-    #    all count as the same city).
+    # 4. Delivery address serviceable? Distance against the restaurant's
+    #    delivery radius when both ends are geocoded, city match otherwise —
+    #    see restaurants.zones for why the radius wins when it is available.
     address = await session.get(Address, request.address_id)
     if address is None or address.user_id != user.id:
         raise NotFoundException("Address", str(request.address_id))
-    if address.city.strip().casefold() != restaurant.city.strip().casefold():
+    verdict = zones.check(restaurant, address)
+    if not verdict.serviceable:
         raise CheckoutError(
-            "ADDRESS_OUT_OF_ZONE",
-            f"We only deliver within {restaurant.city} for this restaurant.",
+            "ADDRESS_OUT_OF_ZONE", zones.rejection_message(restaurant, verdict)
         )
 
     # 5. Minimum order value met?
