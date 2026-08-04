@@ -3,7 +3,10 @@
 # Trigger:  gcloud builds submit --config infra/gcp/cloudbuild.yaml \
 #             --substitutions=_REGION=us-central1,_AR_REPO=food-delivery,\
 # _CLOUDSQL_INSTANCE=PROJECT:us-central1:food-db,_VPC_CONNECTOR=food-connector,\
-# _API_URL=https://food-api-xxxx.run.app
+# _API_URL=https://food-api-xxxx.run.app,_TAG=abc1234
+#
+# _TAG must be a real tag. See the substitution comment below: leaving it to
+# Cloud Build's SHORT_SHA breaks every manual build.
 #
 # One-time infrastructure setup lives in infra/gcp/README.md.
 
@@ -21,6 +24,15 @@ substitutions:
   # and carries Routes + Geocoding permission. Unset: tracking shows the ETA as
   # text with no map.
   _MAPS_BROWSER_KEY: ""
+  # Image tag. Deliberately not Cloud Build's SHORT_SHA built-in: that is only
+  # populated for builds invoked by a trigger, so a manual
+  # `gcloud builds submit` expanded it to "" and produced the invalid reference
+  # "…/api:", which the docker CLI rejects with exit 125. Pass it explicitly —
+  #   manual:  _TAG=$(git rev-parse --short HEAD)
+  #   trigger: _TAG=$SHORT_SHA
+  # "latest" is only the default so a bare submit works; prefer a real sha, or
+  # you cannot tell which revision is running or roll back by tag.
+  _TAG: latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -51,14 +63,14 @@ steps:
       - -f
       - infra/docker/Dockerfile
       - -t
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}"
       - .
 
   - id: push-api
     name: gcr.io/cloud-builders/docker
     args:
       - push
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}"
 
   # 3. Build + push the frontend image (API URL baked in at build time).
   - id: build-frontend
@@ -72,14 +84,14 @@ steps:
       - --build-arg
       - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}"
       - -t
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
       - .
 
   - id: push-frontend
     name: gcr.io/cloud-builders/docker
     args:
       - push
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
 
   # 4. Deploy the API to Cloud Run (secrets + Cloud SQL + Memorystore via VPC).
   - id: deploy-api
@@ -89,7 +101,7 @@ steps:
       - run
       - deploy
       - "${_API_SERVICE}"
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
@@ -111,7 +123,7 @@ steps:
       - run
       - deploy
       - "${_FE_SERVICE}"
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated

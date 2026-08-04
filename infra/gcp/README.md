@@ -73,7 +73,17 @@ _AR_REPO=food-delivery,\
 _CLOUDSQL_INSTANCE=$PROJECT_ID:$REGION:food-db,\
 _VPC_CONNECTOR=food-connector,\
 _API_URL=https://food-api-REPLACE.run.app,\
-_MAPS_BROWSER_KEY=AIza-your-BROWSER-key
+_MAPS_BROWSER_KEY=AIza-your-BROWSER-key,\
+_TAG=$(git rev-parse --short HEAD)
+```
+
+On PowerShell (Windows), `export` and `\` line continuations do not work. Use one
+line, and note that `$PROJECT_ID:` must be written `$($env:PROJECT_ID):` or
+PowerShell parses the colon as a drive qualifier:
+
+```powershell
+$tag = git rev-parse --short HEAD
+gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions="_REGION=us-central1,_AR_REPO=food-delivery,_CLOUDSQL_INSTANCE=food-project-poc:us-central1:food-db,_VPC_CONNECTOR=food-connector,_API_URL=https://food-api-REPLACE.run.app,_TAG=$tag"
 ```
 
 `_MAPS_BROWSER_KEY` appears in the build logs and in the shipped JS bundle, which
