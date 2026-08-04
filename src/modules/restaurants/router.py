@@ -43,7 +43,9 @@ async def list_restaurants(
     search: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
 ):
-    return await service.list_restaurants(session, city=city, search=search)
+    found = await service.list_restaurants(session, city=city, search=search)
+    await service.attach_ratings(session, found)
+    return found
 
 
 # ---------- Discovery ----------
@@ -73,6 +75,7 @@ async def popular_cuisines(
 @router.get("/{restaurant_id}", response_model=RestaurantDetail)
 async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get_db)):
     restaurant = await service.get_restaurant(session, restaurant_id)
+    await service.attach_ratings(session, [restaurant])
     menu = await menu_service.get_menu(session, restaurant_id, available_only=True)
     detail = RestaurantDetail.model_validate(restaurant)
     detail.menu = menu

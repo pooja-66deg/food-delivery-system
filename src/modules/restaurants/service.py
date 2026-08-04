@@ -1,11 +1,14 @@
 """Business logic for restaurant profiles."""
 
+from typing import Sequence
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.modules.restaurants.models import Restaurant
 from src.modules.restaurants.schemas import RestaurantCreate, RestaurantUpdate
+from src.modules.reviews import ratings
 from src.modules.users.models import User
 
 
@@ -22,6 +25,23 @@ async def get_restaurant(session: AsyncSession, restaurant_id: int) -> Restauran
     if restaurant is None:
         raise NotFoundException("Restaurant", str(restaurant_id))
     return restaurant
+
+
+async def attach_ratings(session: AsyncSession, restaurants: Sequence[Restaurant]) -> None:
+    """Set each restaurant's rating fields for the response schemas to read.
+
+    Called explicitly by the browse and detail routes rather than from
+    ``get_restaurant``, which checkout also uses and has no need for ratings.
+    One query for the whole page.
+    """
+    if not restaurants:
+        return
+    summaries = await ratings.summary_for(session, [r.id for r in restaurants])
+    for restaurant in restaurants:
+        summary = summaries.get(restaurant.id, ratings.EMPTY)
+        restaurant.rating_average = summary.average
+        restaurant.review_count = summary.count
+        restaurant.rating_breakdown = summary.breakdown
 
 
 # Shortest term that earns a suggestion lookup — one character matches most of

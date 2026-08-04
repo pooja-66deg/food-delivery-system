@@ -14,6 +14,9 @@ export interface Restaurant {
   is_open: boolean
   min_order_amount: number
   image_url?: string | null
+  /** Aggregated from reviews. null means nothing rated yet, never 0. */
+  rating_average: number | null
+  review_count: number
 }
 
 /** Trimmed restaurant shape returned by the typeahead endpoint. */
@@ -53,6 +56,8 @@ export interface MenuCategory {
 
 export interface RestaurantDetail extends Restaurant {
   menu: MenuCategory[]
+  /** Star -> review count. JSON keys arrive as strings. */
+  rating_breakdown: Record<string, number>
 }
 
 export interface RestaurantCreateInput {

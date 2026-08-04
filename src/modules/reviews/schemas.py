@@ -19,3 +19,6 @@ class ReviewRead(BaseModel):
     rating: int
     comment: str | None
     created_at: datetime
+    # First name plus last initial — enough to read as a real person without
+    # publishing a customer's full name. Empty when the account is gone.
+    reviewer_name: str = ""

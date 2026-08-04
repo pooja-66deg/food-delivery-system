@@ -36,6 +36,25 @@ import src.modules.events.models  # noqa: F401,E402
 import src.modules.reviews.models  # noqa: F401,E402
 
 
+@pytest.fixture(autouse=True)
+def _no_third_party_credentials(monkeypatch):
+    """Unset every external-provider credential for the duration of a test.
+
+    Without this the suite passes or fails depending on what a developer happens
+    to have in their .env: a real STRIPE_SECRET_KEY, for instance, swaps the
+    deterministic card stand-in for the live Stripe adapter. A test that wants a
+    provider configured says so itself by monkeypatching it back.
+    """
+    from src.config import settings
+
+    for field in (
+        "stripe_api_key", "stripe_secret_key", "stripe_webhook_secret",
+        "twilio_account_sid", "twilio_auth_token", "twilio_phone_number",
+        "sendgrid_api_key", "sendgrid_from_email", "fcm_server_key",
+    ):
+        monkeypatch.setattr(settings, field, None)
+
+
 @pytest.fixture
 def client():
     """Provide a synchronous test client for FastAPI."""

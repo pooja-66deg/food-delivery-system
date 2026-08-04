@@ -30,6 +30,8 @@ const PIZZA = {
   phone: '+15550000000',
   is_open: true,
   min_order_amount: 10,
+  rating_average: null,
+  review_count: 0,
 }
 
 beforeEach(() => {
@@ -118,5 +120,23 @@ describe('RestaurantsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Pizza Palace')).toBeInTheDocument()
+  })
+
+  it('shows a rated card with its stars and count', async () => {
+    mocks.list.mockResolvedValue([{ ...PIZZA, rating_average: 4.5, review_count: 2 }])
+    renderPage()
+
+    await screen.findByText('Pizza Palace')
+    expect(screen.getByRole('img', { name: '4.5 out of 5' })).toBeInTheDocument()
+    expect(screen.getByText(/2 reviews/)).toBeInTheDocument()
+  })
+
+  it('marks an unrated card as New rather than zero stars', async () => {
+    // An unrated kitchen is new, not bad.
+    renderPage()
+
+    await screen.findByText('Pizza Palace')
+    expect(screen.getByText('New')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /out of 5/ })).not.toBeInTheDocument()
   })
 })

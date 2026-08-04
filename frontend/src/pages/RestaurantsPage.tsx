@@ -9,6 +9,8 @@ import { errorMessage } from '../api/client'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { PopularCuisines } from '../components/PopularCuisines'
 import { SearchSuggest } from '../components/SearchSuggest'
+import { RatingStars } from '../reviews/RatingStars'
+import { reviewCountLabel } from '../reviews/RatingSummary'
 
 export function RestaurantsPage() {
   const navigate = useNavigate()
@@ -115,6 +117,19 @@ export function RestaurantsPage() {
                 </div>
                 <h3>{r.name}</h3>
                 <p className="muted">{r.description ?? 'Freshly prepared meals.'}</p>
+                <div className="rest-card-rating">
+                  {r.rating_average === null ? (
+                    // Not "0 stars" — an unrated kitchen is new, not bad.
+                    <span className="chip">New</span>
+                  ) : (
+                    <>
+                      <RatingStars value={r.rating_average} />
+                      <span className="muted">
+                        {r.rating_average} · {reviewCountLabel(r.review_count)}
+                      </span>
+                    </>
+                  )}
+                </div>
                 <div className="rest-card-foot">
                   <span>{r.city}</span>
                   <span>Min ${Number(r.min_order_amount).toFixed(2)}</span>
