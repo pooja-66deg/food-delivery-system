@@ -1,8 +1,11 @@
-"""Review creation (customer rates a completed order) + owner notification."""
+"""Reviews: a customer rates a delivered order, edits or deletes it, and the
+restaurant owner may answer once."""
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.exceptions import ConflictException, ForbiddenException
+from src.core.exceptions import ConflictException, ForbiddenException, NotFoundException
 from src.modules.notifications import service as notification_service
 from src.modules.orders import service as order_service
 from src.modules.orders.models import OrderStatus
@@ -11,6 +14,17 @@ from src.modules.reviews.models import Review
 from src.modules.users.models import User
 
 _REVIEWABLE = (OrderStatus.DELIVERED.value, OrderStatus.COMPLETED.value)
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def _get(session: AsyncSession, review_id: int) -> Review:
+    review = await session.get(Review, review_id)
+    if review is None:
+        raise NotFoundException("Review", str(review_id))
+    return review
 
 
 async def create_review(session: AsyncSession, user, order_id: int, rating: int, comment: str | None) -> Review:
@@ -36,6 +50,82 @@ async def create_review(session: AsyncSession, user, order_id: int, rating: int,
         )
     await session.commit()
     await session.refresh(review)
+    return await _with_reviewer_name(session, review)
+
+
+async def update_review(
+    session: AsyncSession, user, review_id: int, rating: int | None, comment: str | None,
+    comment_set: bool = False,
+) -> Review:
+    """Let the author revise their own review.
+
+    Only the author — not an admin, who can delete a review but has no business
+    rewriting one in a customer's name. ``comment_set`` distinguishes "leave the
+    comment alone" from "clear it", which a bare None cannot express.
+    """
+    review = await _get(session, review_id)
+    if review.customer_id != user.id:
+        raise ForbiddenException("Only the review's author can edit it")
+
+    if rating is not None:
+        review.rating = rating
+    if comment_set:
+        review.comment = comment
+    # Stamped only on a real edit, so "(edited)" in the UI means what it says.
+    review.updated_at = _now()
+    await session.commit()
+    await session.refresh(review)
+    return await _with_reviewer_name(session, review)
+
+
+async def delete_review(session: AsyncSession, user, review_id: int) -> None:
+    """Remove a review. The author may withdraw theirs; an admin may moderate any.
+
+    A restaurant owner deliberately cannot: deleting criticism of your own
+    business is exactly what a rating would need to be trustworthy.
+    """
+    review = await _get(session, review_id)
+    if review.customer_id != user.id and user.role != "admin":
+        raise ForbiddenException("Only the author or an admin can delete a review")
+    await session.delete(review)
+    await session.commit()
+
+
+async def reply_to_review(session: AsyncSession, user, review_id: int, reply: str) -> Review:
+    """Record the restaurant's public answer to a review.
+
+    Restricted to the owner of the reviewed restaurant (or an admin) by the same
+    ownership check the menu uses. Replying again replaces the previous answer —
+    an owner correcting their wording should not produce two replies.
+    """
+    review = await _get(session, review_id)
+    # Raises 403/404 unless this user manages that restaurant.
+    from src.modules.restaurants import service as restaurant_service
+    await restaurant_service.owned_restaurant(session, user, review.restaurant_id)
+
+    review.owner_reply = reply
+    review.owner_replied_at = _now()
+
+    notification_service.add_notification(
+        session, review.customer_id, "review.replied",
+        f"The restaurant replied to your review of order #{review.order_id}.",
+        review.order_id,
+    )
+    await session.commit()
+    await session.refresh(review)
+    return await _with_reviewer_name(session, review)
+
+
+async def _with_reviewer_name(session: AsyncSession, review: Review) -> Review:
+    """Attach the public reviewer name the read schema expects.
+
+    The list endpoint joins it in; a single-review response has to fetch it, and
+    doing that here keeps every path returning the same shape.
+    """
+    customer = await session.get(User, review.customer_id)
+    review.reviewer_name = (
+        display_name(customer.first_name, customer.last_name) if customer else ""
+    )
     return review
 
 

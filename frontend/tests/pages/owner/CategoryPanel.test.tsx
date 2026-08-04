@@ -28,6 +28,7 @@ const CATEGORY = {
       is_available: true,
       stock_quantity: null,
       in_stock: true,
+      is_vegetarian: false,
       image_url: null,
     },
   ],

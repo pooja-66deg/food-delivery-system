@@ -29,6 +29,7 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
   const [stock, setStock] = useState(
     item?.stock_quantity == null ? '' : String(item.stock_quantity),
   )
+  const [vegetarian, setVegetarian] = useState(item?.is_vegetarian ?? false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -40,6 +41,7 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
       name: name.trim(),
       price: Number(price),
       stock_quantity: toStock(stock),
+      is_vegetarian: vegetarian,
     }
     try {
       if (isEdit) {
@@ -50,6 +52,7 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
         setName('')
         setPrice('')
         setStock('')
+        setVegetarian(false)
         onDone('add')
       }
     } catch (err) {
@@ -91,6 +94,14 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
         aria-label="Stock quantity"
         title="Leave blank to sell without tracking stock"
       />
+      <label className="check-inline" title="Shown to diners filtering for vegetarian food">
+        <input
+          type="checkbox"
+          checked={vegetarian}
+          onChange={(e) => setVegetarian(e.target.checked)}
+        />
+        Vegetarian
+      </label>
       {error && <Alert>{error}</Alert>}
       <Button variant="ghost" loading={busy}>{isEdit ? 'Save' : 'Add item'}</Button>
       {isEdit && onCancel && (

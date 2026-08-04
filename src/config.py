@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     # stay ungeocoded. The browser uses its own referrer-restricted key.
     google_maps_api_key: Optional[str] = None
 
+    # Delivery zones
+    # Radius enforced for a geocoded restaurant that has not set its own, in km.
+    delivery_default_radius_km: float = 10.0
+
     # Delivery tracking
     # Assumed road speed for the fallback ETA, in km/h.
     delivery_average_speed_kmh: float = 25.0

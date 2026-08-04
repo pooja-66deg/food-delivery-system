@@ -52,6 +52,19 @@ def _emit_status(session: AsyncSession, order: Order) -> None:
     )
 
 
+async def _deliver_status(session: AsyncSession, *orders: Order) -> None:
+    """Send the outbound (email/SMS/push) copies of a status change.
+
+    **Call only after the commit.** ``_emit_status`` writes the in-app row inside
+    the transaction; this sends the messages that cannot be un-sent, so it waits
+    until the status change is durable. Kept as the last step of each lifecycle
+    function for the same reason: a notification must never delay or interleave
+    with the payment work the status change triggers.
+    """
+    for order in orders:
+        await notification_service.deliver_order_status(session, order)
+
+
 async def _notify_restaurant(session: AsyncSession, order: Order) -> None:
     """Tell the owner an order is waiting. Only ever called for a paid order —
     the kitchen must not start cooking something nobody has paid for."""
@@ -82,6 +95,7 @@ async def mark_paid(session: AsyncSession, order_id: int) -> Order:
     _emit_status(session, order)
     await _notify_restaurant(session, order)
     await session.commit()
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -145,6 +159,12 @@ async def create_order_from_checkout(
         await session.commit()
         await cart_service.clear_cart(redis, user.id)
         loaded = await _load_full(session, order.id)
+
+        # Announce the confirmation now, before the payment setup below. A COD
+        # order is already PAYMENT_SUCCESS and gets its confirmation here; a card
+        # order is still PAYMENT_PENDING, which has no outbound copy, so this is
+        # a no-op for it and ``mark_paid`` announces it once the money lands.
+        await _deliver_status(session, loaded)
 
         # Set up the payment — idempotent per order. A provider that needs the
         # customer to confirm hands back a secret; one that settles by itself
@@ -256,6 +276,7 @@ async def cancel_by_customer(session: AsyncSession, user, order_id: int) -> Orde
     await session.commit()
     if refund == RefundStatus.FULL:
         await payment_service.refund_payment(session, order)
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -267,6 +288,7 @@ async def accept_by_restaurant(session: AsyncSession, user, order_id: int) -> Or
     sm.apply_transition(session, order, OrderStatus.RESTAURANT_ACCEPTED, Actor.RESTAURANT)
     _emit_status(session, order)
     await session.commit()
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -283,6 +305,7 @@ async def reject_by_restaurant(session: AsyncSession, user, order_id: int, reaso
     _emit_status(session, order)
     await session.commit()
     await payment_service.refund_payment(session, order)
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -309,6 +332,7 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         # Local import avoids an orders<->delivery import cycle.
         from src.modules.delivery import service as delivery_service
         await delivery_service.assign_for_order(session, order, redis=redis)
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -323,6 +347,7 @@ async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) 
     await session.commit()
     if to == OrderStatus.DELIVERED:
         await payment_service.settle_payment(session, order)
+    await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
 
@@ -349,6 +374,7 @@ async def expire_unpaid_orders(session: AsyncSession, now: datetime) -> int:
         await _restore_stock(session, order)
         _emit_status(session, order)
     await session.commit()
+    await _deliver_status(session, *stale)
     return len(stale)
 
 
@@ -369,4 +395,5 @@ async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> in
     await session.commit()
     for order in stale:
         await payment_service.refund_payment(session, order)
+    await _deliver_status(session, *stale)
     return len(stale)

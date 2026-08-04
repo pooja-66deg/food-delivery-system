@@ -23,6 +23,7 @@ from src.modules.delivery.router import router as delivery_router
 from src.modules.notifications.router import router as notifications_router
 from src.modules.admin.router import router as admin_router
 from src.modules.reviews.router import router as reviews_router
+from src.modules.favorites.router import router as favorites_router
 
 # Ensure all domain models are imported so create_all/migrations see them.
 import src.modules.users.models  # noqa: F401
@@ -33,6 +34,7 @@ import src.modules.delivery.models  # noqa: F401
 import src.modules.notifications.models  # noqa: F401
 import src.modules.events.models  # noqa: F401
 import src.modules.reviews.models  # noqa: F401
+import src.modules.favorites.models  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=settings.log_level)
@@ -115,6 +117,7 @@ app.include_router(delivery_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
 app.include_router(reviews_router)
+app.include_router(favorites_router)
 
 
 # Serve uploaded images (restaurant/menu) from the media directory.

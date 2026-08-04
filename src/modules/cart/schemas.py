@@ -30,6 +30,22 @@ class UpdateCartItem(BaseModel):
     quantity: int = Field(..., ge=0)  # 0 removes the line
 
 
+class ReorderRequest(BaseModel):
+    order_id: int
+
+
+class ReorderResponse(BaseModel):
+    """The refilled cart, plus the lines that could not be carried over.
+
+    ``skipped`` is part of the success response rather than an error: one
+    delisted side dish must not fail the whole reorder, but the customer has to
+    be told what is missing before they pay.
+    """
+
+    cart: CartView
+    skipped: list[str] = []
+
+
 class CheckoutRequest(BaseModel):
     address_id: int
     price_hash: str

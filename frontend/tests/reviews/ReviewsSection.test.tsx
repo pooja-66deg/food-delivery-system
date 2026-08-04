@@ -4,9 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ReviewsSection } from '../../src/reviews/ReviewsSection'
 
-const mocks = vi.hoisted(() => ({ forRestaurant: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  forRestaurant: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+  reply: vi.fn(),
+}))
 
 vi.mock('../../src/api/reviews', () => ({ reviewsApi: mocks }))
+
+// The section reads the viewer's identity to decide which per-review controls to
+// show. A passing reader (not the author, not the owner) is the default here, so
+// these tests stay about the list itself.
+vi.mock('../../src/auth/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 99, role: 'customer' } }),
+}))
 
 function review(overrides: Record<string, unknown> = {}) {
   return {
@@ -18,6 +30,9 @@ function review(overrides: Record<string, unknown> = {}) {
     comment: 'Excellent pizza',
     reviewer_name: 'Alex R.',
     created_at: '2026-08-01T10:00:00Z',
+    updated_at: null,
+    owner_reply: null,
+    owner_replied_at: null,
     ...overrides,
   }
 }

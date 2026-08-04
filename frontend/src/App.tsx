@@ -6,6 +6,7 @@ import { AccountPage } from './pages/account/AccountPage'
 import { AdminPage } from './pages/AdminPage'
 import { CartPage } from './pages/CartPage'
 import { DriverPage } from './pages/DriverPage'
+import { FavoritesPage } from './pages/FavoritesPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotificationsPage } from './pages/NotificationsPage'
@@ -35,6 +36,7 @@ export function App() {
           <Route path="/restaurants" element={<RestaurantsPage />} />
           <Route path="/restaurants/:id" element={<RestaurantDetailPage />} />
           <Route path="/cart" element={<CartPage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
           <Route path="/orders" element={<OrdersPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
           <Route path="/payments" element={<PaymentsPage />} />

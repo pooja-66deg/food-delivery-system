@@ -20,6 +20,7 @@ const TRACKED_ITEM = {
   is_available: true,
   stock_quantity: 7,
   in_stock: true,
+  is_vegetarian: false,
   image_url: null,
 }
 

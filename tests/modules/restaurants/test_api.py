@@ -47,7 +47,7 @@ async def test_owner_creates_restaurant_with_menu_and_public_can_browse(api_clie
     # Public browse: list (no auth)
     listing = await api_client.get("/restaurants")
     assert listing.status_code == 200
-    assert any(x["name"] == "Pizza Palace" for x in listing.json())
+    assert any(x["name"] == "Pizza Palace" for x in listing.json()["items"])
 
     # Public detail with menu (no auth)
     detail = await api_client.get(f"/restaurants/{rid}")
@@ -65,10 +65,10 @@ async def test_list_filters_by_city_and_search(api_client):
     await api_client.post("/restaurants", json={"name": "Sushi Spot", "city": "Gotham", "address_line": "2", "phone": "+15550000001"}, headers=headers)
 
     metro = await api_client.get("/restaurants", params={"city": "Metropolis"})
-    assert [x["name"] for x in metro.json()] == ["Pizza Palace"]
+    assert [x["name"] for x in metro.json()["items"]] == ["Pizza Palace"]
 
     search = await api_client.get("/restaurants", params={"search": "sushi"})
-    assert [x["name"] for x in search.json()] == ["Sushi Spot"]
+    assert [x["name"] for x in search.json()["items"]] == ["Sushi Spot"]
 
 
 @pytest.mark.asyncio

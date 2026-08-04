@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.modules.restaurants import service
+from src.modules.restaurants import discovery, service
 from src.modules.restaurants.schemas import RestaurantCreate
 from src.modules.users import service as users_service
 from src.modules.users.schemas import UserRegister
@@ -49,13 +49,18 @@ async def _seed(db_session):
     return owner
 
 
+async def _browse(session, **filters):
+    """Browse results as a plain list — the page envelope's items."""
+    return (await discovery.search(session, **filters)).items
+
+
 # ---------- city filter ----------
 
 @pytest.mark.asyncio
 async def test_city_filter_ignores_case(db_session):
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, city="metropolis")
+    found = await _browse(db_session, city="metropolis")
 
     assert {r.name for r in found} == {"Pizza Palace", "Curry Corner"}
 
@@ -64,7 +69,7 @@ async def test_city_filter_ignores_case(db_session):
 async def test_city_filter_matches_partial_name(db_session):
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, city="metro")
+    found = await _browse(db_session, city="metro")
 
     assert {r.name for r in found} == {"Pizza Palace", "Curry Corner"}
 
@@ -73,7 +78,7 @@ async def test_city_filter_matches_partial_name(db_session):
 async def test_city_filter_ignores_surrounding_whitespace(db_session):
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, city="  Gotham  ")
+    found = await _browse(db_session, city="  Gotham  ")
 
     assert {r.name for r in found} == {"Sushi Spot"}
 
@@ -84,7 +89,7 @@ async def test_city_filter_ignores_surrounding_whitespace(db_session):
 async def test_search_matches_cuisine(db_session):
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, search="japanese")
+    found = await _browse(db_session, search="japanese")
 
     assert {r.name for r in found} == {"Sushi Spot"}
 
@@ -93,7 +98,7 @@ async def test_search_matches_cuisine(db_session):
 async def test_search_still_matches_name(db_session):
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, search="pizza")
+    found = await _browse(db_session, search="pizza")
 
     assert {r.name for r in found} == {"Pizza Palace"}
 
@@ -103,7 +108,7 @@ async def test_search_excludes_untagged_restaurants_on_cuisine_term(db_session):
     """A NULL cuisine must not match a cuisine-only term."""
     await _seed(db_session)
 
-    found = await service.list_restaurants(db_session, search="italian")
+    found = await _browse(db_session, search="italian")
 
     assert {r.name for r in found} == {"Pizza Palace"}
 

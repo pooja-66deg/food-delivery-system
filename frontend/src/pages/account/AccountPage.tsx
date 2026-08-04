@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 
 import { useAuth } from '../../auth/AuthContext'
 import { AddressPanel } from './AddressPanel'
+import { NotificationPanel } from './NotificationPanel'
 import { ProfilePanel } from './ProfilePanel'
 import { SecurityPanel } from './SecurityPanel'
 import { VerificationNotice } from './VerificationNotice'
@@ -42,6 +43,7 @@ export function AccountPage() {
       <div className="account-grid">
         <ProfilePanel />
         <SecurityPanel />
+        <NotificationPanel />
         {isCustomer && <AddressPanel />}
       </div>
     </main>

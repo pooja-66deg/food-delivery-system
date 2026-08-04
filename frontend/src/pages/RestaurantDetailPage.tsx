@@ -152,7 +152,7 @@ export function RestaurantDetailPage() {
         />
       </section>
 
-      <ReviewsSection restaurantId={restaurant.id} />
+      <ReviewsSection restaurantId={restaurant.id} ownerId={restaurant.owner_id} />
     </main>
   )
 }
