@@ -1,6 +1,11 @@
-// Typed bindings for the delivery domain (driver-facing).
+// Typed bindings for the delivery domain (driver-facing + customer tracking).
 
 import { request } from './client'
+
+export interface Coordinate {
+  latitude: number
+  longitude: number
+}
 
 export interface Delivery {
   id: number
@@ -10,13 +15,22 @@ export interface Delivery {
   assigned_at: string | null
   picked_up_at: string | null
   delivered_at: string | null
+  // Where this delivery is headed, for navigation. The driver cannot read the
+  // tracking endpoint, so these ride along on their own assignments.
+  restaurant: Coordinate | null
+  destination: Coordinate | null
 }
 
 export interface Tracking {
   order_id: number
   status: string
   driver_id: number | null
-  location: { latitude: number; longitude: number } | null
+  driver: Coordinate | null
+  restaurant: Coordinate | null
+  destination: Coordinate | null
+  eta_minutes: number | null
+  distance_km: number | null
+  eta_source: 'google' | 'estimate' | null
 }
 
 export const deliveryApi = {
@@ -31,4 +45,16 @@ export const deliveryApi = {
     request<Delivery>(`/delivery/orders/${orderId}/deliver`, { method: 'POST', auth: true }),
   tracking: (orderId: number) =>
     request<Tracking>(`/delivery/orders/${orderId}/tracking`, { auth: true }),
+  setOnline: (online: boolean) =>
+    request<{ driver_id: number; online: boolean }>('/delivery/status', {
+      method: 'POST',
+      auth: true,
+      body: { online },
+    }),
+  postLocation: (latitude: number, longitude: number) =>
+    request<{ driver_id: number; latitude: number; longitude: number }>('/delivery/location', {
+      method: 'POST',
+      auth: true,
+      body: { latitude, longitude },
+    }),
 }

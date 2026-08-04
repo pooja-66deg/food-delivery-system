@@ -76,7 +76,7 @@ async def test_nearest_driver_assigned_and_tracking(api_client):
     assert track.status_code == 200
     body = track.json()
     assert body["status"] == "ASSIGNED"
-    assert body["location"] is not None
+    assert body["driver"] is not None
 
 
 @pytest.mark.asyncio

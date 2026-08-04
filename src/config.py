@@ -70,6 +70,17 @@ class Settings(BaseSettings):
     sendgrid_api_key: Optional[str] = None
     sendgrid_from_email: Optional[str] = None
     fcm_server_key: Optional[str] = None
+    # Google Maps (Routes API for ETAs, Geocoding API for addresses) — server
+    # side only. Unset: ETAs fall back to a straight-line estimate and addresses
+    # stay ungeocoded. The browser uses its own referrer-restricted key.
+    google_maps_api_key: Optional[str] = None
+
+    # Delivery tracking
+    # Assumed road speed for the fallback ETA, in km/h.
+    delivery_average_speed_kmh: float = 25.0
+    # How long a computed ETA is cached per order, so a 5s tracking poll does
+    # not hit the Routes API twelve times a minute.
+    delivery_eta_cache_seconds: int = 30
 
     # Logging
     log_level: str = "INFO"

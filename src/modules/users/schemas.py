@@ -193,3 +193,7 @@ class AddressResponse(BaseModel):
     city: str
     postal_code: str
     is_default: bool
+    # Null when the address has not been geocoded — the signal that it cannot be
+    # placed on a map or routed to, rather than an error.
+    latitude: float | None = None
+    longitude: float | None = None

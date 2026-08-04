@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { errorMessage } from '../api/client'
 import { deliveryApi } from '../api/delivery'
-import type { Delivery } from '../api/delivery'
+import type { Coordinate, Delivery } from '../api/delivery'
 import { useAuth } from '../auth/AuthContext'
 import { Alert, Button, EmptyState, Loading } from '../components/ui'
+import { useDriverLocation } from '../lib/useDriverLocation'
 
 const DESCRIPTIONS: Record<string, string> = {
   ASSIGNED: 'Offered to you — accept to take it',
@@ -12,8 +13,28 @@ const DESCRIPTIONS: Record<string, string> = {
   PICKED_UP: 'On the way to the customer',
 }
 
+const SHARE_STATUS: Record<string, string> = {
+  off: 'Not sharing. Turn this on to receive nearby orders.',
+  sharing: 'Sharing your location',
+  denied: 'Location permission is blocked. Enable it in your browser to share your position.',
+  unavailable: 'Your position is unavailable right now.',
+  unsupported: 'This device cannot share a location.',
+}
+
+/** Before pickup the driver heads to the restaurant; after it, to the customer. */
+function nextStop(d: Delivery): Coordinate | null {
+  return d.status === 'PICKED_UP' ? d.destination : d.restaurant
+}
+
+function navigateUrl(point: Coordinate): string {
+  // A plain maps URL — no API key, no SDK, and it opens the native app on a
+  // phone rather than a web map.
+  return `https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}`
+}
+
 export function DriverPage() {
   const { user } = useAuth()
+  const share = useDriverLocation()
   const [assignments, setAssignments] = useState<Delivery[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -73,6 +94,31 @@ export function DriverPage() {
         <Button variant="ghost" onClick={load}>Refresh</Button>
       </div>
 
+      <div className="share-card">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={share.sharing}
+          aria-label="Share my location"
+          className="share-switch"
+          data-on={share.sharing}
+          disabled={share.status === 'unsupported'}
+          onClick={() => (share.sharing ? void share.disable() : void share.enable())}
+        >
+          <span className="share-knob" aria-hidden />
+        </button>
+        <div>
+          <div className="menu-item-name">Share my location</div>
+          <div className="muted">
+            {SHARE_STATUS[share.status]}
+            {share.lastUpdate
+              ? ` · updated ${new Date(share.lastUpdate).toLocaleTimeString()}`
+              : ''}
+          </div>
+        </div>
+      </div>
+
+      {share.error && <Alert>{share.error}</Alert>}
       {error && <Alert>{error}</Alert>}
       {notice && <Alert kind="ok">{notice}</Alert>}
 
@@ -90,6 +136,16 @@ export function DriverPage() {
               </div>
               <span className="badge">{d.status}</span>
               <div className="delivery-actions">
+                {nextStop(d) && (
+                  <a
+                    className="link-inline"
+                    href={navigateUrl(nextStop(d)!)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Navigate
+                  </a>
+                )}
                 {d.status === 'ASSIGNED' && (
                   <>
                     <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'accept')}>

@@ -5,12 +5,15 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ConflictException, ForbiddenException, NotFoundException
+from src.modules.delivery import eta as eta_module
 from src.modules.delivery import location
 from src.modules.delivery.models import Delivery, DeliveryStatus
+from src.modules.delivery.providers import Coordinate
+from src.modules.delivery.schemas import TrackingRead
 from src.modules.orders import service as order_service
 from src.modules.orders.models import OrderStatus
 from src.modules.restaurants.models import Restaurant
-from src.modules.users.models import User
+from src.modules.users.models import Address, User
 
 _ACTIVE = (DeliveryStatus.ASSIGNED.value, DeliveryStatus.ACCEPTED.value, DeliveryStatus.PICKED_UP.value)
 
@@ -81,12 +84,29 @@ async def assign_for_order(session: AsyncSession, order, redis=None) -> Delivery
 
 
 async def list_for_driver(session: AsyncSession, driver_id: int) -> list[Delivery]:
+    """A driver's active deliveries, each carrying its next-stop coordinates.
+
+    The driver cannot call the tracking endpoint (that is customer/owner/admin
+    only), so the points they need for navigation ride along here.
+    """
+    from src.modules.orders.models import Order  # local import to avoid cycles
+
     stmt = (
         select(Delivery)
         .where(Delivery.driver_id == driver_id, Delivery.status.in_(_ACTIVE))
         .order_by(Delivery.id)
     )
-    return list(await session.scalars(stmt))
+    deliveries = list(await session.scalars(stmt))
+
+    for delivery in deliveries:
+        order = await session.get(Order, delivery.order_id)
+        delivery.restaurant = (
+            _coord(await session.get(Restaurant, order.restaurant_id)) if order else None
+        )
+        delivery.destination = (
+            _coord(await session.get(Address, order.address_id)) if order else None
+        )
+    return deliveries
 
 
 async def _owned_active(session: AsyncSession, driver: User, order_id: int) -> Delivery:
@@ -98,7 +118,9 @@ async def _owned_active(session: AsyncSession, driver: User, order_id: int) -> D
     return delivery
 
 
-async def accept_assignment(session: AsyncSession, driver: User, order_id: int) -> Delivery:
+async def accept_assignment(
+    session: AsyncSession, driver: User, order_id: int, redis=None
+) -> Delivery:
     """Driver confirms an offered assignment (ASSIGNED → ACCEPTED)."""
     delivery = await _owned_active(session, driver, order_id)
     if delivery.status != DeliveryStatus.ASSIGNED.value:
@@ -107,6 +129,7 @@ async def accept_assignment(session: AsyncSession, driver: User, order_id: int) 
     delivery.accepted_at = _now()
     await session.commit()
     await session.refresh(delivery)
+    await eta_module.invalidate(redis, order_id)
     return delivery
 
 
@@ -129,10 +152,11 @@ async def reject_assignment(session: AsyncSession, driver: User, order_id: int, 
         delivery.assigned_at = _now()
     await session.commit()
     await session.refresh(delivery)
+    await eta_module.invalidate(redis, order_id)
     return delivery
 
 
-async def pickup(session: AsyncSession, driver: User, order_id: int) -> Delivery:
+async def pickup(session: AsyncSession, driver: User, order_id: int, redis=None) -> Delivery:
     delivery = await _owned_active(session, driver, order_id)
     if delivery.status not in (DeliveryStatus.ASSIGNED.value, DeliveryStatus.ACCEPTED.value):
         raise ConflictException("Delivery is not in a pickup-ready state")
@@ -141,10 +165,12 @@ async def pickup(session: AsyncSession, driver: User, order_id: int) -> Delivery
     await session.commit()
     await order_service.driver_advance(session, order_id, OrderStatus.OUT_FOR_DELIVERY)
     await session.refresh(delivery)
+    # The route just lost its restaurant leg; a stale ETA would overstate it.
+    await eta_module.invalidate(redis, order_id)
     return delivery
 
 
-async def deliver(session: AsyncSession, driver: User, order_id: int) -> Delivery:
+async def deliver(session: AsyncSession, driver: User, order_id: int, redis=None) -> Delivery:
     delivery = await _owned_active(session, driver, order_id)
     if delivery.status != DeliveryStatus.PICKED_UP.value:
         raise ConflictException("Delivery must be picked up before it can be delivered")
@@ -153,17 +179,51 @@ async def deliver(session: AsyncSession, driver: User, order_id: int) -> Deliver
     await session.commit()
     await order_service.driver_advance(session, order_id, OrderStatus.DELIVERED)
     await session.refresh(delivery)
+    await eta_module.invalidate(redis, order_id)
     return delivery
 
 
-async def tracking_for_order(session: AsyncSession, user, redis, order_id: int) -> dict:
-    """Delivery status + the assigned driver's live location for an order.
-    Access follows the order's visibility rules (customer / restaurant / admin)."""
-    await order_service.get_order_for_user(session, user, order_id)  # 403/404 if not allowed
+def _coord(obj) -> Coordinate | None:
+    """A Coordinate from anything carrying latitude/longitude, or None."""
+    if obj is None or obj.latitude is None or obj.longitude is None:
+        return None
+    return Coordinate(latitude=obj.latitude, longitude=obj.longitude)
+
+
+async def tracking_for_order(session: AsyncSession, user, redis, order_id: int) -> TrackingRead:
+    """Delivery status, live driver position, and the ETA for an order.
+
+    Access follows the order's visibility rules (customer / restaurant / admin).
+    Drivers are deliberately not included — they read the coordinates they need
+    from their own assignments list instead.
+    """
+    order = await order_service.get_order_for_user(session, user, order_id)  # 403/404
     delivery = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
     if delivery is None:
         raise NotFoundException("Delivery", str(order_id))
-    loc = None
-    if delivery.driver_id is not None:
-        loc = await location.get_location(redis, delivery.driver_id)
-    return {"order_id": order_id, "status": delivery.status, "driver_id": delivery.driver_id, "location": loc}
+
+    driver_point = None
+    if delivery.driver_id is not None and redis is not None:
+        raw = await location.get_location(redis, delivery.driver_id)
+        if raw is not None:
+            driver_point = Coordinate(latitude=raw["latitude"], longitude=raw["longitude"])
+
+    restaurant_point = _coord(await session.get(Restaurant, order.restaurant_id))
+    destination_point = _coord(await session.get(Address, order.address_id))
+
+    waypoints = eta_module.waypoints_for(
+        delivery.status, driver_point, restaurant_point, destination_point
+    )
+    estimate = await eta_module.estimate_for_order(redis, order_id, waypoints)
+
+    return TrackingRead(
+        order_id=order_id,
+        status=delivery.status,
+        driver_id=delivery.driver_id,
+        driver=driver_point,
+        restaurant=restaurant_point,
+        destination=destination_point,
+        eta_minutes=estimate.duration_minutes if estimate else None,
+        distance_km=estimate.distance_km if estimate else None,
+        eta_source=estimate.source if estimate else None,
+    )
