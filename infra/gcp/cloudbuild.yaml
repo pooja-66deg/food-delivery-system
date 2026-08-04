@@ -15,6 +15,12 @@ substitutions:
   _CLOUDSQL_INSTANCE: ""               # PROJECT:REGION:INSTANCE
   _VPC_CONNECTOR: ""                   # Serverless VPC Access connector (for Memorystore)
   _API_URL: ""                         # Public API URL the frontend calls (set after first API deploy or use a custom domain)
+  # Browser-side Google Maps key, baked into the SPA bundle. Public by
+  # construction, so it must be a referrer-restricted key with only the Maps
+  # JavaScript API enabled — NOT the server key, which lives in Secret Manager
+  # and carries Routes + Geocoding permission. Unset: tracking shows the ETA as
+  # text with no map.
+  _MAPS_BROWSER_KEY: ""
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -63,6 +69,8 @@ steps:
       - infra/gcp/frontend.Dockerfile
       - --build-arg
       - "VITE_API_URL=${_API_URL}"
+      - --build-arg
+      - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}"
       - -t
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}"
       - .
@@ -89,7 +97,10 @@ steps:
       - --vpc-connector=${_VPC_CONNECTOR}
       - --vpc-egress=private-ranges-only
       - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest
+      # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
+      # Geocoding permission and must never reach the browser. Without it the
+      # API still serves ETAs, computed straight-line instead of via Google.
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest
     waitFor: ["test", "push-api"]
 
   # 5. Deploy the frontend to Cloud Run (static SPA served by nginx).

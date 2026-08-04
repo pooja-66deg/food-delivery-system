@@ -45,11 +45,16 @@ printf 'postgresql://fooduser:STRONG_PASSWORD@/fooddelivery?host=/cloudsql/%s:%s
   "$PROJECT_ID" "$REGION" | gcloud secrets create DATABASE_URL --data-file=-
 printf 'redis://REDIS_PRIVATE_IP:6379/0' | gcloud secrets create REDIS_URL --data-file=-
 printf 'a-long-random-production-secret' | gcloud secrets create JWT_SECRET_KEY --data-file=-
+#    Server-side Google Maps key: Routes API (delivery ETAs) + Geocoding API
+#    (resolving addresses to coordinates). Restrict it by API, not by referrer —
+#    it is called from Cloud Run, not a browser. Keep it distinct from the
+#    browser key passed to the frontend build (_MAPS_BROWSER_KEY).
+printf 'AIza-your-SERVER-key' | gcloud secrets create GOOGLE_MAPS_API_KEY --data-file=-
 
 # 6. Let Cloud Run's service account read the secrets (and connect to Cloud SQL)
 PROJECT_NUM=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 SA="$PROJECT_NUM-compute@developer.gserviceaccount.com"
-for s in DATABASE_URL REDIS_URL JWT_SECRET_KEY; do
+for s in DATABASE_URL REDIS_URL JWT_SECRET_KEY GOOGLE_MAPS_API_KEY; do
   gcloud secrets add-iam-policy-binding $s \
     --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
 done
@@ -67,8 +72,14 @@ _REGION=$REGION,\
 _AR_REPO=food-delivery,\
 _CLOUDSQL_INSTANCE=$PROJECT_ID:$REGION:food-db,\
 _VPC_CONNECTOR=food-connector,\
-_API_URL=https://food-api-REPLACE.run.app
+_API_URL=https://food-api-REPLACE.run.app,\
+_MAPS_BROWSER_KEY=AIza-your-BROWSER-key
 ```
+
+`_MAPS_BROWSER_KEY` appears in the build logs and in the shipped JS bundle, which
+is fine for a referrer-restricted Maps-JavaScript-only key and not fine for the
+server key. If you have only one key, leave this empty: tracking still works and
+shows the ETA as text instead of a map.
 
 Get the service URLs:
 
