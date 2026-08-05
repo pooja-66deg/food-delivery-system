@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -13,13 +17,13 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_USER: fooduser
-          POSTGRES_PASSWORD: foodpass
-          POSTGRES_DB: fooddelivery
+          POSTGRES_USER: ${{ vars.CI_POSTGRES_USER || 'fooduser' }}
+          POSTGRES_PASSWORD: ${{ vars.CI_POSTGRES_PASSWORD || 'foodpass' }}
+          POSTGRES_DB: ${{ vars.CI_POSTGRES_DB || 'fooddelivery' }}
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U fooduser -d fooddelivery"
+          --health-cmd "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
           --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7-alpine
@@ -30,49 +34,104 @@ jobs:
           --health-timeout 5s --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://fooduser:foodpass@localhost:5432/fooddelivery
+      DATABASE_URL: postgresql://${{ vars.CI_POSTGRES_USER || 'fooduser' }}:${{ vars.CI_POSTGRES_PASSWORD || 'foodpass' }}@localhost:5432/${{ vars.CI_POSTGRES_DB || 'fooddelivery' }}
       REDIS_URL: redis://localhost:6379/0
-      JWT_SECRET_KEY: ci-secret-key
+      JWT_SECRET_KEY: ${{ vars.CI_JWT_SECRET_KEY || 'ci-secret-key' }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
+          version: "0.11.3"
           python-version: "3.13"
-          cache: pip
+          enable-cache: true
 
       - name: Install dependencies
+        run: uv sync --frozen --extra dev --no-install-project
+
+      - name: Lint
+        run: uv run flake8 src
+
+      - name: Verify migrations
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
 
-      - name: Lint (flake8)
-        run: flake8 src
-
-      - name: Verify Alembic migrations apply to a clean Postgres
-        run: |
-          alembic upgrade head
-          alembic downgrade base
-          alembic upgrade head
-
-      - name: Run tests
-        # conftest bootstraps SQLite+fakeredis for unit tests; integration tests
-        # use Testcontainers (Docker is available on the runner).
-        run: pytest
+      - name: Test
+        run: uv run pytest
 
   frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
       - run: npm ci
+
+      - name: Test
+        run: npm test
+
       - name: Type-check & build
         run: npm run build
+
+  deploy:
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy configuration
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_CLOUDSQL_INSTANCE: ${{ vars.GCP_CLOUDSQL_INSTANCE }}
+          GCP_VPC_CONNECTOR: ${{ vars.GCP_VPC_CONNECTOR }}
+          GCP_API_URL: ${{ vars.GCP_API_URL }}
+          GCP_FE_URL: ${{ vars.GCP_FE_URL }}
+        run: |
+          for name in GCP_PROJECT_ID GCP_CLOUDSQL_INSTANCE GCP_VPC_CONNECTOR GCP_API_URL GCP_FE_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository variable: $name (Settings -> Secrets and variables -> Actions -> Variables)"
+              exit 1
+            fi
+          done
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Deploy
+        run: |
+          gcloud builds submit \
+            --config infra/gcp/cloudbuild.yaml \
+            --substitutions=\
+          _REGION=${{ vars.GCP_REGION || 'us-central1' }},\
+          _AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }},\
+          _CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }},\
+          _VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }},\
+          _API_URL=${{ vars.GCP_API_URL }},\
+          _FE_URL=${{ vars.GCP_FE_URL }},\
+          _MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }},\
+          _TAG=${{ github.sha }}

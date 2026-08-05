@@ -105,7 +105,7 @@ future physical split into database-per-service mechanical rather than a migrati
 > do not install on Python 3.13 (`pydantic-core`, `psycopg2-binary` had no wheels and failed to
 > build), depended on the **archived** `aioredis` package (which does not import on Python 3.11+),
 > and omitted both `asyncpg` (required by the async DB engine) and `email-validator` (required by
-> `EmailStr`). These were corrected — see `requirements.txt` / `pyproject.toml` and the change log
+> `EmailStr`). These were corrected — see `pyproject.toml` / `uv.lock` and the change log
 > in §13.
 
 React front-ends (customer web, restaurant portal, admin) and NGINX as an edge gateway remain the

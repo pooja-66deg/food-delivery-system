@@ -18,6 +18,14 @@ substitutions:
   _CLOUDSQL_INSTANCE: ""               # PROJECT:REGION:INSTANCE
   _VPC_CONNECTOR: ""                   # Serverless VPC Access connector (for Memorystore)
   _API_URL: ""                         # Public API URL the frontend calls (set after first API deploy or use a custom domain)
+  # Public frontend URL. The API needs it for two things, and a deploy without it
+  # is quietly broken rather than obviously broken:
+  #   - CORS_ORIGINS — the frontend is a separate Cloud Run service on its own
+  #     origin, so without it every browser request is rejected. The default
+  #     allowlist is localhost, which is right for dev and useless here.
+  #   - FRONTEND_BASE_URL — password-reset and email-verification links are built
+  #     from it, so an unset value mails the recipient a link to their own machine.
+  _FE_URL: ""
   # Browser-side Google Maps key, baked into the SPA bundle. Public by
   # construction, so it must be a referrer-restricted key with only the Maps
   # JavaScript API enabled — NOT the server key, which lives in Secret Manager
@@ -49,11 +57,13 @@ steps:
     args:
       - -c
       - |
-        pip install --quiet -e ".[dev]"
+        set -e
+        pip install --quiet uv
+        uv sync --frozen --extra dev --no-install-project
         export DATABASE_URL="postgresql://u:p@localhost:5432/db" \
                REDIS_URL="redis://localhost:6379/0" \
                JWT_SECRET_KEY="ci-secret" KAFKA_BROKERS="localhost:9092"
-        pytest -q
+        uv run pytest -q
 
   # 2. Build + push the API image.
   - id: build-api
@@ -108,7 +118,9 @@ steps:
       - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
       - --vpc-connector=${_VPC_CONNECTOR}
       - --vpc-egress=private-ranges-only
-      - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092
+      # CORS_ORIGINS and FRONTEND_BASE_URL both come from _FE_URL — see the
+      # substitution comment for why an unset value breaks the deployed app.
+      - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092,CORS_ORIGINS=${_FE_URL},FRONTEND_BASE_URL=${_FE_URL}
       # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
       # Geocoding permission and must never reach the browser. Without it the
       # API still serves ETAs, computed straight-line instead of via Google.

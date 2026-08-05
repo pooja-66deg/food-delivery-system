@@ -25,14 +25,17 @@
    docker compose -f infra/compose/docker-compose.yml up -d
    ```
 
-4. Install dependencies:
+4. Install dependencies with [uv](https://docs.astral.sh/uv/):
    ```bash
-   pip install -r requirements.txt
+   uv sync --extra dev --no-install-project
    ```
+   Dependencies are declared once in `pyproject.toml` and pinned — including every
+   transitive one — in `uv.lock`. Commit `uv.lock` whenever you change a dependency;
+   CI installs with `--frozen` and fails rather than re-resolving.
 
 5. Run the application:
    ```bash
-   uvicorn src.main:app --reload
+   uv run uvicorn src.main:app --reload
    ```
 
 The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.

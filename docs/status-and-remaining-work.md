@@ -74,28 +74,23 @@ one-time GCP setup.
 
 These are not "nice to have." Each one produces a visibly broken deployed app.
 
-### 3.1 `CORS_ORIGINS` is never set on the deployed API
+**3.1 and 3.2 are now fixed** (see below). 3.3–3.5 remain open, and 3.3 in particular is
+worth knowing about before the first automatic deploy: uploaded images will not survive it.
 
-[cloudbuild.yaml:129](../infra/gcp/cloudbuild.yaml#L129) sets only
-`ENVIRONMENT` and `KAFKA_BROKERS`. The API therefore falls back to its default
-allowlist — `http://localhost:5173,http://localhost:3000`
-([config.py:17](../src/config.py#L17)).
+### 3.1 `CORS_ORIGINS` on the deployed API — **FIXED**
 
-The deployed frontend is a **separate Cloud Run service** on its own origin and calls
-the API cross-origin via `VITE_API_URL` ([nginx-spa.conf:8](../infra/gcp/nginx-spa.conf#L8)
-has no `/api` proxy, unlike the Compose config). Every browser request from the deployed
-frontend is blocked by CORS.
+The deploy step set only `ENVIRONMENT` and `KAFKA_BROKERS`, so the API fell back to its
+localhost allowlist and every browser request from the deployed frontend (a separate
+Cloud Run service on its own origin) was CORS-blocked.
 
-**Fix:** add `CORS_ORIGINS=${_FE_URL}` to the `deploy-api` env vars, with `_FE_URL` as a
-substitution alongside `_API_URL`.
+Now set from a new `_FE_URL` substitution, supplied by the deploy job from the
+`GCP_FE_URL` repository variable.
 
-### 3.2 `FRONTEND_BASE_URL` is never set on the deployed API
+### 3.2 `FRONTEND_BASE_URL` on the deployed API — **FIXED**
 
-Same deploy step. Password-reset and email-verification links are built from
-`settings.frontend_base_url`, which defaults to `http://localhost:5173`. In production
-every emailed link points at the recipient's own machine.
-
-**Fix:** set it in the same place as 3.1.
+Password-reset and email-verification links were built from a value defaulting to
+`http://localhost:5173`, so production mailed recipients a link to their own machine.
+Now set from the same `_FE_URL`.
 
 ### 3.3 Uploaded images are broken in production, twice over
 
@@ -212,19 +207,22 @@ second is a legitimate call for a monolith; the drift is the problem.
   Testcontainers suite. Nothing exercises the real Postgres/Redis path for the flows
   most likely to break there: concurrent checkout under the per-user lock, stock
   decrement races, Redis GEO assignment.
-- **CI does not run frontend tests.** [ci.yml](../.github/workflows/ci.yml) runs
-  `npm run build` (type-check + bundle) only. All 233 vitest tests exist and pass
-  locally but are never enforced on a PR. One line to fix.
-- **Cloud Build does not run frontend tests either** — `cloudbuild.yaml`'s `test` step
-  is `pytest -q` only.
+- ~~**CI does not run frontend tests.**~~ **Fixed** — `npm test` now runs in CI and gates
+  the deploy.
+- **Cloud Build does not run frontend tests** — `cloudbuild.yaml`'s `test` step is
+  `pytest -q` only. Less pressing now that GitHub Actions gates every deploy, but a
+  direct `gcloud builds submit` still bypasses the frontend suite.
 - **No E2E test.** No Playwright/Cypress run of the register → order → deliver flow the
   README documents manually.
 - **No load test.** The <300ms p95 target in architecture §10 has never been measured.
 
 ### 4.6 No production operations material
 
-Phase 5 deliverables that do not exist: staging environment, runbooks, rollback
-procedure, backup/PITR restore drill, Cloud Armor/WAF, autoscaling limits (Cloud Run
+**Partly addressed:** there is now a CD pipeline (merge to `main` → test → build → deploy)
+and a documented rollback-by-tag procedure, since images are tagged with the commit sha.
+
+Phase 5 deliverables that still do not exist: staging environment, runbooks,
+backup/PITR restore drill, Cloud Armor/WAF, autoscaling limits (Cloud Run
 `--min-instances`/`--max-instances`/`--concurrency` are all unset, so an unbounded
 autoscale can exhaust Cloud SQL connections), and health-check-driven readiness
 (`/health` returns static JSON — it never checks Postgres or Redis, so a database

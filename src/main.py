@@ -69,10 +69,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware — explicit origin allowlist (never "*" together with credentials).
+# CORS middleware — explicit origin allowlist (never "*" together with credentials,
+# which browsers refuse). settings.cors_origin_list normalises the configured value
+# to the exact form a browser sends in its Origin header.
+cors_origins = settings.cors_origin_list
+if cors_origins:
+    logger.info("CORS allowlist: %s", ", ".join(cors_origins))
+elif settings.environment != "development":
+    # An empty allowlist rejects every cross-origin request, and it does so
+    # silently — the browser reports the failure, the server logs nothing. Say it
+    # once at startup so a misconfigured deploy is diagnosable from the logs
+    # instead of from guesswork.
+    logger.warning(
+        "CORS_ORIGINS is empty in environment=%s. Every browser request from the "
+        "frontend will be blocked. Set CORS_ORIGINS to the frontend's public URL.",
+        settings.environment,
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

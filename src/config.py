@@ -1,7 +1,12 @@
 """Configuration module for the Food Delivery Platform."""
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
+_UNSET_CREDENTIALS = frozenset(
+    {"", "-", "none", "null", "unset", "not-set", "not-configured", "changeme", "change-me"}
+)
 
 
 class Settings(BaseSettings):
@@ -89,7 +94,67 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    @field_validator("frontend_base_url", mode="before")
+    @classmethod
+    def _first_url_only(cls, value):
+        """Keep a single URL even when handed a comma-separated list.
+
+        The deploy sets this and CORS_ORIGINS from one substitution, and
+        CORS_ORIGINS legitimately takes several origins. Emailed reset and
+        verification links cannot: joining two URLs with a comma produces a dead
+        link, and it would only be noticed by whoever clicked it. Take the first
+        and drop any trailing slash.
+        """
+        if isinstance(value, str) and value.strip():
+            return value.split(",")[0].strip().rstrip("/")
+        return value
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """The CORS allowlist, normalised to what a browser actually sends.
+
+        A browser's ``Origin`` header is scheme + host + optional port and never
+        has a trailing slash, and CORSMiddleware compares it by exact string. So
+        ``https://app.run.app/`` — which is what you get copying the URL out of an
+        address bar — would match nothing and silently reject every request. Strip
+        the slash here rather than relying on whoever sets the variable to know
+        that. Duplicates are dropped while keeping the configured order.
+        """
+        seen: dict[str, None] = {}
+        for origin in self.cors_origins.split(","):
+            cleaned = origin.strip().rstrip("/")
+            if cleaned:
+                seen.setdefault(cleaned, None)
+        return list(seen)
+
+    @field_validator(
+        "stripe_api_key", "stripe_secret_key", "stripe_webhook_secret",
+        "twilio_account_sid", "twilio_auth_token", "twilio_phone_number",
+        "sendgrid_api_key", "sendgrid_from_email", "fcm_server_key",
+        "google_maps_api_key",
+        mode="before",
+    )
+    @classmethod
+    def _placeholder_credential_is_unset(cls, value):
+        """Treat a blank or placeholder credential as absent.
+
+        Each optional integration picks its provider by testing whether its key is
+        truthy, so a deployment that writes ``not-configured`` into a secret would
+        otherwise select the *live* provider and fail on every call. Normalising
+        here means "unconfigured" is decided by one rule in one place instead of
+        every call site having to recognise placeholder text.
+        """
+        if isinstance(value, str) and value.strip().lower() in _UNSET_CREDENTIALS:
+            return None
+        return value
+
+    # extra="ignore": a `.env` holding a key this class does not declare — a stray
+    # DB_PASSWORD, a note to self, a leftover from another tool — must not stop the
+    # app from starting. The default (forbid) turns any such key into an import-time
+    # crash, which is a lot of blast radius for something unrelated to the app.
+    model_config = SettingsConfigDict(
+        env_file=".env", case_sensitive=False, extra="ignore"
+    )
 
 
 settings = Settings()

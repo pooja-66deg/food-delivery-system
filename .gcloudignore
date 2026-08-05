@@ -1,4 +1,7 @@
-# Files not uploaded to Cloud Build. Keeps the source upload small.
+.env
+.env.*
+!.env.example
+
 .git
 .venv
 **/__pycache__
