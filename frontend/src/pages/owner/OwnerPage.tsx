@@ -51,6 +51,7 @@ export function OwnerPage() {
       {error && <Alert>{error}</Alert>}
 
       <div className="owner-grid">
+        {/* Left Panel: Restaurants */}
         <section className="owner-panel">
           <h2>Your restaurants</h2>
           {mine && mine.length > 0 ? (
@@ -80,14 +81,21 @@ export function OwnerPage() {
           />
         </section>
 
+        {/* Center Panel: Incoming Orders */}
         <section className="owner-panel">
           {selectedId === null ? (
-            <EmptyState>Select or create a restaurant to manage its menu.</EmptyState>
+            <EmptyState>Select a restaurant to view incoming orders.</EmptyState>
           ) : (
-            <>
-              <IncomingOrders restaurantId={selectedId} />
-              <MenuManager restaurantId={selectedId} onChanged={loadMine} />
-            </>
+            <IncomingOrders restaurantId={selectedId} />
+          )}
+        </section>
+
+        {/* Right Panel: Menu Manager */}
+        <section className="owner-panel">
+          {selectedId === null ? (
+            <EmptyState>Select a restaurant to manage its menu.</EmptyState>
+          ) : (
+            <MenuManager restaurantId={selectedId} onChanged={loadMine} />
           )}
         </section>
       </div>

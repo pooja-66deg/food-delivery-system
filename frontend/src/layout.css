@@ -307,9 +307,7 @@
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: 940px;
-  margin: 0 auto;
-  padding: 2.75rem 1.75rem 4rem;
+  padding: 2.5rem 2rem 3rem;
 }
 .page-head {
   margin-bottom: 2rem;
@@ -789,25 +787,36 @@
   flex-wrap: wrap;
 }
 .menu-section {
-  margin-bottom: 2.25rem;
+  margin-bottom: 2.5rem;
 }
+
 .menu-section h2 {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: var(--ink);
 }
 .menu-items {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.8rem;
 }
+
 .menu-item {
   display: flex;
   justify-content: space-between;
   gap: 1.25rem;
-  padding: 1rem 1.15rem;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid var(--line);
+  padding: 1.1rem 1.4rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: none;
   border-radius: var(--r-md);
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 .menu-item-name {
   display: flex;
@@ -1011,34 +1020,247 @@
 }
 
 /* owner */
-.owner-grid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 1.5rem; align-items: start; }
+.owner-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  align-items: stretch;
+}
+
 .owner-panel {
-  padding: 1.25rem;
+  padding: 2rem;
+  border: none;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--r-lg);
+  overflow-y: visible;
+  max-height: none;
+  width: 100%;
+}
+
+.owner-panel > h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.owner-panel > .muted {
+  margin-bottom: 1.5rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.owner-rest-list {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.owner-rest-item {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1.2rem;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--paper-2);
+  cursor: pointer;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-/* The global `* { margin: 0 }` reset strips heading and paragraph margins, so
-   every panel restores its own vertical rhythm — same approach as `.panel h3`.
-   Without these the h2, the empty-state copy, and .owner-form's border-top all
-   stack flush against each other. */
-.owner-panel > h2 {
-  margin-bottom: 1.1rem;
+
+.owner-rest-item:hover {
+  background: var(--paper);
+  border-color: var(--line-strong);
 }
-.owner-panel > .muted {
-  margin-bottom: 1.25rem;
+
+.owner-rest-item[data-active='true'] {
+  background: var(--tomato);
+  color: white;
+  border-color: var(--tomato);
 }
-.owner-rest-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
-.owner-rest-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: var(--r-sm);
-  background: var(--paper); cursor: pointer; font-weight: 600; text-align: left;
+
+.owner-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
 }
-.owner-rest-item[data-active='true'] { border-color: var(--tomato); box-shadow: var(--shadow-sm); }
-.owner-form { display: flex; flex-direction: column; gap: 0.75rem; border-top: 1px solid var(--line); padding-top: 1rem; }
-.owner-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.owner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.owner-head h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--ink);
+}
 .owner-inline-form { display: flex; gap: 0.6rem; align-items: center; margin: 0.75rem 0 1rem; flex-wrap: wrap; }
 .input-narrow { max-width: 120px; }
+
+/* Order cards */
+.order-card {
+  padding: 1.25rem 1.5rem;
+  border: none;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.7);
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.order-card:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.order-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+.order-card-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.order-card-time {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.order-card-total {
+  font-weight: 700;
+  color: var(--tomato);
+}
+.order-card-items {
+  font-size: 0.9rem;
+  color: var(--ink);
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.order-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Menu grid */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.menu-item-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0.9rem;
+  border: none;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.menu-item-card:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Adjust MenuItemPanel inside card for vertical layout */
+.menu-item-card .menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.menu-item-card .menu-item-lead {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.menu-item-card .menu-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.menu-item-image {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  margin-bottom: 0.5rem;
+}
+
+/* Owner dashboard card view styles */
+.menu-item-card .menu-item-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.2;
+}
+
+.menu-item-price {
+  font-weight: 700;
+  color: var(--tomato);
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.menu-item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.menu-item-available {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.menu-item-card .menu-item-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.menu-item-card .menu-item-actions button {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
 
 .confirm-backdrop {
   position: fixed;
@@ -1097,9 +1319,21 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@media (max-width: 1200px) {
+  .owner-grid { gap: 2.5rem; }
+}
+
+@media (max-width: 1000px) {
+  .owner-grid { gap: 2rem; }
+}
+
 @media (max-width: 780px) {
-  .owner-grid { grid-template-columns: 1fr; }
+  .owner-grid { gap: 1.5rem; }
+  .owner-panel { padding: 1.5rem; }
+  .owner-rest-list { gap: 0.75rem; }
+  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 0.8rem; }
   .cart-row { grid-template-columns: 1fr auto; row-gap: 0.5rem; }
+  .app-main { padding: 2rem 1.5rem 2.5rem; }
 }
 
 /* ── Admin dashboard ─────────────────────────────────────────────────────── */
