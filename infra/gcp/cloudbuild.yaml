@@ -130,7 +130,10 @@ steps:
       # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
       # Geocoding permission and must never reach the browser. Without it the
       # API still serves ETAs, computed straight-line instead of via Google.
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest
+      # SENDGRID_* are what turn transactional email from log-only into real
+      # delivery. Both are required together: EmailSender tests `key and sender`,
+      # so mounting one without the other silently keeps the log transport.
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,SENDGRID_FROM_EMAIL=SENDGRID_FROM_EMAIL:latest
     waitFor: ["test", "push-api"]
 
   # 5. Deploy the frontend to Cloud Run (static SPA served by nginx).
