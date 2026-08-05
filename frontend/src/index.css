@@ -87,7 +87,7 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease),
+  transition: transform 0.18s var(--ease),
     background 0.18s var(--ease), opacity 0.18s var(--ease);
   white-space: nowrap;
 }
@@ -98,14 +98,12 @@ a:hover {
 .btn-primary {
   background: linear-gradient(135deg, var(--tomato) 0%, var(--tomato-deep) 100%);
   color: #fff5ee;
-  box-shadow: 0 12px 26px -12px rgba(189, 54, 32, 0.75);
 }
+/* Flat: no drop shadow. Hover shifts the gradient instead of lifting the button,
+   because a translate with no shadow behind it reads as a glitch rather than a
+   lift. */
 .btn-primary:not(:disabled):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px -14px rgba(189, 54, 32, 0.85);
-}
-.btn-primary:not(:disabled):active {
-  transform: translateY(0);
+  background: linear-gradient(135deg, var(--tomato-deep) 0%, var(--tomato-deep) 100%);
 }
 .btn-ghost {
   background: transparent;

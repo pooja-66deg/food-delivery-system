@@ -32,6 +32,12 @@ substitutions:
   # and carries Routes + Geocoding permission. Unset: tracking shows the ETA as
   # text with no map.
   _MAPS_BROWSER_KEY: ""
+  # Stripe publishable key (pk_test_… / pk_live_…), baked into the SPA bundle.
+  # Public by construction, so a substitution and not a secret — it can only
+  # tokenise cards, never charge. The matching sk_… secret key goes in Secret
+  # Manager. Unset: checkout shows COD only, because CartPage hides the card
+  # option when no publishable key is present.
+  _STRIPE_PUBLISHABLE_KEY: ""
   # Image tag. Deliberately not Cloud Build's SHORT_SHA built-in: that is only
   # populated for builds invoked by a trigger, so a manual
   # `gcloud builds submit` expanded it to "" and produced the invalid reference
@@ -93,6 +99,8 @@ steps:
       - "VITE_API_URL=${_API_URL}"
       - --build-arg
       - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}"
+      - --build-arg
+      - "VITE_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_KEY}"
       - -t
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
       - .

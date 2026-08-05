@@ -29,6 +29,10 @@ dependencies = [
     # swallowed ImportError at send time — not at startup. Declared here so the
     # real transport actually engages once SENDGRID_* are configured.
     "sendgrid==6.12.5",
+    # Same lazy-import shape in payments/providers.py: without this declared,
+    # StripeProvider fails at charge time with a swallowed ImportError while the
+    # checkout still looks healthy.
+    "stripe==15.4.0",
 ]
 
 [project.optional-dependencies]
