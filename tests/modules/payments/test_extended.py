@@ -12,7 +12,7 @@ from src.modules.payments.providers import ProviderResult
 class _FailingProvider:
     name = "CARD"
 
-    async def authorize(self, amount, idempotency_key):
+    async def authorize(self, amount, idempotency_key, order_id):
         return ProviderResult(ok=False, reference=None, status="declined")
 
     async def refund(self, reference, amount):
@@ -22,7 +22,7 @@ class _FailingProvider:
 class _RecoveringProvider:
     name = "CARD"
 
-    async def authorize(self, amount, idempotency_key):
+    async def authorize(self, amount, idempotency_key, order_id):
         return ProviderResult(ok=True, reference="pi_ok", status="authorized")
 
     async def refund(self, reference, amount):

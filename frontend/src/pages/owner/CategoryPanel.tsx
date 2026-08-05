@@ -134,9 +134,9 @@ export function CategoryPanel({
         onConfirm={() => void remove()}
       />
 
-      <div className="menu-items">
+      <div className="menu-grid">
         {category.items.map((item) => (
-          <div key={item.id}>
+          <div key={item.id} className="menu-item-card">
             <MenuItemPanel
               item={item}
               onEdit={() => onEditItem(item.id)}

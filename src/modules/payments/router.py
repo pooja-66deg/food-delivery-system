@@ -77,6 +77,24 @@ async def resume_order_payment(
     return payment
 
 
+@router.post("/order/{order_id}/confirm", response_model=PaymentRead)
+async def confirm_order_payment(
+    order_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """Settle a card order the customer has just been redirected back from.
+
+    Safe to call at any time: the payment state is read back from the provider,
+    so this cannot mark an unpaid order paid.
+    """
+    order = await order_service.get_order_for_user(session, user, order_id)
+    payment = await payment_service.confirm_card_payment(session, order)
+    if payment is None:
+        raise NotFoundException("Payment", str(order_id))
+    return payment
+
+
 @router.post("/order/{order_id}/retry", response_model=PaymentRead)
 async def retry_order_payment(
     order_id: int,

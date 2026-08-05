@@ -20,9 +20,9 @@ async def create_payment_for_order(
 ) -> Payment:
     """Idempotent: returns the existing payment if one already exists for the order.
 
-    When the provider needs the customer to confirm (a card PaymentIntent), the
-    returned object carries the ``client_secret`` as a transient attribute — read
-    it with ``client_secret_of``. It is never written to the database.
+    When the provider needs the customer to pay on a hosted page, the returned
+    object carries the ``checkout_url`` as a transient attribute — read it with
+    ``checkout_url_of``. It is never written to the database.
     """
     existing = await get_payment(session, order.id)
     if existing is not None:
@@ -30,7 +30,7 @@ async def create_payment_for_order(
 
     provider = provider or provider_for(order.payment_method)
     idem = f"order-{order.id}"
-    result = await provider.authorize(order.total, idempotency_key=idem)
+    result = await provider.authorize(order.total, idempotency_key=idem, order_id=order.id)
     payment = Payment(
         order_id=order.id,
         provider=provider.name,
@@ -42,17 +42,17 @@ async def create_payment_for_order(
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
-    payment.client_secret = result.client_secret
+    payment.checkout_url = result.checkout_url
     return payment
 
 
-def client_secret_of(payment: Payment | None) -> str | None:
-    """The confirmation secret attached by ``create_payment_for_order``, if any.
+def checkout_url_of(payment: Payment | None) -> str | None:
+    """The hosted checkout URL attached by ``create_payment_for_order``, if any.
 
-    Absent for a payment loaded from the database — the secret only exists for
-    the response that created it.
+    Absent for a payment loaded from the database — the URL only exists for the
+    response that created it.
     """
-    return getattr(payment, "client_secret", None)
+    return getattr(payment, "checkout_url", None)
 
 
 async def capture_payment(session: AsyncSession, order) -> Payment | None:
@@ -80,7 +80,9 @@ async def retry_payment(session: AsyncSession, order, provider: PaymentProvider 
     if payment.status != PaymentTxStatus.FAILED.value:
         return payment
     provider = provider or provider_for(payment.provider)
-    result = await provider.authorize(order.total, idempotency_key=f"order-{order.id}-retry")
+    result = await provider.authorize(
+        order.total, idempotency_key=f"order-{order.id}-retry", order_id=order.id
+    )
     payment.status = PaymentTxStatus.AUTHORIZED.value if result.ok else PaymentTxStatus.FAILED.value
     payment.provider_ref = result.reference
     await session.commit()
@@ -91,10 +93,10 @@ async def retry_payment(session: AsyncSession, order, provider: PaymentProvider 
 async def resume_card_payment(
     session: AsyncSession, order, provider: PaymentProvider | None = None
 ) -> Payment | None:
-    """Hand back a confirmation secret for an order still awaiting card payment.
+    """Hand back a checkout URL for an order still awaiting card payment.
 
-    The secret from checkout is never stored, so a customer who closed the tab
-    has no way back to it. This mints a fresh PaymentIntent for the same order
+    The URL from checkout is never stored, so a customer who closed the tab has
+    no way back to it. This opens a fresh Checkout Session for the same order
     and points the payment row at it; the abandoned one expires on its own.
 
     Returns the payment unchanged when there is nothing to pay — a settled
@@ -107,14 +109,55 @@ async def resume_card_payment(
         return payment
 
     provider = provider or provider_for("CARD")
-    result = await provider.authorize(order.total, idempotency_key=f"order-{order.id}-resume")
+    result = await provider.authorize(
+        order.total, idempotency_key=f"order-{order.id}-resume", order_id=order.id
+    )
     payment.status = (
         PaymentTxStatus.AUTHORIZED.value if result.ok else PaymentTxStatus.FAILED.value
     )
     payment.provider_ref = result.reference
     await session.commit()
     await session.refresh(payment)
-    payment.client_secret = result.client_secret
+    payment.checkout_url = result.checkout_url
+    return payment
+
+
+async def confirm_card_payment(
+    session: AsyncSession, order, provider: PaymentProvider | None = None
+) -> Payment | None:
+    """Settle a card order by asking the provider whether it was actually paid.
+
+    The webhook is still the authority, but it is not always reachable — a local
+    setup has no public URL for Stripe to call, and in production an event can
+    be delayed. This runs when the customer lands back on the order from the
+    hosted page: same outcome, driven by the return leg instead.
+
+    Trusting the redirect itself would let anyone mark an order paid by visiting
+    a URL, so the payment state is read back from the provider and nothing else
+    is taken on faith. Idempotent, and a no-op for anything not awaiting a card.
+    """
+    payment = await get_payment(session, order.id)
+    if payment is None:
+        return None
+    if payment.provider != "CARD" or order.status != "PAYMENT_PENDING":
+        return payment
+
+    provider = provider or provider_for("CARD")
+    result = await provider.verify(payment.provider_ref)
+    if not result.ok:
+        return payment
+
+    # Same swap the webhook makes: a refund cannot be issued against a session.
+    if result.reference:
+        payment.provider_ref = result.reference
+    payment.status = PaymentTxStatus.SUCCEEDED.value
+    await session.commit()
+    await session.refresh(payment)
+
+    # Imported here rather than at module scope: orders imports payments.
+    from src.modules.orders import service as order_service
+
+    await order_service.mark_paid(session, order.id)
     return payment
 
 

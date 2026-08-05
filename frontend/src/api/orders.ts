@@ -36,8 +36,7 @@ export interface Order {
   created_at: string
   items: OrderItem[]
   events: OrderEvent[]
-  /** Set on the checkout response when the customer still has to confirm. */
-  payment_client_secret?: string | null
+  payment_checkout_url?: string | null
 }
 
 export interface OrderSummary {
@@ -57,7 +56,7 @@ export interface Payment {
   provider_ref: string | null
   created_at: string
   /** Only returned by `resume`, for an order still awaiting card payment. */
-  client_secret?: string | null
+  checkout_url?: string | null
 }
 
 export type PaymentMethod = 'COD' | 'CARD'
@@ -85,7 +84,7 @@ export const ordersApi = {
 
   payment: (orderId: number) => request<Payment>(`/payments/order/${orderId}`, { auth: true }),
 
-  /** Mint a fresh confirmation secret for an order left unpaid. */
+  /** Open a fresh hosted checkout for an order left unpaid. */
   resumePayment: (orderId: number) =>
     request<Payment>(`/payments/order/${orderId}/resume`, { method: 'POST', auth: true }),
 

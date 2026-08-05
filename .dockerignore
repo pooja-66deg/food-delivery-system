@@ -17,7 +17,9 @@ htmlcov
 frontend/dist
 
 # Local env & logs (secrets come from compose, not the image)
+# Exception: frontend/.env contains Vite build-time env vars (VITE_*) which must be available at build time
 .env
+!frontend/.env
 *.log
 
 # Docs / tests are not needed at runtime

@@ -12,13 +12,16 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/api/orders', () => ({ ordersApi: mocks }))
 
-// The card step needs Stripe context; the wiring is covered by its own test.
-vi.mock('../../src/payments/StripeElements', () => ({
-  StripeElements: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}))
-vi.mock('../../src/payments/CardPaymentStep', () => ({
-  CardPaymentStep: () => <div>card step</div>,
-}))
+const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_123'
+
+/** jsdom refuses to navigate, so stand in for the bit of `location` we set. */
+function stubLocation() {
+  const stub = { href: '' }
+  Object.defineProperty(window, 'location', {
+    value: stub, writable: true, configurable: true,
+  })
+  return stub
+}
 
 function order(overrides: Record<string, unknown> = {}) {
   return {
@@ -41,7 +44,7 @@ function renderPage() {
 
 beforeEach(() => {
   mocks.list.mockReset().mockResolvedValue([order()])
-  mocks.resumePayment.mockReset().mockResolvedValue({ client_secret: 'pi_secret' })
+  mocks.resumePayment.mockReset().mockResolvedValue({ checkout_url: CHECKOUT_URL })
 })
 
 describe('OrdersPage tabs', () => {
@@ -92,8 +95,9 @@ describe('OrdersPage payment', () => {
     expect(screen.getAllByRole('button', { name: 'Pay now' })).toHaveLength(1)
   })
 
-  it('reopens the card step with a fresh secret', async () => {
-    // The checkout secret is never stored, so this must come from the server.
+  it('sends the browser to a fresh hosted checkout', async () => {
+    // The checkout URL is never stored, so this must come from the server.
+    const location = stubLocation()
     mocks.list.mockResolvedValue([order({ status: 'PAYMENT_PENDING' })])
     renderPage()
     await screen.findByText('Order #1')
@@ -101,12 +105,12 @@ describe('OrdersPage payment', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Pay now' }))
 
     await waitFor(() => expect(mocks.resumePayment).toHaveBeenCalledWith(1))
-    expect(await screen.findByText('card step')).toBeInTheDocument()
+    await waitFor(() => expect(location.href).toBe(CHECKOUT_URL))
   })
 
   it('explains when the order can no longer be paid online', async () => {
     mocks.list.mockResolvedValue([order({ status: 'PAYMENT_PENDING' })])
-    mocks.resumePayment.mockResolvedValue({ client_secret: null })
+    mocks.resumePayment.mockResolvedValue({ checkout_url: null })
     renderPage()
     await screen.findByText('Order #1')
 

@@ -43,8 +43,8 @@ class OrderRead(BaseModel):
     items: list[OrderItemRead]
     events: list[OrderStatusEventRead]
     # Present only on the checkout response, and only when the customer still
-    # has to confirm the payment. Never stored.
-    payment_client_secret: str | None = None
+    # has to pay on Stripe's hosted page. Never stored.
+    payment_checkout_url: str | None = None
 
 
 class OrderSummary(BaseModel):

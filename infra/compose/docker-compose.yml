@@ -77,9 +77,21 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Third-party credentials (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, Twilio,
+    # SendGrid, Google Maps) come from the repo-root .env. Optional: without it
+    # each integration falls back to its stand-in. The environment: block below
+    # wins over anything here, so a host .env cannot redirect the container at
+    # a localhost database.
+    env_file:
+      - path: ../../.env
+        required: false
     environment:
       DATABASE_URL: postgresql://fooduser:foodpass@postgres:5432/fooddelivery
       REDIS_URL: redis://redis:6379/0
+      # .env.example ships DATABASE_ECHO=true for someone running uvicorn by
+      # hand; echoing every statement into the container log is not what anyone
+      # wants from `compose up`. Pinned here so the env_file cannot turn it on.
+      DATABASE_ECHO: "false"
       # Kafka disabled for now (see note above); the app tolerates its absence.
       KAFKA_BROKERS: disabled:9092
       JWT_SECRET_KEY: dev-secret-change-me
@@ -98,6 +110,12 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/frontend.Dockerfile
+      # Vite inlines this at build time, so it has to arrive as a build arg — a
+      # runtime environment: block would be too late. It is a public key that
+      # ships in the bundle. Unset on the host = empty = the map degrades to a
+      # text panel. Card payments need no browser-side key at all.
+      args:
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
     container_name: fooddelivery_frontend
     depends_on:
       - api

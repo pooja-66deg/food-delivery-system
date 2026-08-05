@@ -10,4 +10,7 @@ export const paymentsApi = {
   forOrder: (orderId: number) => request<Payment>(`/payments/order/${orderId}`, { auth: true }),
   retry: (orderId: number) =>
     request<Payment>(`/payments/order/${orderId}/retry`, { method: 'POST', auth: true }),
+  /** Settle an order the customer has just been redirected back from. */
+  confirm: (orderId: number) =>
+    request<Payment>(`/payments/order/${orderId}/confirm`, { method: 'POST', auth: true }),
 }
