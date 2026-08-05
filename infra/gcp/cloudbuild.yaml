@@ -120,7 +120,13 @@ steps:
       - --vpc-egress=private-ranges-only
       # CORS_ORIGINS and FRONTEND_BASE_URL both come from _FE_URL — see the
       # substitution comment for why an unset value breaks the deployed app.
-      - --set-env-vars=ENVIRONMENT=production,KAFKA_BROKERS=disabled:9092,CORS_ORIGINS=${_FE_URL},FRONTEND_BASE_URL=${_FE_URL}
+      # The leading ^@^ switches gcloud's key/value separator from "," to "@", so
+      # _FE_URL may itself be a comma-separated list. It has to be: Cloud Run
+      # serves each service on two hostnames (the legacy PROJECT-HASH-REGION
+      # .a.run.app and the newer SERVICE-PROJECTNUMBER.REGION.run.app), CORS
+      # matches Origin by exact string, and whichever one is missing from the
+      # allowlist blocks every request made from it.
+      - --set-env-vars=^@^ENVIRONMENT=production@KAFKA_BROKERS=disabled:9092@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}
       # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
       # Geocoding permission and must never reach the browser. Without it the
       # API still serves ETAs, computed straight-line instead of via Google.

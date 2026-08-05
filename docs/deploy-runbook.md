@@ -419,15 +419,32 @@ and the same for `food-frontend`.
 
 ## Step 13 — Collect the two URLs
 
+Cloud Run serves each service on **two** hostnames — the legacy
+`SERVICE-HASH-REGIONCODE.a.run.app` and the newer
+`SERVICE-PROJECTNUMBER.REGION.run.app`. `status.url` reports only one of them,
+but a browser sends whichever one is in the address bar, and CORS matches the
+`Origin` header by exact string. So `GCP_FE_URL` must list **both**, or the app
+breaks on whichever hostname was left out.
+
 ```bash
+export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+
 export API_URL=$(gcloud run services describe food-api      --region=$REGION --format='value(status.url)')
 export FE_URL=$(gcloud run services describe food-frontend  --region=$REGION --format='value(status.url)')
 
+# The other hostname for each service, derived rather than looked up.
+export FE_URL_ALT="https://food-frontend-${PROJECT_NUMBER}.${REGION}.run.app"
+
 echo ""
 echo "GCP_API_URL  ->  $API_URL"
-echo "GCP_FE_URL   ->  $FE_URL"
+echo "GCP_FE_URL   ->  ${FE_URL},${FE_URL_ALT}"
 echo ""
 ```
+
+If `FE_URL` already came back in the `-${PROJECT_NUMBER}.${REGION}` form, then
+`FE_URL_ALT` is the duplicate and the legacy one is what's missing — read it off
+the service's page in the Cloud Run console. Listing a duplicate is harmless
+(`cors_origin_list` de-duplicates), listing neither is what breaks.
 
 Sanity-check the API is alive:
 
@@ -446,9 +463,13 @@ Expect `{"status":"healthy","environment":"production"}`.
 | Name | Value |
 |------|-------|
 | `GCP_API_URL` | the URL printed above |
-| `GCP_FE_URL` | the URL printed above |
+| `GCP_FE_URL` | **both** frontend URLs printed above, comma-separated, no spaces |
 
 Paste them exactly, including `https://` and **no trailing slash**.
+
+`GCP_FE_URL` feeds two settings: the whole list becomes the `CORS_ORIGINS`
+allowlist, while `FRONTEND_BASE_URL` (used to build emailed reset links) takes
+only the first entry — so put the hostname you want in emails first.
 
 You now have **2 secrets + 5 variables**. That is the complete set.
 
