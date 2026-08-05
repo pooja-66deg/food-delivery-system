@@ -43,6 +43,9 @@ async def test_driver_pickup_and_deliver_flow(api_client):
     assignments = (await api_client.get("/delivery/assignments", headers=driver)).json()
     assert any(a["order_id"] == oid and a["status"] == "ASSIGNED" for a in assignments)
 
+    notes = (await api_client.get("/notifications", headers=driver)).json()
+    assert any(n["type"] == "delivery.assigned" and n["order_id"] == oid for n in notes)
+
     # pickup advances the order to OUT_FOR_DELIVERY
     pu = await api_client.post(f"/delivery/orders/{oid}/pickup", headers=driver)
     assert pu.status_code == 200 and pu.json()["status"] == "PICKED_UP"

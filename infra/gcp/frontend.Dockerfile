@@ -14,6 +14,13 @@ ENV VITE_API_URL=${VITE_API_URL}
 # ETA as text instead of a map.
 ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+# Stripe *publishable* key (pk_...). Public by construction — it identifies the
+# account to Stripe.js and can only create payment methods, never move money, so
+# baking it into the bundle is correct. The secret key (sk_...) must never appear
+# here; it lives in Secret Manager and is read by the API only. Left unset, the
+# checkout hides the card option entirely rather than offering a dead end.
+ARG VITE_STRIPE_PUBLISHABLE_KEY
+ENV VITE_STRIPE_PUBLISHABLE_KEY=${VITE_STRIPE_PUBLISHABLE_KEY}
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
