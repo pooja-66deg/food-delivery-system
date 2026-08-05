@@ -167,20 +167,20 @@ async def create_order_from_checkout(
         await _deliver_status(session, loaded)
 
         # Set up the payment — idempotent per order. A provider that needs the
-        # customer to confirm hands back a secret; one that settles by itself
-        # does not, and the order is done the moment it is authorized.
+        # customer to pay hands back a hosted checkout URL; one that settles by
+        # itself does not, and the order is done the moment it is authorized.
         payment = await payment_service.create_payment_for_order(session, loaded)
-        secret = payment_service.client_secret_of(payment)
+        checkout_url = payment_service.checkout_url_of(payment)
         if (
             loaded.status == OrderStatus.PAYMENT_PENDING.value
-            and secret is None
+            and checkout_url is None
             and payment.status != PaymentTxStatus.FAILED.value
         ):
             loaded = await mark_paid(session, loaded.id)
 
-        # Transient, response-only: the secret is handed to the browser and
-        # never written to the database.
-        loaded.payment_client_secret = secret
+        # Transient, response-only: the URL is handed to the browser and never
+        # written to the database.
+        loaded.payment_checkout_url = checkout_url
         return loaded
     finally:
         await redis.delete(lock_key)

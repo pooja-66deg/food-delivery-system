@@ -6,8 +6,6 @@ import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import type { OrderScope, OrderSummary } from '../api/orders'
 import { Alert, Button, EmptyState, Loading } from '../components/ui'
-import { CardPaymentStep } from '../payments/CardPaymentStep'
-import { StripeElements } from '../payments/StripeElements'
 import { statusLabel } from './orderStatus'
 
 const TABS: { scope: Exclude<OrderScope, 'all'>; label: string; empty: string }[] = [
@@ -20,8 +18,9 @@ export function OrdersPage() {
   const [scope, setScope] = useState<Exclude<OrderScope, 'all'>>('active')
   const [orders, setOrders] = useState<OrderSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // The order whose card step is open, with a freshly minted secret.
-  const [paying, setPaying] = useState<{ orderId: number; clientSecret: string } | null>(null)
+  // The order a hosted checkout is being opened for, so its button can show
+  // that something is happening while the redirect is arranged.
+  const [paying, setPaying] = useState<number | null>(null)
   // Lines a reorder could not carry over, shown before the customer reaches the
   // cart so a short refill is never a surprise at checkout.
   const [reorderNotice, setReorderNotice] = useState<string[] | null>(null)
@@ -44,33 +43,20 @@ export function OrdersPage() {
 
   async function startPayment(orderId: number) {
     setError(null)
+    setPaying(orderId)
     try {
-      // The checkout secret is never stored, so ask for a fresh one.
+      // The checkout URL is never stored, so ask for a fresh one.
       const payment = await ordersApi.resumePayment(orderId)
-      if (!payment.client_secret) {
+      if (!payment.checkout_url) {
         setError('This order can no longer be paid for online.')
         return
       }
-      setPaying({ orderId, clientSecret: payment.client_secret })
+      window.location.href = payment.checkout_url
     } catch (e) {
       setError(errorMessage(e, 'Could not reopen payment.'))
+    } finally {
+      setPaying(null)
     }
-  }
-
-  if (paying) {
-    return (
-      <main className="app-main">
-        <h1>Pay for order #{paying.orderId}</h1>
-        <div className="cart-summary">
-          <StripeElements clientSecret={paying.clientSecret}>
-            <CardPaymentStep
-              onPaid={() => navigate(`/orders/${paying.orderId}`)}
-              onCancel={() => setPaying(null)}
-            />
-          </StripeElements>
-        </div>
-      </main>
-    )
   }
 
   async function reorder(orderId: number) {
@@ -144,7 +130,11 @@ export function OrdersPage() {
                 <div className="price">${Number(o.total).toFixed(2)}</div>
               </Link>
               {o.status === 'PAYMENT_PENDING' && (
-                <Button variant="ghost" onClick={() => void startPayment(o.id)}>
+                <Button
+                  variant="ghost"
+                  loading={paying === o.id}
+                  onClick={() => void startPayment(o.id)}
+                >
                   Pay now
                 </Button>
               )}

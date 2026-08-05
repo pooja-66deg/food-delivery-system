@@ -24,6 +24,15 @@ _SEEN_TTL = 7 * 86400
 
 SUCCEEDED = "payment_intent.succeeded"
 FAILED = "payment_intent.payment_failed"
+# Hosted Checkout: what settles an order placed through the redirect. The intent
+# events above still arrive and are still honoured — whichever lands first marks
+# the order paid, and the other finds nothing left to do.
+CHECKOUT_COMPLETED = "checkout.session.completed"
+CHECKOUT_ASYNC_SUCCEEDED = "checkout.session.async_payment_succeeded"
+CHECKOUT_ASYNC_FAILED = "checkout.session.async_payment_failed"
+
+_SETTLES = (SUCCEEDED, CHECKOUT_COMPLETED, CHECKOUT_ASYNC_SUCCEEDED)
+_FAILS = (FAILED, CHECKOUT_ASYNC_FAILED)
 
 
 class WebhookError(AppException):
@@ -95,20 +104,36 @@ async def handle_event(session: AsyncSession, redis, event: Mapping[str, Any]) -
                                         nx=True, ex=_SEEN_TTL):
         return "duplicate"
 
-    if event_type not in (SUCCEEDED, FAILED):
+    if event_type not in _SETTLES + _FAILS:
         return "ignored"
 
-    intent_id = event.get("data", {}).get("object", {}).get("id")
-    payment = await session.scalar(select(Payment).where(Payment.provider_ref == intent_id))
+    obj = event.get("data", {}).get("object", {})
+    # A payment row is found by whichever id it currently holds: the Checkout
+    # Session while the customer is still on Stripe's page, the PaymentIntent
+    # once the session has completed.
+    ref = obj.get("id")
+    payment = await session.scalar(select(Payment).where(Payment.provider_ref == ref))
     if payment is None:
         # Not an order of ours (or one already cleaned up). Nothing to retry.
-        logger.info("[payments:webhook] no payment for intent %s", intent_id)
+        logger.info("[payments:webhook] no payment for reference %s", ref)
         return "unknown"
 
-    if event_type == FAILED:
+    if event_type in _FAILS:
         payment.status = PaymentTxStatus.FAILED.value
         await session.commit()
         return "failed"
+
+    if event_type in (CHECKOUT_COMPLETED, CHECKOUT_ASYNC_SUCCEEDED):
+        # Point the row at the PaymentIntent — the session id is not something
+        # a refund can be issued against.
+        intent = obj.get("payment_intent")
+        if intent:
+            payment.provider_ref = intent
+        # A completed session is not always a paid one: a delayed method leaves
+        # it unpaid until its own event arrives. Record the intent, wait.
+        if obj.get("payment_status") not in (None, "paid", "no_payment_required"):
+            await session.commit()
+            return "awaiting-payment"
 
     payment.status = PaymentTxStatus.SUCCEEDED.value
     await session.commit()

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ApiError, errorMessage } from '../api/client'
 import { deliveryApi } from '../api/delivery'
@@ -18,6 +18,11 @@ const REVIEWABLE = new Set(['DELIVERED', 'COMPLETED'])
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Stripe's success_url carries this back. It is only a hint that a payment
+  // may have gone through — the server checks with Stripe before believing it.
+  const returnedFromCheckout = searchParams.get('paid') === '1'
+  const [confirming, setConfirming] = useState(returnedFromCheckout)
   const { user } = useAuth()
   const { refresh: refreshCart } = useCart()
   const [order, setOrder] = useState<Order | null>(null)
@@ -46,9 +51,33 @@ export function OrderDetailPage() {
     }
   }, [id])
 
+  // Settle first, then load — otherwise the page paints the pre-payment status
+  // and only corrects itself on the next refresh.
   useEffect(() => {
+    if (!confirming || !id) return
+    let active = true
+    paymentsApi
+      .confirm(Number(id))
+      // A failure here is not the customer's problem: the webhook may have
+      // already settled it, and the load below reports whatever is true.
+      .catch(() => {})
+      .finally(() => {
+        if (!active) return
+        // Drop the marker so a reload does not look like a fresh return.
+        searchParams.delete('paid')
+        setSearchParams(searchParams, { replace: true })
+        setConfirming(false)
+      })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirming, id])
+
+  useEffect(() => {
+    if (confirming) return
     void load()
-  }, [load])
+  }, [load, confirming])
 
   // Poll live tracking while the order is out for delivery.
   useEffect(() => {
@@ -126,7 +155,7 @@ export function OrderDetailPage() {
   if (!order) {
     return (
       <main className="app-main">
-        <Loading />
+        <Loading label={confirming ? 'Confirming your payment…' : undefined} />
       </main>
     )
   }

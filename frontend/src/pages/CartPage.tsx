@@ -8,9 +8,6 @@ import { ordersApi } from '../api/orders'
 import type { PaymentMethod } from '../api/orders'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button, EmptyState } from '../components/ui'
-import { CardPaymentStep } from '../payments/CardPaymentStep'
-import { StripeElements } from '../payments/StripeElements'
-import { publishableKey } from '../payments/publishableKey'
 
 export function CartPage() {
   const { cart, refresh, update, remove } = useCart()
@@ -20,10 +17,6 @@ export function CartPage() {
   const [payMethod, setPayMethod] = useState<PaymentMethod>('COD')
   const [error, setError] = useState<string | null>(null)
   const [placing, setPlacing] = useState(false)
-  // Set when checkout hands back a PaymentIntent that still needs confirming.
-  const [pending, setPending] = useState<{ orderId: number; clientSecret: string } | null>(null)
-
-  const cardAvailable = publishableKey() !== null
 
   useEffect(() => {
     void refresh()
@@ -45,9 +38,10 @@ export function CartPage() {
     try {
       const order = await ordersApi.checkout(addressId, cart.price_hash, payMethod)
       await refresh()
-      if (order.payment_client_secret) {
-        // The order exists but is not paid for yet — collect the card first.
-        setPending({ orderId: order.id, clientSecret: order.payment_client_secret })
+      if (order.payment_checkout_url) {
+        // Hand the browser to Stripe's hosted page. Both of its return URLs
+        // come back to /orders/{id}, so there is nothing to restore here.
+        window.location.href = order.payment_checkout_url
         return
       }
       navigate(`/orders/${order.id}`)
@@ -59,25 +53,6 @@ export function CartPage() {
   }
 
   const empty = !cart || cart.items.length === 0
-
-  if (pending) {
-    return (
-      <main className="app-main">
-        <h1>Pay for order #{pending.orderId}</h1>
-        <p className="muted">
-          Your order is held while you pay. You can also finish this later from your orders.
-        </p>
-        <div className="cart-summary">
-          <StripeElements clientSecret={pending.clientSecret}>
-            <CardPaymentStep
-              onPaid={() => navigate(`/orders/${pending.orderId}`)}
-              onCancel={() => navigate(`/orders/${pending.orderId}`)}
-            />
-          </StripeElements>
-        </div>
-      </main>
-    )
-  }
 
   return (
     <main className="app-main">
@@ -161,16 +136,13 @@ export function CartPage() {
                 <button type="button" className="tab" data-active={payMethod === 'COD'} onClick={() => setPayMethod('COD')}>
                   Cash on delivery
                 </button>
-                {/* Without a publishable key there is no card form to show. */}
-                {cardAvailable && (
-                  <button type="button" className="tab" data-active={payMethod === 'CARD'} onClick={() => setPayMethod('CARD')}>
-                    Card (online)
-                  </button>
-                )}
+                <button type="button" className="tab" data-active={payMethod === 'CARD'} onClick={() => setPayMethod('CARD')}>
+                  Card (online)
+                </button>
               </div>
               {payMethod === 'CARD' && (
                 <p className="muted" style={{ marginTop: '0.5rem' }}>
-                  You'll enter your card details next. The order is only confirmed once the
+                  You'll be taken to Stripe to pay. The order is only confirmed once the
                   payment goes through.
                 </p>
               )}
