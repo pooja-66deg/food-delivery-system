@@ -10,6 +10,7 @@ from src.modules.delivery import location
 from src.modules.delivery.models import Delivery, DeliveryStatus
 from src.modules.delivery.providers import Coordinate
 from src.modules.delivery.schemas import TrackingRead
+from src.modules.notifications.service import add_notification
 from src.modules.orders import service as order_service
 from src.modules.orders.models import OrderStatus
 from src.modules.restaurants.models import Restaurant
@@ -20,6 +21,14 @@ _ACTIVE = (DeliveryStatus.ASSIGNED.value, DeliveryStatus.ACCEPTED.value, Deliver
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _notify_driver(session: AsyncSession, driver_id: int, order_id: int) -> None:
+    """Tell a driver they have a new delivery offer (same tx as the assignment)."""
+    add_notification(
+        session, driver_id, "delivery.assigned",
+        f"New delivery offer — order #{order_id}. Accept to take it.", order_id,
+    )
 
 
 async def _find_available_driver(session: AsyncSession, exclude: int | None = None) -> User | None:
@@ -77,6 +86,7 @@ async def assign_for_order(session: AsyncSession, order, redis=None) -> Delivery
         delivery.driver_id = driver.id
         delivery.status = DeliveryStatus.ASSIGNED.value
         delivery.assigned_at = _now()
+        _notify_driver(session, driver.id, order.id)
     session.add(delivery)
     await session.commit()
     await session.refresh(delivery)
@@ -150,6 +160,7 @@ async def reject_assignment(session: AsyncSession, driver: User, order_id: int, 
         delivery.driver_id = next_driver.id
         delivery.status = DeliveryStatus.ASSIGNED.value
         delivery.assigned_at = _now()
+        _notify_driver(session, next_driver.id, order_id)
     await session.commit()
     await session.refresh(delivery)
     await eta_module.invalidate(redis, order_id)
