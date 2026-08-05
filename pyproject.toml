@@ -25,6 +25,10 @@ dependencies = [
     "kafka-python-ng==2.2.3",
     "httpx==0.28.1",
     "python-dotenv==1.0.1",
+    # EmailSender imports this lazily, so a missing install shows up only as a
+    # swallowed ImportError at send time — not at startup. Declared here so the
+    # real transport actually engages once SENDGRID_* are configured.
+    "sendgrid==6.12.5",
 ]
 
 [project.optional-dependencies]

@@ -69,8 +69,9 @@ async def test_forgot_password_emails_a_reset_link(api_client, sent):
     token = (await api_client.post(
         "/auth/forgot-password", json={"email": "pw@x.com"})).json()["debug_token"]
 
-    assert len(sent) == 1
-    mail = sent[0]
+    # Two now: the verification mail from registration, then the reset link.
+    assert len(sent) == 2
+    mail = sent[-1]
     assert mail["channel"] == "EMAIL"
     assert mail["to"] == "pw@x.com"
     assert f"/reset-password?token={token}" in mail["message"]

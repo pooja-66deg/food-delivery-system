@@ -3,7 +3,6 @@
 **Date:** 2026-07-28
 **Status:** Approved for implementation
 **Roadmap item:** 1 of 7 (Orders module + Alembic)
-
 ## 1. Purpose & Scope
 
 Turn the dead-end checkout into a real order flow. Today `POST /cart/checkout`

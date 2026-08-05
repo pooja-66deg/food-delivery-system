@@ -1,5 +1,6 @@
 """HTTP routes for the users domain (auth + profile)."""
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, status
@@ -35,6 +36,9 @@ from src.modules.users.schemas import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
@@ -42,6 +46,19 @@ def _client_ip(request: Request) -> str:
 def _link(path: str, token: str) -> str:
     """Build an absolute link into the SPA for an emailed token."""
     return f"{settings.frontend_base_url.rstrip('/')}{path}?token={token}"
+
+
+async def _send_verification_email(redis, user: User) -> str:
+    """Mint a verification token and mail the link. Returns the token."""
+    token = await service.request_email_verification(redis, user)
+    link = _link("/verify-email", token)
+    await senders.dispatch(
+        "EMAIL", user.email,
+        f"Confirm your email address: {link}\n\n"
+        f"The link expires in {settings.email_verification_ttl_seconds // 3600} hours.",
+        subject="Verify your email address",
+    )
+    return token
 
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -57,7 +74,17 @@ async def register(
         redis, f"rl:register:{_client_ip(request)}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
-    return await service.register_user(session, data)
+    user = await service.register_user(session, data)
+    # Best-effort. The account is already committed, so a Redis blip or a mail
+    # provider timeout must not turn a successful signup into a 500 — the user
+    # can resend from the verification banner.
+    try:
+        await _send_verification_email(redis, user)
+    except Exception:
+        logger.warning(
+            "Verification email failed for user %s", user.id, exc_info=True
+        )
+    return user
 
 
 @auth_router.post("/login", response_model=TokenResponse)
@@ -130,14 +157,7 @@ async def request_email_verification(
         redis, f"rl:verify:{current_user.id}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
-    token = await service.request_email_verification(redis, current_user)
-    link = _link("/verify-email", token)
-    await senders.dispatch(
-        "EMAIL", current_user.email,
-        f"Confirm your email address: {link}\n\n"
-        f"The link expires in {settings.email_verification_ttl_seconds // 3600} hours.",
-        subject="Verify your email address",
-    )
+    token = await _send_verification_email(redis, current_user)
     body = {"message": "Verification email sent."}
     # Convenience for local/dev and tests; never exposed in production.
     if settings.environment != "production":
