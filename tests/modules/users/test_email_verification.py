@@ -20,6 +20,15 @@ async def _signed_in(api_client):
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 
+def _token_from(mail) -> str:
+    """Pull the verification token out of an emailed link.
+
+    Registration returns UserResponse, which carries no debug_token, so tests
+    read the token the same way a real user does — out of the message body.
+    """
+    return mail["message"].split("/verify-email?token=")[1].split()[0]
+
+
 @pytest.fixture
 def sent(monkeypatch):
     """Capture outbound notifications instead of dispatching them."""
@@ -60,8 +69,9 @@ async def test_request_emails_a_verification_link(api_client, sent):
     headers = await _signed_in(api_client)
     await api_client.post("/auth/verify-email/request", headers=headers)
 
-    assert len(sent) == 1
-    mail = sent[0]
+    # Two now: one from registration, one from the explicit request.
+    assert len(sent) == 2
+    mail = sent[-1]
     assert mail["channel"] == "EMAIL"
     assert mail["to"] == EMAIL
     assert "/verify-email?token=" in mail["message"]
@@ -99,6 +109,57 @@ async def test_confirm_does_not_require_a_signed_in_session(api_client, sent):
 @pytest.mark.asyncio
 async def test_request_requires_authentication(api_client):
     assert (await api_client.post("/auth/verify-email/request")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_registering_emails_a_verification_link(api_client, sent):
+    assert (await _register(api_client)).status_code == 201
+
+    assert len(sent) == 1
+    mail = sent[0]
+    assert mail["channel"] == "EMAIL"
+    assert mail["to"] == EMAIL
+    assert "/verify-email?token=" in mail["message"]
+
+
+@pytest.mark.asyncio
+async def test_token_from_the_registration_email_verifies_the_account(api_client, sent):
+    await _register(api_client)
+    token = _token_from(sent[0])
+
+    assert (await api_client.post(
+        "/auth/verify-email/confirm", json={"token": token})).status_code == 204
+
+    tokens = (await api_client.post(
+        "/auth/login", json={"email": EMAIL, "password": PASSWORD})).json()
+    me = (await api_client.get("/users/me", headers={
+        "Authorization": f"Bearer {tokens['access_token']}"})).json()
+    assert me["is_email_verified"] is True
+
+
+@pytest.mark.asyncio
+async def test_register_succeeds_when_the_mail_transport_fails(api_client, monkeypatch):
+    """The account is committed before the email is attempted, so a provider
+    outage must not turn a successful signup into a 500."""
+    async def _boom(channel, to, message, subject=None):
+        raise RuntimeError("mail provider down")
+
+    monkeypatch.setattr(users_router.senders, "dispatch", _boom)
+
+    assert (await _register(api_client)).status_code == 201
+
+    login = await api_client.post(
+        "/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_duplicate_registration_sends_no_email(api_client, sent):
+    await _register(api_client)
+    sent.clear()
+
+    assert (await _register(api_client)).status_code == 409
+    assert sent == []
 
 
 @pytest.mark.asyncio
