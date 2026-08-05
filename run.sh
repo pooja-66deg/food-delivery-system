@@ -59,7 +59,13 @@ export PYTHONUNBUFFERED=1 FORCE_COLOR=1
 # ---------- optional: install deps ----------
 if [ "$INSTALL" = "1" ]; then
   echo "[backend]  installing Python dependencies..."
-  "$PYTHON" -m pip install -r requirements.txt
+  if command -v uv >/dev/null 2>&1; then
+    uv sync --extra dev --no-install-project
+  else
+    echo "[backend]  uv not found - install it from https://docs.astral.sh/uv/ ."
+    echo "[backend]  falling back to pip (resolves fresh, ignores uv.lock)."
+    "$PYTHON" -m pip install -e ".[dev]"
+  fi
   echo "[frontend] installing npm dependencies..."
   ( cd frontend && npm install )
 fi

@@ -1,6 +1,9 @@
 # Frontend image for Cloud Run. Unlike the local compose build (which proxies
-# /api to the api container), on GCP the SPA calls the API's public URL directly
-# (baked in at build time via VITE_API_URL); the API's permissive CORS allows it.
+# /api to the api container), on GCP the SPA calls the API's public URL directly,
+# baked in at build time via VITE_API_URL. That makes every request cross-origin,
+# so the API must list this service's URL in CORS_ORIGINS — the deploy sets it
+# from the _FE_URL substitution. There is no permissive "*" allowlist: the API
+# sends credentials, which browsers refuse to combine with a wildcard.
 
 FROM node:22-alpine AS build
 ARG VITE_API_URL
