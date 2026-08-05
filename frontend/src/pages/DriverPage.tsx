@@ -6,6 +6,7 @@ import type { Coordinate, Delivery } from '../api/delivery'
 import { useAuth } from '../auth/AuthContext'
 import { Alert, Button, EmptyState, Loading } from '../components/ui'
 import { useDriverLocation } from '../lib/useDriverLocation'
+import { useNotifications } from '../notifications/NotificationsContext'
 
 const DESCRIPTIONS: Record<string, string> = {
   ASSIGNED: 'Offered to you — accept to take it',
@@ -34,6 +35,7 @@ function navigateUrl(point: Coordinate): string {
 
 export function DriverPage() {
   const { user } = useAuth()
+  const { refresh: refreshNotifications } = useNotifications()
   const share = useDriverLocation()
   const [assignments, setAssignments] = useState<Delivery[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -47,10 +49,11 @@ export function DriverPage() {
     setError(null)
     try {
       setAssignments(await deliveryApi.assignments())
+      void refreshNotifications()
     } catch (e) {
       setError(errorMessage(e, 'Failed to load assignments.'))
     }
-  }, [isDriver])
+  }, [isDriver, refreshNotifications])
 
   useEffect(() => {
     void load()
