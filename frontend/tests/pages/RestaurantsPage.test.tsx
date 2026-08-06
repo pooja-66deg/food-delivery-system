@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RestaurantsPage } from '../../src/pages/RestaurantsPage'
 
@@ -48,6 +48,39 @@ beforeEach(() => {
   mocks.list.mockReset().mockResolvedValue(page([PIZZA]))
   mocks.suggest.mockReset().mockResolvedValue([])
   mocks.popularCuisines.mockReset().mockResolvedValue([])
+})
+
+/**
+ * jsdom has no IntersectionObserver, so scroll pagination needs a stand-in. The
+ * stub hands back a `scrollIntoView` that fires the page's callback the way a
+ * real observer would when the sentinel below the grid enters the viewport.
+ */
+function stubIntersectionObserver() {
+  const callbacks: IntersectionObserverCallback[] = []
+  const stub = vi.fn((cb: IntersectionObserverCallback) => {
+    callbacks.push(cb)
+    return {
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+      unobserve: vi.fn(),
+      takeRecords: vi.fn(),
+      root: null,
+      rootMargin: '',
+      thresholds: [],
+    }
+  })
+  vi.stubGlobal('IntersectionObserver', stub)
+  return {
+    /** Simulate the sentinel scrolling into view for every live observer. */
+    scrollSentinelIntoView() {
+      const entry = { isIntersecting: true } as IntersectionObserverEntry
+      for (const cb of callbacks) cb([entry], {} as IntersectionObserver)
+    },
+  }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 function renderPage() {
@@ -181,6 +214,47 @@ describe('RestaurantsPage', () => {
     // The first card stays — this is "load more", not "replace".
     expect(screen.getByText('Pizza Palace')).toBeInTheDocument()
     expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 1 }))
+  })
+
+  it('scrolling the sentinel into view loads the next page', async () => {
+    const second = { ...PIZZA, id: 8, name: 'Second Spot' }
+    mocks.list.mockResolvedValueOnce(page([PIZZA], 2)).mockResolvedValueOnce(page([second], 2))
+    const observer = stubIntersectionObserver()
+    renderPage()
+    await screen.findByText('Pizza Palace')
+
+    observer.scrollSentinelIntoView()
+
+    expect(await screen.findByText('Second Spot')).toBeInTheDocument()
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 1 }))
+  })
+
+  it('scroll pagination fetches each offset once however often it fires', async () => {
+    // A real observer fires repeatedly while the sentinel stays in view; without
+    // an in-flight guard that would request the same offset several times.
+    const second = { ...PIZZA, id: 8, name: 'Second Spot' }
+    mocks.list.mockResolvedValueOnce(page([PIZZA], 2)).mockResolvedValue(page([second], 2))
+    const observer = stubIntersectionObserver()
+    renderPage()
+    await screen.findByText('Pizza Palace')
+
+    observer.scrollSentinelIntoView()
+    observer.scrollSentinelIntoView()
+    observer.scrollSentinelIntoView()
+
+    await screen.findByText('Second Spot')
+    // One initial list call plus exactly one next-page call.
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops paginating once every match is loaded', async () => {
+    const observer = stubIntersectionObserver()
+    renderPage()
+    await screen.findByText('Pizza Palace')
+
+    observer.scrollSentinelIntoView()
+
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
   })
 
   it('a facet change refetches from the top with the facet applied', async () => {

@@ -42,12 +42,10 @@ function renderPanel(overrides: Partial<Parameters<typeof CategoryPanel>[0]> = {
       restaurantId={1}
       category={CATEGORY}
       onChanged={noop}
-      onItemSaved={noop}
-      onDeleteItem={noop}
-      onToggleItem={noop}
-      onPickItemImage={noop}
-      editingItemId={null}
       onEditItem={noop}
+      onSetStock={noop}
+      onSetPrice={noop}
+      onDeleteItem={noop}
       {...overrides}
     />,
   )
@@ -82,7 +80,7 @@ describe('CategoryPanel renaming', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(mocks.updateCategory).not.toHaveBeenCalled()
-    expect(screen.getByRole('heading', { name: 'Starters' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Starters/ })).toBeInTheDocument()
   })
 
   it('restores the original name on cancel', async () => {
@@ -92,7 +90,7 @@ describe('CategoryPanel renaming', () => {
     await userEvent.type(screen.getByLabelText('Rename Starters'), 'zzz')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(screen.getByRole('heading', { name: 'Starters' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Starters/ })).toBeInTheDocument()
     expect(mocks.updateCategory).not.toHaveBeenCalled()
   })
 })
@@ -129,6 +127,6 @@ describe('CategoryPanel deletion', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(screen.getByText(/still has 1 item/i)).toBeInTheDocument())
-    expect(screen.getByRole('heading', { name: 'Starters' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Starters/ })).toBeInTheDocument()
   })
 })

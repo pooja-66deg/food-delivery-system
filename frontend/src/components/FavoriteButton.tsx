@@ -5,18 +5,9 @@ import { favoritesApi } from '../api/favorites'
 interface FavoriteButtonProps {
   restaurantId: number
   saved: boolean
-  /** Told the new state so the owning page keeps one source of truth. */
   onToggled: (restaurantId: number, saved: boolean) => void
 }
 
-/**
- * The heart on a restaurant card.
- *
- * Optimistic: the heart flips immediately and reverts if the request fails,
- * because a save that takes a round trip to acknowledge feels broken. The button
- * also stops the click from reaching the card's surrounding link — a heart inside
- * an anchor would otherwise navigate away as well as save.
- */
 export function FavoriteButton({ restaurantId, saved, onToggled }: FavoriteButtonProps) {
   const [busy, setBusy] = useState(false)
 
@@ -45,7 +36,16 @@ export function FavoriteButton({ restaurantId, saved, onToggled }: FavoriteButto
       aria-pressed={saved}
       onClick={(e) => void toggle(e)}
     >
-      {saved ? '♥' : '♡'}
+     
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          d="M12 20.25 4.6 13.1a4.6 4.6 0 0 1 0-6.55 4.75 4.75 0 0 1 6.65 0l.75.73.75-.73a4.75 4.75 0 0 1 6.65 0 4.6 4.6 0 0 1 0 6.55Z"
+          fill={saved ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
     </button>
   )
 }

@@ -116,6 +116,9 @@
   align-items: center;
   justify-content: center;
   padding: 3rem 1.75rem;
+  /* Same wash as every page inside the app, so signing in does not step from a
+     cream surface onto a white one. */
+  background: var(--page-wash);
 }
 .auth-card {
   width: 100%;
@@ -311,6 +314,8 @@
   flex: 1;
   width: 100%;
   padding: 2.5rem 2rem 3rem;
+  /* Every page shares the cream wash. */
+  background: var(--page-wash);
 }
 .page-head {
   margin-bottom: 2rem;
@@ -340,22 +345,38 @@
   justify-content: space-between;
 }
 
-/* Favourite heart on a restaurant card. Pushed to the right of the badge row
-   and sized for a comfortable tap target. */
+/* Favourite heart on a restaurant card. Pushed to the right of the badge row.
+   The button is a fixed square so the icon can never be stretched by the
+   flex row, and `flex: none` keeps it from being squeezed when the chips
+   beside it run long. */
 .fav-btn {
   margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
   border: none;
+  border-radius: 50%;
   background: none;
-  font-size: 1.35rem;
-  line-height: 1;
-  padding: 0.15rem 0.3rem;
+  padding: 0;
   color: var(--ink-faint);
   cursor: pointer;
-  transition: color 0.16s var(--ease), transform 0.16s var(--ease);
+  transition: color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.fav-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 .fav-btn:hover {
   color: var(--tomato);
-  transform: scale(1.1);
+  background: rgba(0, 0, 0, 0.05);
+}
+.fav-btn:focus-visible {
+  outline: 2px solid var(--tomato);
+  outline-offset: 1px;
 }
 .fav-btn.fav-on {
   color: var(--tomato);
@@ -462,7 +483,16 @@
 .load-more {
   display: flex;
   justify-content: center;
+  align-items: center;
+  /* Also the scroll-pagination sentinel — a minimum height keeps it a real
+     target for IntersectionObserver even while its contents are swapping. */
+  min-height: 2.5rem;
   margin-top: 1.6rem;
+}
+.load-more-end {
+  margin-top: 1.6rem;
+  text-align: center;
+  font-size: 0.85rem;
 }
 .check-inline {
   display: inline-flex;
@@ -692,41 +722,57 @@
   outline-offset: 1px;
 }
 
+/* Browse grid. Narrower columns than the old 260px so more kitchens fit per
+   row — the cards themselves are compact now, so a wide column would just
+   leave the content stranded in whitespace. */
 .rest-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 1rem;
 }
+/* Flat card: a hairline border carries the edge instead of a drop shadow, so a
+   grid of a dozen of these reads as a calm list rather than a pile of floating
+   panels. Hover shifts the border and surface, not elevation.
+   Column layout with the footer pushed down keeps every card in a row the same
+   height however long its description is. */
 .rest-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   background: rgba(255, 255, 255, 0.66);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 1.3rem 1.35rem 1.15rem;
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--r-md);
+  padding: 0 0.85rem 0.8rem;
   color: inherit;
   text-decoration: none;
-  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), border-color 0.18s var(--ease);
+  overflow: hidden;
+  transition: background 0.18s var(--ease), border-color 0.18s var(--ease);
 }
 .rest-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow);
+  background: rgba(255, 255, 255, 0.9);
   border-color: var(--line-strong);
   text-decoration: none;
 }
 .rest-card-top {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
 }
 .rest-card h3 {
-  font-size: 1.3rem;
-  margin-bottom: 0.3rem;
+  font-size: 1.02rem;
+  line-height: 1.3;
+  margin-bottom: 0.2rem;
+  /* One line, ellipsised: a long kitchen name must not be what decides the
+     height of every card in the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rest-card p {
-  font-size: 0.92rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-bottom: 0.5rem;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -735,10 +781,19 @@
 .rest-card-foot {
   display: flex;
   justify-content: space-between;
-  margin-top: 1rem;
-  font-size: 0.85rem;
+  gap: 0.5rem;
+  /* Pinned to the bottom of the card, not spaced off the block above it. */
+  margin-top: auto;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--ink-soft);
+}
+.rest-card-foot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badge {
@@ -986,7 +1041,10 @@
 .rating-stars [data-filled='true'] { color: var(--saffron); }
 .rating-stars [data-filled='false'] { color: var(--line-strong); }
 
-.rest-card-rating { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
+.rest-card-rating { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.55rem; font-size: 0.8rem; }
+/* The cuisine chip truncates rather than wrapping the badge row onto a second
+   line, which would make the card taller than its neighbours. */
+.rest-card-top .chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .rating-summary { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2rem; }
 .rating-headline { display: flex; align-items: center; gap: 0.6rem; }
@@ -1023,95 +1081,532 @@
 }
 
 /* owner */
-.owner-grid {
+/* ── Manage page (owner dashboard) ──────────────────────────────────────── */
+.owner-hero {
   display: flex;
-  flex-direction: column;
-  gap: 3rem;
-  align-items: stretch;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
 }
-
-.owner-panel {
-  padding: 2rem;
-  border: none;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: var(--r-lg);
-  overflow-y: visible;
-  max-height: none;
-  width: 100%;
-}
-
-.owner-panel > h2 {
-  margin-bottom: 1.5rem;
-  font-size: 1.3rem;
+/* Small caps label above the title. Letterspaced because at this size and weight
+   it would otherwise read as body text that lost its sentence. */
+.eyebrow {
+  font-size: 0.72rem;
   font-weight: 600;
-  color: var(--ink);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.5rem;
 }
-
-.owner-panel > .muted {
-  margin-bottom: 1.5rem;
+.owner-hero h1 {
+  font-size: clamp(2.2rem, 4vw, 3.1rem);
+  letter-spacing: -0.03em;
+}
+.owner-hero-lede {
+  margin-top: 0.7rem;
+  max-width: 34rem;
   color: var(--ink-soft);
   font-size: 0.95rem;
 }
 
-.owner-rest-list {
-  display: flex;
-  flex-direction: row;
+/* Stat tiles. Auto-fit so three tiles become one column on a phone without a
+   breakpoint of their own. */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 2.75rem;
+}
+.stat-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.15rem 1.25rem;
+  background: var(--paper);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+}
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: rgba(225, 70, 42, 0.09);
+  color: var(--tomato-deep);
+}
+.stat-icon svg { width: 1.3rem; height: 1.3rem; }
+.stat-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.stat-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Restaurants beside the ticket queue. The queue gets the wider column: a
+   ticket carries item lines and actions, a venue row carries one line. */
+.owner-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 2.5rem;
+  align-items: start;
+}
+.column-head { margin-bottom: 1.1rem; }
+.column-head h2 { font-size: 1.55rem; letter-spacing: -0.02em; }
+.column-head p { margin-top: 0.3rem; font-size: 0.88rem; color: var(--ink-soft); }
+
+.venue-list { display: flex; flex-direction: column; gap: 0.85rem; }
+/* A whole row is the target, so opening a venue does not depend on hitting the
+   arrow. The arrow is an affordance, not the button. */
+.venue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1.15rem 1.3rem;
+  border: none;
+  border-radius: var(--r-lg);
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.16s var(--ease), box-shadow 0.16s var(--ease);
+}
+.venue-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px -12px rgba(90, 60, 35, 0.34);
+}
+.venue-row:focus-visible { outline: 2px solid var(--tomato); outline-offset: 2px; }
+.venue-row-text { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; flex: 1; }
+.venue-row-name {
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.venue-row-meta {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.venue-row-go { flex: none; font-size: 1.1rem; color: var(--ink-soft); }
+.venue-row:hover .venue-row-go { color: var(--tomato-deep); }
+/* Outlined rather than filled: low stock is a nudge, not the alarm a solid
+   danger fill would read as. */
+.pill-warn {
+  flex: none;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(231, 163, 36, 0.55);
+  border-radius: 999px;
+  background: rgba(231, 163, 36, 0.08);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Order tickets. */
+.ticket-rail { display: flex; flex-direction: column; gap: 1rem; }
+.ticket {
+  padding: 1.25rem 1.35rem;
+  background: var(--paper);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+}
+.ticket-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+.ticket-title { font-size: 1.05rem; font-weight: 600; }
+.ticket-meta { margin-top: 0.2rem; font-size: 0.82rem; color: var(--ink-soft); }
+.ticket-status {
+  flex: none;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: var(--paper-3);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+/* Awaiting a decision is the one state the owner must act on, so it alone gets
+   the accent; work already under way gets the calmer amber. */
+.ticket-status.status-payment_success { background: rgba(225, 70, 42, 0.12); color: var(--tomato-deep); }
+.ticket-status.status-restaurant_accepted,
+.ticket-status.status-preparing { background: rgba(231, 163, 36, 0.18); color: #8a6414; }
+.ticket-status.status-ready_for_pickup { background: rgba(60, 110, 71, 0.15); color: var(--leaf); }
+
+.ticket-lines { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+.ticket-lines li { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; }
+.ticket-line-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Tabular figures so the prices line up as a column down the right edge. */
+.ticket-line-price { flex: none; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.ticket-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
   flex-wrap: wrap;
 }
+.ticket-total {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ticket-actions { display: flex; gap: 0.5rem; margin-left: auto; }
 
-.owner-rest-item {
+/* ── An opened venue ──────────────────────────────────────────────────────
+   One scrolling page: create forms, then the menu, then the restaurant's own
+   settings. */
+.venue-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.venue-back svg { width: 1.05rem; height: 1.05rem; }
+.venue-back:hover { color: var(--ink); }
+.venue-back:focus-visible { outline: 2px solid var(--tomato); outline-offset: 3px; border-radius: var(--r-sm); }
+
+.venue-hero {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 2.25rem;
+  flex-wrap: wrap;
+}
+.venue-hero-text { min-width: 0; }
+.venue-hero h1 { font-size: clamp(2.1rem, 3.8vw, 3rem); letter-spacing: -0.03em; }
+.venue-hero p { margin-top: 0.5rem; font-size: 0.95rem; color: var(--ink-soft); }
+
+.venue-jump { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+/* Tinted rather than outlined: these sit beside a heading, and an outline there
+   reads as a set of buttons competing with it. */
+.jump-chip {
+  padding: 0.42rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(120, 82, 54, 0.09);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.16s var(--ease);
+}
+.jump-chip:hover { background: rgba(120, 82, 54, 0.16); text-decoration: none; }
+
+/* The two create forms, side by side. Add item is the wider of the two: it holds
+   four fields against one. */
+.compose-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  margin-bottom: 3rem;
+  align-items: start;
+}
+.compose-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem 1.6rem 1.6rem;
+  background: var(--paper);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+}
+.compose-card h2 { font-size: 1.25rem; letter-spacing: -0.02em; }
+.compose-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem 1.25rem;
+}
+.compose-actions { display: flex; }
+.btn-icon { width: 1.05rem; height: 1.05rem; }
+
+.menu-stock { margin-bottom: 3rem; }
+.menu-stock > h2 {
+  font-size: clamp(1.6rem, 2.6vw, 2.1rem);
+  letter-spacing: -0.025em;
+  margin-bottom: 1.5rem;
+}
+
+/* A category is a letterspaced marker over its rows, not a boxed panel: the
+   sections then read as one menu rather than as several tables. */
+.menu-group { margin-bottom: 2rem; }
+.menu-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  min-height: 1.75rem;
+}
+.menu-group-head h3 {
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.menu-group-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-left: auto;
+  /* Revealed on hover or when focused, so keyboard users still reach them. */
+  opacity: 0;
+  transition: opacity 0.16s var(--ease);
+}
+.menu-group:hover .menu-group-actions,
+.menu-group-actions:focus-within { opacity: 1; }
+.menu-group-empty { font-size: 0.88rem; }
+
+.stock-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.stock-row {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--paper);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+}
+/* A dish diners cannot see is dimmed rather than hidden — the owner still has to
+   find it to put it back. */
+.stock-row[data-hidden] { opacity: 0.62; }
+.stock-row-lead { flex: 1; min-width: 0; }
+.stock-row-name {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.stock-row-name:hover { color: var(--tomato-deep); }
+.stock-row-name:focus-visible { outline: 2px solid var(--tomato); outline-offset: 2px; border-radius: var(--r-sm); }
+.stock-row-note { font-size: 0.82rem; margin-top: 0.1rem; color: var(--ink-soft); }
+
+.stepper { display: flex; align-items: center; gap: 0.5rem; flex: none; }
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--warm-1);
+  font-size: 1.05rem;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.16s var(--ease), border-color 0.16s var(--ease);
+}
+.stepper-btn:hover:not(:disabled) { background: var(--warm-2); border-color: var(--line-strong); }
+.stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.stepper-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.4rem;
+  height: 2.1rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--paper);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-row-amount {
+  display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.85rem 1.2rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--paper-2);
-  cursor: pointer;
+  flex: none;
+  font-size: 0.85rem;
+}
+.stock-row-amount .input { width: 6.5rem; padding-block: 0.45rem; font-variant-numeric: tabular-nums; }
+.stock-row-total {
+  flex: none;
+  min-width: 5.5rem;
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
   font-weight: 600;
-  text-align: center;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
-.owner-rest-item:hover {
+.icon-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--danger);
+  cursor: pointer;
+  transition: background 0.16s var(--ease);
+}
+.icon-danger svg { width: 1.15rem; height: 1.15rem; }
+.icon-danger:hover { background: rgba(180, 52, 31, 0.1); }
+.icon-danger:focus-visible { outline: 2px solid var(--danger); outline-offset: 1px; }
+
+.venue-settings > h2 {
+  font-size: clamp(1.6rem, 2.6vw, 2.1rem);
+  letter-spacing: -0.025em;
+  margin-bottom: 1.5rem;
+}
+
+/* Photo and visibility inside the dish editor, which save on their own. */
+.item-extras {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.item-extras-photo { display: flex; align-items: center; gap: 0.75rem; }
+
+@media (max-width: 820px) {
+  .compose-row { grid-template-columns: 1fr; }
+  /* The row wraps into two lines rather than shrinking the stepper and the price
+     box to unusable widths. */
+  .stock-row { flex-wrap: wrap; gap: 0.75rem 1rem; }
+  .stock-row-lead { flex: 1 0 100%; }
+  .stock-row-total { min-width: 0; margin-left: auto; }
+}
+
+
+@media (max-width: 900px) {
+  .owner-columns { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+/* Wraps the settings section at the foot of an opened venue. */
+.owner-panel {
+  padding: 1.5rem 1.6rem;
   background: var(--paper);
-  border-color: var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--card-shadow);
+  width: 100%;
 }
-
-.owner-rest-item[data-active='true'] {
-  background: var(--tomato);
-  color: white;
-  border-color: var(--tomato);
+.owner-panel > h2 {
+  margin-bottom: 1.25rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.owner-panel > .muted {
+  margin-bottom: 1.25rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
 }
 
 .owner-form {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
-  border-top: 1px solid var(--line);
-  padding-top: 1.5rem;
-  margin-top: 1.5rem;
 }
 .owner-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .owner-head h2 {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: var(--ink);
 }
-.owner-inline-form { display: flex; gap: 0.6rem; align-items: center; margin: 0.75rem 0 1rem; flex-wrap: wrap; }
+.owner-inline-form { display: flex; gap: 0.6rem; align-items: flex-end; margin: 0; flex-wrap: wrap; }
 .input-narrow { max-width: 120px; }
+
+/* Two fields sharing a line inside a dialog form — price and stock, say. Wraps
+   rather than squeezing on a narrow phone. */
+.field-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.field-row > .field { flex: 1 1 8rem; }
+.field-note { font-size: 0.8rem; margin-top: -0.35rem; }
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+/* Settings tab: one labelled row per setting — what it does on the left, the
+   control on the right — instead of a column of unexplained bare inputs. */
+.setting-list {
+  display: flex;
+  flex-direction: column;
+}
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.15rem 0;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.setting-row:first-child { padding-top: 0; }
+.setting-row:last-child { border-bottom: none; padding-bottom: 0; }
+.setting-label { flex: 1 1 14rem; }
+.setting-label h3 { font-size: 0.98rem; font-weight: 600; margin-bottom: 0.15rem; }
+.setting-label p { font-size: 0.82rem; }
+.setting-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 1 auto;
+}
+.setting-control-image { flex-direction: column; align-items: flex-start; }
+/* The settings form is the control, so it drops the standalone form spacing. */
+.setting-control .owner-inline-form { margin: 0; }
+
 
 /* Order cards */
 .order-card {
@@ -1164,107 +1659,6 @@
 }
 
 /* Menu grid */
-.menu-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.menu-item-card {
-  display: flex;
-  flex-direction: column;
-  padding: 0.9rem;
-  border: none;
-  border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.7);
-  overflow: hidden;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-.menu-item-card:hover {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-/* Adjust MenuItemPanel inside card for vertical layout */
-.menu-item-card .menu-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0;
-  background: transparent;
-  border: none;
-}
-
-.menu-item-card .menu-item-lead {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.5rem;
-}
-
-.menu-item-card .menu-item-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.menu-item-image {
-  width: 100%;
-  height: 100px;
-  object-fit: cover;
-  border-radius: var(--r-sm);
-  margin-bottom: 0.5rem;
-}
-
-/* Owner dashboard card view styles */
-.menu-item-card .menu-item-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-  margin-bottom: 0.25rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  line-height: 1.2;
-}
-
-.menu-item-price {
-  font-weight: 700;
-  color: var(--tomato);
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
-}
-
-.menu-item-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: auto;
-}
-
-.menu-item-available {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-}
-
-.menu-item-card .menu-item-actions {
-  display: flex;
-  gap: 0.4rem;
-}
-.menu-item-card .menu-item-actions button {
-  padding: 0.35rem 0.5rem;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
 .confirm-backdrop {
   position: fixed;
   inset: 0;
@@ -1276,6 +1670,63 @@
   background: rgba(30, 24, 18, 0.45);
 }
 .confirm-dialog { width: min(100%, 22rem); padding: 1.25rem; }
+
+/* Dialog for interrupting content — a create form rather than a yes/no question.
+   The panel is capped at the viewport height and scrolls its own body, so a long
+   form on a laptop screen is reachable without the page behind it moving. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(30, 24, 18, 0.5);
+}
+.modal-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 30rem);
+  max-height: calc(100vh - 2rem);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lift);
+}
+.modal-panel:focus { outline: none; }
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 { font-size: 1.2rem; font-weight: 600; }
+.modal-head p { font-size: 0.85rem; margin-top: 0.2rem; }
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease);
+}
+.modal-close svg { width: 15px; height: 15px; display: block; }
+.modal-close:hover { background: var(--paper-3); color: var(--ink); }
+.modal-close:focus-visible { outline: 2px solid var(--tomato); outline-offset: 1px; }
+.modal-body {
+  padding: 1.25rem 1.35rem 1.35rem;
+  overflow-y: auto;
+}
 .confirm-title { margin: 0 0 1.25rem; font-weight: 700; font-size: 1.05rem; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
 
@@ -1334,7 +1785,6 @@
   .owner-grid { gap: 1.5rem; }
   .owner-panel { padding: 1.5rem; }
   .owner-rest-list { gap: 0.75rem; }
-  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 0.8rem; }
   .cart-row { grid-template-columns: 1fr auto; row-gap: 0.5rem; }
   .app-main { padding: 2rem 1.5rem 2.5rem; }
 }
@@ -1531,17 +1981,38 @@ textarea.input { resize: vertical; font-family: var(--font-body); }
 
 /* images (owner + customer) */
 .image-field { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
-/* On a browse card the cover is a banner, not a chip — it spans the card and
-   sits above the padded content. */
+/* On a browse card the cover is a banner, not a chip — it bleeds to the card's
+   edges (cancelling the card's side padding) and sits above the padded content.
+   Its own border and radius are dropped so the card's edge is the only line. */
 .rest-card .image-thumb {
-  width: 100%; height: 132px; margin-bottom: 0.9rem;
+  /* 100% is the content box; the extra 1.7rem covers the card's two side
+     paddings, which the negative margins pull the banner back out over. */
+  width: calc(100% + 1.7rem);
+  height: 104px;
+  flex: none;
+  margin: 0 -0.85rem 0.65rem;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
 }
 .rest-hero-head .image-thumb { flex: none; }
 .image-thumb { width: 96px; height: 72px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); }
-.image-placeholder { display: flex; align-items: center; justify-content: center; color: var(--ink-faint); background: var(--paper-2); font-size: 0.8rem; }
+/* Stand-in artwork for a missing upload. A faint tinted wash rather than flat
+   grey, so a card without a photo still looks deliberate next to one with. */
+.image-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-faint);
+  background: linear-gradient(135deg, var(--paper-2), var(--paper-3));
+}
+.thumb-art { width: 46%; height: auto; max-height: 62%; opacity: 0.85; }
+.item-placeholder .thumb-art { width: 58%; }
 .menu-item-lead { display: flex; align-items: center; gap: 0.8rem; }
 .item-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--line); flex: none; }
-.item-placeholder { display: flex; align-items: center; justify-content: center; background: var(--paper-2); }
+.item-placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-faint);
+  background: linear-gradient(135deg, var(--paper-2), var(--paper-3));
+}
 .file-label {
   display: inline-flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--ink-soft);
   padding: 0.5rem 0.8rem; border: 1px dashed var(--line-strong); border-radius: var(--r-sm);

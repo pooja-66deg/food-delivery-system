@@ -57,12 +57,18 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
   }
 
   return (
+    // No heading of its own: the dialog that hosts this form already has one.
     <form className="owner-form" onSubmit={submit}>
-      <h3>New restaurant</h3>
       {error && <Alert>{error}</Alert>}
-      <Field label="Name" value={form.name} onChange={set('name')} required />
-      <Field label="City" value={form.city} onChange={set('city')} required />
-      <Field label="Address" value={form.address_line} onChange={set('address_line')} required />
+      <Field label="Name" name="name" value={form.name} onChange={set('name')} required />
+      <Field label="City" name="city" value={form.city} onChange={set('city')} required />
+      <Field
+        label="Address"
+        name="address_line"
+        value={form.address_line}
+        onChange={set('address_line')}
+        required
+      />
       <PhoneField
         label="Phone"
         name="phone"
@@ -72,6 +78,7 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
       />
       <Field
         label="Minimum order amount"
+        name="min_order_amount"
         type="number"
         min="0"
         step="0.01"

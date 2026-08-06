@@ -4,15 +4,22 @@
    ============================================================ */
 
 :root {
-  /* Clean white/gray surface system */
+  /* Warm paper surface system. Cards stay pure white so they lift off the cream
+     page behind them; every other neutral is warmed to match, because a cool
+     grey input on a cream page reads as a mismatch rather than a neutral. */
   --paper: #ffffff;
-  --paper-2: #f5f6f8;
-  --paper-3: #eceef1;
-  --ink: #14181f;
-  --ink-soft: #5b6673;
-  --ink-faint: #98a1ae;
-  --line: rgba(20, 24, 31, 0.10);
-  --line-strong: rgba(20, 24, 31, 0.18);
+  --paper-2: #f7f2ea;
+  --paper-3: #efe7db;
+  --ink: #1d1710;
+  --ink-soft: #6d5c4d;
+  --ink-faint: #a2917d;
+  --line: rgba(120, 82, 54, 0.14);
+  --line-strong: rgba(120, 82, 54, 0.26);
+
+  /* The page itself: a cream wash, lightest at the bottom right. */
+  --warm-1: #fbf6ef;
+  --warm-2: #f6ede1;
+  --page-wash: linear-gradient(160deg, var(--warm-2) 0%, var(--warm-1) 42%, #fffdfa 100%);
 
   --tomato: #e1462a;
   --tomato-deep: #bd3620;
@@ -24,9 +31,11 @@
   --r-md: 12px;
   --r-sm: 8px;
 
-  --shadow-sm: 0 1px 3px rgba(20, 24, 31, 0.08);
-  --shadow: 0 12px 32px -14px rgba(20, 24, 31, 0.22);
-  --shadow-lift: 0 18px 44px -18px rgba(20, 24, 31, 0.28);
+  --shadow-sm: 0 1px 3px rgba(90, 60, 35, 0.08);
+  --shadow: 0 12px 32px -14px rgba(90, 60, 35, 0.22);
+  --shadow-lift: 0 18px 44px -18px rgba(90, 60, 35, 0.28);
+  /* The lift that white cards on the cream page use. */
+  --card-shadow: 0 6px 20px -12px rgba(90, 60, 35, 0.28);
 
   /* Inter — clean, modern sans everywhere */
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -50,7 +59,9 @@ body,
 body {
   font-family: var(--font-body);
   color: var(--ink);
-  background-color: var(--paper);
+  /* The base tint, so anything outside the app shell (auth pages, the area below
+     a short page) is cream rather than a strip of white. */
+  background-color: var(--warm-1);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   line-height: 1.5;
