@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DriverPage } from '../../src/pages/DriverPage'
+import { NotificationsProvider } from '../../src/notifications/NotificationsContext'
 
 const mocks = vi.hoisted(() => ({
   assignments: vi.fn(),
@@ -48,7 +49,11 @@ beforeEach(() => {
 
 describe('DriverPage location sharing', () => {
   it('offers sharing as off by default', async () => {
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     const toggle = await screen.findByRole('switch', { name: /share my location/i })
     expect(toggle).toHaveAttribute('aria-checked', 'false')
@@ -56,7 +61,11 @@ describe('DriverPage location sharing', () => {
   })
 
   it('turning it on marks the driver online', async () => {
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     await userEvent.click(await screen.findByRole('switch', { name: /share my location/i }))
 
@@ -65,7 +74,11 @@ describe('DriverPage location sharing', () => {
   })
 
   it('turning it off marks the driver unavailable', async () => {
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
     const toggle = await screen.findByRole('switch', { name: /share my location/i })
 
     await userEvent.click(toggle)
@@ -87,7 +100,11 @@ describe('DriverPage location sharing', () => {
       configurable: true,
       writable: true,
     })
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     await userEvent.click(await screen.findByRole('switch', { name: /share my location/i }))
 
@@ -97,7 +114,11 @@ describe('DriverPage location sharing', () => {
 
 describe('DriverPage next-stop navigation', () => {
   it('points at the restaurant before pickup', async () => {
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     const link = await screen.findByRole('link', { name: /navigate/i })
     expect(link.getAttribute('href')).toContain('destination=12.9352,77.6245')
@@ -105,7 +126,11 @@ describe('DriverPage next-stop navigation', () => {
 
   it('points at the customer once the order is picked up', async () => {
     mocks.assignments.mockResolvedValue([assignment({ status: 'PICKED_UP' })])
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     const link = await screen.findByRole('link', { name: /navigate/i })
     expect(link.getAttribute('href')).toContain('destination=12.9,77.6')
@@ -115,7 +140,11 @@ describe('DriverPage next-stop navigation', () => {
     mocks.assignments.mockResolvedValue([
       assignment({ restaurant: null, destination: null }),
     ])
-    render(<DriverPage />)
+    render(
+      <NotificationsProvider>
+        <DriverPage />
+      </NotificationsProvider>,
+    )
 
     await screen.findByText(/order #77/i)
     expect(screen.queryByRole('link', { name: /navigate/i })).not.toBeInTheDocument()
