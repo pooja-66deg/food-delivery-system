@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -36,6 +36,13 @@ export function RestaurantsPage() {
   // Saved restaurant ids. Held here rather than on each card so one fetch covers
   // the whole grid and a toggle updates a single source of truth.
   const [favorites, setFavorites] = useState<Set<number>>(new Set())
+  // Next-page fetches are driven by scrolling, so they can be triggered far more
+  // often than they complete. The state drives the footer copy; the ref is what
+  // actually guards against firing a second request for the same offset, since
+  // the observer callback can run again before a re-render lands.
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadingMoreRef = useRef(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   // Overrides let a cuisine chip or a filter search immediately with its own
   // value instead of racing the corresponding state update.
@@ -65,7 +72,9 @@ export function RestaurantsPage() {
   }
 
   const loadMore = async () => {
-    if (!items) return
+    if (!items || loadingMoreRef.current || items.length >= total) return
+    loadingMoreRef.current = true
+    setLoadingMore(true)
     try {
       const page = await restaurantsApi.list({
         ...facets,
@@ -78,6 +87,9 @@ export function RestaurantsPage() {
       setTotal(page.total)
     } catch (e) {
       setError(errorMessage(e, 'Failed to load more restaurants.'))
+    } finally {
+      loadingMoreRef.current = false
+      setLoadingMore(false)
     }
   }
 
@@ -97,6 +109,28 @@ export function RestaurantsPage() {
       .catch(() => setFavorites(new Set()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Scroll pagination: the next page is fetched when a sentinel below the grid
+  // comes into view, with a rootMargin so the fetch starts before the user
+  // actually reaches the bottom and the grid grows without a visible stall.
+  // Re-run on every length/total change so the observer follows the sentinel as
+  // the list grows and detaches once everything is on screen.
+  useEffect(() => {
+    const node = sentinelRef.current
+    // Guard rather than assume: environments without IntersectionObserver (older
+    // browsers, jsdom) fall back to the Load more button, which is always there.
+    if (!node || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore()
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items?.length, total])
 
   const fetchSuggestions = useCallback((q: string) => restaurantsApi.suggest(q), [])
 
@@ -233,11 +267,23 @@ export function RestaurantsPage() {
           ))}
         </div>
           {items.length < total && (
-            <div className="load-more">
-              <Button variant="ghost" onClick={() => void loadMore()}>
-                Load more
-              </Button>
+            // The sentinel is what scrolling into view triggers. The button stays
+            // as an explicit control: it covers keyboard users, a failed auto-load
+            // the reader wants to retry, and browsers without IntersectionObserver.
+            <div className="load-more" ref={sentinelRef}>
+              {loadingMore ? (
+                <p className="muted" role="status">
+                  Loading more kitchens…
+                </p>
+              ) : (
+                <Button variant="ghost" onClick={() => void loadMore()}>
+                  Load more
+                </Button>
+              )}
             </div>
+          )}
+          {items.length >= total && total > PAGE_SIZE && (
+            <p className="muted load-more-end">That’s every kitchen matching your search.</p>
           )}
         </>
       )}

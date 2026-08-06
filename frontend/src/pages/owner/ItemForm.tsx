@@ -4,7 +4,7 @@ import type { FormEvent } from 'react'
 import { errorMessage } from '../../api/client'
 import { restaurantsApi } from '../../api/restaurants'
 import type { MenuItem, MenuItemCreateInput } from '../../api/restaurants'
-import { Alert, Button } from '../../components/ui'
+import { Alert, Button, Field, FilePicker, Thumb } from '../../components/ui'
 import type { ToastType } from '../../lib/useTimedNotice'
 
 interface ItemFormProps {
@@ -14,6 +14,9 @@ interface ItemFormProps {
   item?: MenuItem
   onDone: (type: ToastType) => void
   onCancel?: () => void
+  /** Editing only: the photo and visibility save on their own, not on submit. */
+  onPickImage?: (file: File) => void
+  onToggleAvailable?: () => void
 }
 
 /** Blank stock means "don't track" — the API takes null for that. */
@@ -22,7 +25,15 @@ function toStock(raw: string): number | null {
   return trimmed === '' ? null : Number(trimmed)
 }
 
-export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: ItemFormProps) {
+export function ItemForm({
+  restaurantId,
+  categoryId,
+  item,
+  onDone,
+  onCancel,
+  onPickImage,
+  onToggleAvailable,
+}: ItemFormProps) {
   const isEdit = item != null
   const [name, setName] = useState(item?.name ?? '')
   const [price, setPrice] = useState(item ? String(item.price) : '')
@@ -62,38 +73,47 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
     }
   }
 
+  // Stacked with real labels rather than a row of placeholder-only inputs: this
+  // now opens in a dialog, and "Price"/"Stock" side by side gave no way to tell
+  // which box was which once you had typed in them.
   return (
-    <form className="owner-inline-form" onSubmit={submit}>
-      <input
-        className="input"
-        placeholder="Item name"
+    <form className="owner-form" onSubmit={submit}>
+      {error && <Alert>{error}</Alert>}
+      <Field
+        label="Item name"
+        name="item_name"
+        placeholder="e.g. Margherita"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        aria-label="Item name"
+        autoFocus
         required
       />
-      <input
-        className="input input-narrow"
-        placeholder="Price"
-        type="number"
-        min="0.01"
-        step="0.01"
-        value={price}
-        onChange={(e) => setPrice(e.target.value)}
-        aria-label="Item price"
-        required
-      />
-      <input
-        className="input input-narrow"
-        placeholder="Stock"
-        type="number"
-        min="0"
-        step="1"
-        value={stock}
-        onChange={(e) => setStock(e.target.value)}
-        aria-label="Stock quantity"
-        title="Leave blank to sell without tracking stock"
-      />
+      <div className="field-row">
+        <Field
+          label="Item price"
+          name="item_price"
+          type="number"
+          min="0.01"
+          step="0.01"
+          placeholder="0.00"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          required
+        />
+        <Field
+          label="Stock quantity"
+          name="stock_quantity"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="Untracked"
+          value={stock}
+          onChange={(e) => setStock(e.target.value)}
+        />
+      </div>
+      <p className="muted field-note">
+        Leave stock blank to sell without tracking it. Zero means sold out.
+      </p>
       <label className="check-inline" title="Shown to diners filtering for vegetarian food">
         <input
           type="checkbox"
@@ -102,11 +122,38 @@ export function ItemForm({ restaurantId, categoryId, item, onDone, onCancel }: I
         />
         Vegetarian
       </label>
-      {error && <Alert>{error}</Alert>}
-      <Button variant="ghost" loading={busy}>{isEdit ? 'Save' : 'Add item'}</Button>
-      {isEdit && onCancel && (
-        <Button variant="ghost" type="button" onClick={onCancel}>Cancel</Button>
+
+      {/* The photo and the listing switch act immediately rather than waiting for
+          submit: both are one decision, and pairing them with a Save that also
+          carries the name and price made it unclear what was pending. */}
+      {item && (onPickImage || onToggleAvailable) && (
+        <div className="item-extras">
+          {onPickImage && (
+            <div className="item-extras-photo">
+              <Thumb url={item.image_url} alt={item.name} />
+              <FilePicker
+                label={item.image_url ? 'Replace photo' : 'Add photo'}
+                small
+                onPick={onPickImage}
+              />
+            </div>
+          )}
+          {onToggleAvailable && (
+            <Button variant="ghost" type="button" onClick={onToggleAvailable}>
+              {item.is_available ? 'Hide from diners' : 'Show to diners'}
+            </Button>
+          )}
+        </div>
       )}
+
+      <div className="form-actions">
+        {onCancel && (
+          <Button variant="ghost" type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button loading={busy}>{isEdit ? 'Save' : 'Add item'}</Button>
+      </div>
     </form>
   )
 }

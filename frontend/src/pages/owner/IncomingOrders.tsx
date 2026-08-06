@@ -1,66 +1,39 @@
-import { useCallback, useEffect, useState } from 'react'
-
-import { errorMessage } from '../../api/client'
-import { ordersApi } from '../../api/orders'
 import type { Order } from '../../api/orders'
-import { Alert, Button, Loading } from '../../components/ui'
-import { OrderOps } from '../../components/OrderOps'
+import { EmptyState } from '../../components/ui'
+import { OrderTicket } from './OrderTicket'
 
-export function IncomingOrders({ restaurantId }: { restaurantId: number }) {
-  const [orders, setOrders] = useState<Order[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+interface IncomingOrdersProps {
+  /** Every owned restaurant's orders, already merged and newest first. */
+  orders: Order[]
+  /** Restaurant id → name, so a ticket can say which kitchen it is for. */
+  names: Map<number, string>
+  now: Date
+  onChanged: () => void | Promise<void>
+}
 
-  const load = useCallback(async () => {
-    setError(null)
-    try {
-      setOrders(await ordersApi.forRestaurant(restaurantId))
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to load orders.'))
-    }
-  }, [restaurantId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+/**
+ * The dashboard's ticket rail.
+ *
+ * Presentational: the page fetches and merges orders across restaurants, because
+ * the stat tiles need the same data and fetching it twice would let the two
+ * disagree.
+ */
+export function IncomingOrders({ orders, names, now, onChanged }: IncomingOrdersProps) {
+  if (orders.length === 0) {
+    return <EmptyState>Nothing in the queue. New orders land here as they come in.</EmptyState>
+  }
 
   return (
-    <section className="menu-section">
-      <div className="owner-head">
-        <h2>Incoming orders</h2>
-        <Button variant="ghost" onClick={load}>Refresh</Button>
-      </div>
-      {error && <Alert>{error}</Alert>}
-
-      {!orders ? (
-        <Loading />
-      ) : orders.length === 0 ? (
-        <p className="muted">No incoming orders.</p>
-      ) : (
-        <div>
-          {orders.map((order) => (
-            <div key={order.id} className="order-card">
-              <div className="order-card-header">
-                <div>
-                  <div className="order-card-title">Order #{order.id}</div>
-                  <div className="order-card-time">{new Date(order.created_at).toLocaleString()}</div>
-                </div>
-                <div className="order-card-total">${Number(order.total).toFixed(2)}</div>
-              </div>
-
-              <div className="order-card-items">
-                {order.items.map((item, i) => (
-                  <div key={i}>{item.name} × {item.quantity}</div>
-                ))}
-              </div>
-
-              <div className="order-card-footer">
-                <span className="badge">{order.status}</span>
-                <OrderOps orders={[order]} onChanged={load} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+    <div className="ticket-rail">
+      {orders.map((order) => (
+        <OrderTicket
+          key={order.id}
+          order={order}
+          restaurantName={names.get(order.restaurant_id) ?? 'Your kitchen'}
+          now={now}
+          onChanged={onChanged}
+        />
+      ))}
+    </div>
   )
 }

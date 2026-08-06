@@ -3,35 +3,35 @@ import type { FormEvent } from 'react'
 
 import { errorMessage } from '../../api/client'
 import { restaurantsApi } from '../../api/restaurants'
-import type { MenuCategory } from '../../api/restaurants'
+import type { MenuCategory, MenuItem } from '../../api/restaurants'
 import { Alert, Button, ConfirmDialog } from '../../components/ui'
-import type { ToastType } from '../../lib/useTimedNotice'
-import { ItemForm } from './ItemForm'
-import { MenuItemPanel } from './MenuItemPanel'
+import { StockRow } from './StockRow'
 
 interface CategoryPanelProps {
   restaurantId: number
   category: MenuCategory
   onChanged: () => void
-  onItemSaved: (type: ToastType) => void
+  onEditItem: (item: MenuItem) => void
+  onSetStock: (itemId: number, stock: number | null) => void
+  onSetPrice: (itemId: number, price: number) => void
   onDeleteItem: (itemId: number) => void
-  onToggleItem: (itemId: number, available: boolean) => void
-  onPickItemImage: (itemId: number, file: File) => void
-  /** Item currently open for editing, if it belongs to this category. */
-  editingItemId: number | null
-  onEditItem: (itemId: number | null) => void
 }
 
+/**
+ * One section of the menu: its name, and its dishes as stock rows.
+ *
+ * The name doubles as the section marker in a single long list, so the list reads
+ * as a menu — Grills, then Sides, then Desserts — rather than as one flat table
+ * of dishes with a category column.
+ */
 export function CategoryPanel({
   restaurantId,
   category,
   onChanged,
-  onItemSaved,
-  onDeleteItem,
-  onToggleItem,
-  onPickItemImage,
-  editingItemId,
   onEditItem,
+  onSetStock,
+  onSetPrice,
+  onDeleteItem,
 }: CategoryPanelProps) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(category.name)
@@ -77,8 +77,8 @@ export function CategoryPanel({
   }
 
   return (
-    <section className="menu-section">
-      <div className="owner-head">
+    <section className="menu-group" id={`category-${category.id}`}>
+      <div className="menu-group-head">
         {renaming ? (
           <form className="owner-inline-form" onSubmit={rename}>
             <input
@@ -104,7 +104,10 @@ export function CategoryPanel({
         ) : (
           <>
             <h3>{category.name}</h3>
-            <div className="menu-item-actions">
+            {/* Held back until hover or focus: renaming and deleting a whole
+                category are rare next to editing a dish, and four live controls
+                per section made the list look like a settings screen. */}
+            <div className="menu-group-actions">
               <button
                 className="link-btn"
                 onClick={() => setRenaming(true)}
@@ -134,31 +137,22 @@ export function CategoryPanel({
         onConfirm={() => void remove()}
       />
 
-      <div className="menu-grid">
-        {category.items.map((item) => (
-          <div key={item.id} className="menu-item-card">
-            <MenuItemPanel
+      {category.items.length === 0 ? (
+        <p className="muted menu-group-empty">Nothing in this section yet.</p>
+      ) : (
+        <div className="stock-list">
+          {category.items.map((item) => (
+            <StockRow
+              key={item.id}
               item={item}
-              onEdit={() => onEditItem(item.id)}
-              onToggleAvailable={() => onToggleItem(item.id, item.is_available)}
+              onEdit={() => onEditItem(item)}
+              onSetStock={(stock) => onSetStock(item.id, stock)}
+              onSetPrice={(price) => onSetPrice(item.id, price)}
               onDelete={() => onDeleteItem(item.id)}
-              onPickImage={(file) => onPickItemImage(item.id, file)}
             />
-            {editingItemId === item.id && (
-              <ItemForm
-                key={item.id}
-                restaurantId={restaurantId}
-                categoryId={category.id}
-                item={item}
-                onDone={onItemSaved}
-                onCancel={() => onEditItem(null)}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
-      <ItemForm restaurantId={restaurantId} categoryId={category.id} onDone={onItemSaved} />
+          ))}
+        </div>
+      )}
     </section>
   )
 }
