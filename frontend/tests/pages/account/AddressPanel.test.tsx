@@ -49,11 +49,11 @@ describe('AddressPanel editing', () => {
   it('patches only the edited address', async () => {
     await openEditor()
 
+    await waitFor(() => expect(screen.getByPlaceholderText('Start typing your address...')).toBeInTheDocument())
     const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
     const city = cityInputs[0]
     await userEvent.clear(city)
     await userEvent.type(city, 'Manchester{Enter}')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(mocks.updateAddress).toHaveBeenCalledTimes(1))
