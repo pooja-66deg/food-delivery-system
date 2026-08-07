@@ -26,6 +26,14 @@ class DeliveryRead(BaseModel):
     destination: CoordinateRead | None = None
 
 
+class AvailableDriver(BaseModel):
+    """A driver available for assignment."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    first_name: str
+    last_name: str
+
+
 class TrackingRead(BaseModel):
     """Everything the customer's tracking view needs, in one poll.
 

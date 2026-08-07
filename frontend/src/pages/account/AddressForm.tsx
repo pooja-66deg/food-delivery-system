@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 
 import type { AddressInput } from '../../api/auth'
 import { Button, Field } from '../../components/ui'
+import { AddressAutocomplete } from '../../components/AddressAutocomplete'
+import { CityDropdown } from '../../components/CityDropdown'
 
 export const EMPTY_ADDRESS: AddressInput = {
   label: 'home',
@@ -37,10 +39,20 @@ export function AddressForm({ initial, submitLabel, busy, onSubmit, onCancel }: 
   return (
     <form className="form-stack" onSubmit={submit} style={{ marginBottom: '1.25rem' }}>
       <Field label="Label" name="label" placeholder="home, work…" value={form.label} onChange={set('label')} required />
-      <Field label="Address line 1" name="line1" placeholder="221B Baker Street" value={form.line1} onChange={set('line1')} required />
+      <AddressAutocomplete
+        value={form.line1}
+        onChange={(line1) => setForm({ ...form, line1 })}
+        placeholder="Start typing your address..."
+      />
       <Field label="Address line 2" name="line2" placeholder="Apt, suite (optional)" value={form.line2 ?? ''} onChange={set('line2')} />
       <div className="form-row">
-        <Field label="City" name="city" value={form.city} onChange={set('city')} required />
+        <div style={{ flex: 1 }}>
+          <CityDropdown
+            value={form.city}
+            onChange={(city) => setForm({ ...form, city })}
+            required
+          />
+        </div>
         <Field label="Postal code" name="postal_code" value={form.postal_code} onChange={set('postal_code')} required />
       </div>
       <label className="checkbox-row">

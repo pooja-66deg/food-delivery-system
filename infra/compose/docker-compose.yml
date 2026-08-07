@@ -116,6 +116,9 @@ services:
       # text panel. Card payments need no browser-side key at all.
       args:
         VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+    env_file:
+      - path: ../../.env
+        required: false
     container_name: fooddelivery_frontend
     depends_on:
       - api

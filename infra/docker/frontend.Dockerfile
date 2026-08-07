@@ -12,7 +12,7 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY} npm run build
 
 FROM nginx:1.27-alpine
 COPY infra/docker/nginx.conf /etc/nginx/conf.d/default.conf

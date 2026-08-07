@@ -194,6 +194,33 @@ async def deliver(session: AsyncSession, driver: User, order_id: int, redis=None
     return delivery
 
 
+async def list_available_drivers(session: AsyncSession) -> list[User]:
+    """All drivers with no active delivery (available to be assigned)."""
+    busy = select(Delivery.driver_id).where(Delivery.status.in_(_ACTIVE))
+    stmt = select(User).where(and_(User.role == "driver", User.id.notin_(busy)))
+    return list(await session.scalars(stmt))
+
+
+async def reassign_delivery_for_order(session: AsyncSession, order_id: int, new_driver_id: int, redis=None) -> Delivery:
+    """Reassign a delivery to a different driver. Restaurant override."""
+    delivery = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
+    if delivery is None:
+        raise NotFoundException("Delivery", str(order_id))
+
+    new_driver = await session.get(User, new_driver_id)
+    if new_driver is None or new_driver.role != "driver":
+        raise NotFoundException("Driver", str(new_driver_id))
+
+    delivery.driver_id = new_driver_id
+    delivery.status = DeliveryStatus.ASSIGNED.value
+    delivery.assigned_at = _now()
+    _notify_driver(session, new_driver_id, order_id)
+    await session.commit()
+    await session.refresh(delivery)
+    await eta_module.invalidate(redis, order_id)
+    return delivery
+
+
 def _coord(obj) -> Coordinate | None:
     """A Coordinate from anything carrying latitude/longitude, or None."""
     if obj is None or obj.latitude is None or obj.longitude is None:

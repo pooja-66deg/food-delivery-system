@@ -163,6 +163,11 @@ a:hover {
   background: #fff;
   box-shadow: 0 0 0 4px rgba(225, 70, 42, 0.14);
 }
+.error {
+  font-size: 0.75rem;
+  color: var(--tomato);
+  margin-top: 0.25rem;
+}
 
 /* Input paired with a trailing control (e.g. the password show/hide toggle). */
 .field-control {
@@ -299,4 +304,264 @@ a:hover {
 }
 .center {
   text-align: center;
+}
+
+/* ---------- City Dropdown Styling ---------- */
+.city-dropdown-container {
+  position: relative;
+  width: 100%;
+}
+
+.city-dropdown-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 1rem;
+  box-sizing: border-box;
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+.city-dropdown-input:focus {
+  outline: none;
+  border-color: var(--ink-soft);
+  box-shadow: 0 0 0 2px rgba(120, 82, 54, 0.1);
+}
+
+.city-dropdown-input:disabled {
+  background-color: var(--paper-3);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.city-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: var(--shadow-sm);
+  margin-top: -1px;
+}
+
+.city-dropdown-item {
+  padding: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  transition: background-color 0.15s ease;
+}
+
+.city-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.city-dropdown-item:hover,
+.city-dropdown-item.active {
+  background-color: var(--paper-3);
+}
+
+.city-dropdown-main {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.city-dropdown-secondary {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 0.25rem;
+}
+
+.city-dropdown-loading,
+.city-dropdown-error,
+.city-dropdown-empty {
+  padding: 0.75rem;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.city-dropdown-error {
+  color: var(--danger);
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .city-dropdown-menu {
+    max-height: 250px;
+  }
+
+  .city-dropdown-input {
+    font-size: 16px;
+  }
+}
+
+/* ---------- Address Autocomplete Styling ---------- */
+.address-autocomplete-container {
+  position: relative;
+  width: 100%;
+}
+
+.address-autocomplete-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 1rem;
+  box-sizing: border-box;
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+.address-autocomplete-input:focus {
+  outline: none;
+  border-color: var(--ink-soft);
+  box-shadow: 0 0 0 2px rgba(120, 82, 54, 0.1);
+}
+
+.address-autocomplete-input:disabled {
+  background-color: var(--paper-3);
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.address-autocomplete-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: var(--shadow-sm);
+  margin-top: -1px;
+}
+
+.address-autocomplete-item {
+  padding: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  transition: background-color 0.15s ease;
+}
+
+.address-autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.address-autocomplete-item:hover,
+.address-autocomplete-item.active {
+  background-color: var(--paper-3);
+}
+
+.address-autocomplete-main {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.address-autocomplete-secondary {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin-top: 0.25rem;
+}
+
+.address-autocomplete-loading,
+.address-autocomplete-error,
+.address-autocomplete-empty {
+  padding: 0.75rem;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.address-autocomplete-error {
+  color: var(--danger);
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+  .address-autocomplete-menu {
+    max-height: 300px;
+  }
+
+  .address-autocomplete-input {
+    font-size: 16px;
+  }
+}
+
+/* ---------- Toolbar / Search Bar ---------- */
+.toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin: 2rem 0 2.5rem 0;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+/* Search input takes most space */
+.toolbar > :first-child {
+  flex: 2;
+  min-width: 0;
+}
+
+/* City dropdown takes less space */
+.toolbar .field {
+  flex: 0.8;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+/* Search button fixed size */
+.toolbar .btn {
+  flex: 0 0 auto;
+  padding: 0.85rem 2rem;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+.toolbar .field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--ink-soft);
+}
+
+.toolbar .city-dropdown-input,
+.toolbar .city-dropdown-container {
+  width: 100%;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .toolbar > * {
+    min-width: unset;
+    width: 100%;
+    flex: 1;
+  }
+
+  .toolbar .btn {
+    flex: 1;
+  }
 }

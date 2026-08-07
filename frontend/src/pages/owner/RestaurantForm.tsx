@@ -6,6 +6,8 @@ import { restaurantsApi } from '../../api/restaurants'
 import type { Restaurant } from '../../api/restaurants'
 import { Alert, Button, Field, PhoneField } from '../../components/ui'
 import { normalizePhone, PHONE_ERROR } from '../../lib/phone'
+import { AddressAutocomplete } from '../../components/AddressAutocomplete'
+import { CityDropdown } from '../../components/CityDropdown'
 
 const EMPTY = {
   name: '',
@@ -61,13 +63,14 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
     <form className="owner-form" onSubmit={submit}>
       {error && <Alert>{error}</Alert>}
       <Field label="Name" name="name" value={form.name} onChange={set('name')} required />
-      <Field label="City" name="city" value={form.city} onChange={set('city')} required />
-      <Field
-        label="Address"
-        name="address_line"
-        value={form.address_line}
-        onChange={set('address_line')}
+      <CityDropdown
+        value={form.city}
+        onChange={(city) => setForm({ ...form, city })}
         required
+      />
+      <AddressAutocomplete
+        value={form.address_line}
+        onChange={(address_line) => setForm({ ...form, address_line })}
       />
       <PhoneField
         label="Phone"

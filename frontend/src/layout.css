@@ -1277,6 +1277,17 @@
   font-variant-numeric: tabular-nums;
 }
 .ticket-actions { display: flex; gap: 0.5rem; margin-left: auto; }
+.ticket-driver {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+.ticket-driver-label { font-size: 0.75rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.02em; }
+.ticket-driver-name { font-size: 0.9rem; font-weight: 500; margin-top: 0.2rem; }
 
 /* ── An opened venue ──────────────────────────────────────────────────────
    One scrolling page: create forms, then the menu, then the restaurant's own

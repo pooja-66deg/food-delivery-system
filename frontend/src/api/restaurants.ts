@@ -63,6 +63,10 @@ export interface CuisineCount {
   count: number
 }
 
+export interface CitiesResponse {
+  cities: string[]
+}
+
 export interface MenuItem {
   id: number
   category_id: number
@@ -143,6 +147,8 @@ export const restaurantsApi = {
 
   popularCuisines: (limit = 8) =>
     request<CuisineCount[]>(`/restaurants/cuisines/popular?limit=${limit}`, { auth: true }),
+
+  listCities: () => request<CitiesResponse>('/restaurants/cities', { auth: true }),
 
   get: (id: number) => request<RestaurantDetail>(`/restaurants/${id}`, { auth: true }),
 

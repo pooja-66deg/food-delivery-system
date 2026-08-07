@@ -9,6 +9,7 @@ import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/rest
 import { errorMessage } from '../api/client'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { BrowseFilters, NO_FACETS } from '../components/BrowseFilters'
+import { CityDropdown } from '../components/CityDropdown'
 import { FavoriteButton } from '../components/FavoriteButton'
 import type { Facets } from '../components/BrowseFilters'
 import { PopularCuisines } from '../components/PopularCuisines'
@@ -180,12 +181,9 @@ export function RestaurantsPage() {
           onSelect={onSuggestionChosen}
           fetchSuggestions={fetchSuggestions}
         />
-        <input
-          className="input"
-          placeholder="City"
+        <CityDropdown
           value={city}
-          onChange={(e) => setCity(e.target.value)}
-          style={{ maxWidth: 200 }}
+          onChange={setCity}
         />
         <Button type="submit">Search</Button>
       </form>

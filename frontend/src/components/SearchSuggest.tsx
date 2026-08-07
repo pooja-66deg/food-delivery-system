@@ -3,7 +3,6 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { RestaurantSuggestion } from '../api/restaurants'
 import { useDebouncedValue } from '../lib/useDebouncedValue'
 
-/** Matches SUGGEST_MIN_CHARS in src/modules/restaurants/service.py. */
 const MIN_CHARS = 2
 
 interface SearchSuggestProps {
@@ -15,12 +14,6 @@ interface SearchSuggestProps {
   debounceMs?: number
 }
 
-/**
- * Restaurant typeahead following the ARIA combobox pattern: the input owns the
- * `combobox` role and points at the active option via `aria-activedescendant`,
- * so screen readers announce the highlighted suggestion without moving focus
- * off the input.
- */
 export function SearchSuggest({
   value,
   onChange,
@@ -36,8 +29,6 @@ export function SearchSuggest({
 
   const term = useDebouncedValue(value.trim(), debounceMs)
 
-  // Held in a ref so an unstable `fetchSuggestions` identity (an inline arrow
-  // from the parent) cannot retrigger the effect on every render.
   const fetchRef = useRef(fetchSuggestions)
   fetchRef.current = fetchSuggestions
 
@@ -48,8 +39,6 @@ export function SearchSuggest({
       return
     }
 
-    // `stale` guards against an earlier, slower response landing after a newer
-    // one and replacing fresher suggestions.
     let stale = false
     void fetchRef
       .current(term)
@@ -105,9 +94,6 @@ export function SearchSuggest({
       <input
         className="input"
         role="combobox"
-        // A placeholder is not an accessible name: it is not exposed to every
-        // screen reader and vanishes once typing starts. The page also has other
-        // comboboxes now (the sort select), so this box needs to be nameable.
         aria-label={placeholder}
         aria-expanded={expanded}
         aria-controls={listId}
@@ -129,8 +115,6 @@ export function SearchSuggest({
               aria-selected={i === activeIndex}
               className="suggest-option"
               data-active={i === activeIndex}
-              // onMouseDown, not onClick: it fires before the input's blur, so
-              // the list is still mounted when the choice is registered.
               onMouseDown={(e) => {
                 e.preventDefault()
                 choose(s)
