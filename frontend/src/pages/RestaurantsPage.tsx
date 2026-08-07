@@ -19,7 +19,7 @@ import { reviewCountLabel } from '../reviews/RatingSummary'
 
 const PAGE_SIZE = 12
 
-const BAND_LABELS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$' }
+const BAND_LABELS: Record<number, string> = { 1: '₹', 2: '₹₹', 3: '₹₹₹' }
 
 export function RestaurantsPage() {
   const navigate = useNavigate()
@@ -258,7 +258,7 @@ export function RestaurantsPage() {
                     {r.city}
                     {r.price_band ? ` · ${BAND_LABELS[r.price_band]}` : ''}
                   </span>
-                  <span>Min ${Number(r.min_order_amount).toFixed(2)}</span>
+                  <span>Min ₹{Number(r.min_order_amount).toFixed(2)}</span>
                 </div>
               </Link>
             </motion.div>

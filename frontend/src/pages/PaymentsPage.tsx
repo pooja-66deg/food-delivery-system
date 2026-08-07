@@ -53,7 +53,7 @@ export function PaymentsPage() {
             <div key={p.id} className="admin-row pay-row" role="row">
               <Link to={`/orders/${p.order_id}`} className="mono">#{p.order_id}</Link>
               <span className="muted">{p.provider}</span>
-              <span className="price">${Number(p.amount).toFixed(2)}</span>
+              <span className="price">₹{Number(p.amount).toFixed(2)}</span>
               <span><span className="chip">{p.status}</span></span>
               <span>
                 {p.status === 'FAILED' && (

@@ -198,13 +198,13 @@ export function OrderDetailPage() {
           {order.items.map((it) => (
             <div key={it.menu_item_id} className="menu-item">
               <div className="menu-item-name">{it.name} × {it.quantity}</div>
-              <div className="price">${Number(it.line_total).toFixed(2)}</div>
+              <div className="price">₹{Number(it.line_total).toFixed(2)}</div>
             </div>
           ))}
         </div>
         <div className="cart-total">
           <span>Total</span>
-          <span className="price">${Number(order.total).toFixed(2)}</span>
+          <span className="price">₹{Number(order.total).toFixed(2)}</span>
         </div>
       </section>
 

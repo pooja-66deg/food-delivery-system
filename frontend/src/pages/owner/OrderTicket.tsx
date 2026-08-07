@@ -116,7 +116,7 @@ export function OrderTicket({ order, restaurantName, now, onChanged }: OrderTick
             <span className="ticket-line-name">
               {item.quantity} × {item.name}
             </span>
-            <span className="ticket-line-price">${Number(item.line_total).toFixed(2)}</span>
+            <span className="ticket-line-price">₹{Number(item.line_total).toFixed(2)}</span>
           </li>
         ))}
       </ul>
@@ -148,7 +148,7 @@ export function OrderTicket({ order, restaurantName, now, onChanged }: OrderTick
       )}
 
       <div className="ticket-foot">
-        <span className="ticket-total">${Number(order.total).toFixed(2)}</span>
+        <span className="ticket-total">₹{Number(order.total).toFixed(2)}</span>
         <div className="ticket-actions">
           {order.status === 'PAYMENT_SUCCESS' && (
             <>

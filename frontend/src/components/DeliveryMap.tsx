@@ -16,7 +16,7 @@ const HOME_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzI
 export function etaLabel(tracking: Tracking): string | null {
   if (tracking.eta_minutes === null) return null
   const distance =
-    tracking.distance_km !== null ? ` · ${tracking.distance_km.toFixed(1)} km away` : ''
+    tracking.distance_km !== null ? ` · ₹{tracking.distance_km.toFixed(1)} km away` : ''
   const hedge = tracking.eta_source === 'estimate' ? ' (estimated)' : ''
   return `Arriving in ~${tracking.eta_minutes} min${distance}${hedge}`
 }

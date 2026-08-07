@@ -2,6 +2,11 @@
    Layout: auth split-screen + authenticated app shell
    ============================================================ */
 
+/* Global spacing: section headings and containers get consistent top spacing */
+section { margin-top: 1.5rem; }
+section:first-of-type { margin-top: 0; }
+.alert ~ section:first-of-type { margin-top: 1.5rem; }
+
 /* ---------- Auth split screen ---------- */
 .auth-split {
   min-height: 100%;
@@ -845,7 +850,11 @@
   flex-wrap: wrap;
 }
 .menu-section {
+  margin-top: 2rem;
   margin-bottom: 2.5rem;
+}
+.menu-section:first-of-type {
+  margin-top: 2.5rem;
 }
 
 .menu-section h2 {
@@ -990,7 +999,7 @@
 .link-danger:hover { text-decoration: underline; }
 
 /* orders list */
-.order-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.order-list { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem; }
 .order-card {
   display: grid;
   grid-template-columns: 1fr auto auto;

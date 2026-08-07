@@ -16,9 +16,9 @@ const SORTS: { value: RestaurantSort; label: string }[] = [
 
 const RATINGS = [4, 3]
 const BANDS = [
-  { value: 1, label: '$' },
-  { value: 2, label: '$$' },
-  { value: 3, label: '$$$' },
+  { value: 1, label: '₹' },
+  { value: 2, label: '₹₹' },
+  { value: 3, label: '₹₹₹' },
 ]
 
 interface BrowseFiltersProps {

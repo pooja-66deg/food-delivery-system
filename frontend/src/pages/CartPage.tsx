@@ -71,7 +71,7 @@ export function CartPage() {
               <div key={item.menu_item_id} className="cart-row">
                 <div>
                   <div className="menu-item-name">{item.name}</div>
-                  <div className="muted">${Number(item.unit_price).toFixed(2)} each</div>
+                  <div className="muted">₹{Number(item.unit_price).toFixed(2)} each</div>
                 </div>
                 <div className="cart-qty">
                   <button
@@ -90,7 +90,7 @@ export function CartPage() {
                     +
                   </button>
                 </div>
-                <div className="price">${Number(item.line_total).toFixed(2)}</div>
+                <div className="price">₹{Number(item.line_total).toFixed(2)}</div>
                 <button
                   className="link-danger"
                   onClick={() => remove(item.menu_item_id)}
@@ -105,7 +105,7 @@ export function CartPage() {
           <div className="cart-summary">
             <div className="cart-total">
               <span>Subtotal</span>
-              <span className="price">${Number(cart.subtotal).toFixed(2)}</span>
+              <span className="price">₹{Number(cart.subtotal).toFixed(2)}</span>
             </div>
 
             <div className="field">

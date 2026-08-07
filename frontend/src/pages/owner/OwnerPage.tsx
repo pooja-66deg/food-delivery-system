@@ -152,7 +152,7 @@ export function OwnerPage() {
         <StatTile label="Live orders" value={String(liveOrders.length)} icon={<ClockIcon />} />
         <StatTile
           label="Order value today"
-          value={`$${orderValueToday(orders, loadedAt).toFixed(2)}`}
+          value={`₹${orderValueToday(orders, loadedAt).toFixed(2)}`}
           icon={<CutleryIcon />}
         />
       </div>
