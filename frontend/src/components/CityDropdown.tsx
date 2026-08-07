@@ -237,6 +237,11 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
             setSearchInput(e.target.value)
             onChange(e.target.value)
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && searchInput.trim()) {
+              e.preventDefault()
+            }
+          }}
           placeholder="Enter city"
           disabled={disabled}
           required={required}
