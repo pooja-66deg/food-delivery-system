@@ -199,7 +199,7 @@ describe('OwnerPage stat tiles', () => {
     render(<OwnerPage />)
 
     const tile = (await screen.findByText('Order value today')).closest('.stat-tile')
-    await waitFor(() => expect(tile).toHaveTextContent('$32.50'))
+    await waitFor(() => expect(tile).toHaveTextContent('₹32.50'))
   })
 
   it('leaves out cancelled orders, which are not trade', async () => {
@@ -209,7 +209,7 @@ describe('OwnerPage stat tiles', () => {
     render(<OwnerPage />)
 
     const tile = (await screen.findByText('Order value today')).closest('.stat-tile')
-    await waitFor(() => expect(tile).toHaveTextContent('$0.00'))
+    await waitFor(() => expect(tile).toHaveTextContent('₹0.00'))
   })
 })
 

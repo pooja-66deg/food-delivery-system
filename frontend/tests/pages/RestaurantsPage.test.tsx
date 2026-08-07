@@ -293,8 +293,9 @@ describe('RestaurantsPage', () => {
   it('shows the price band on a card', async () => {
     renderPage()
 
-    await screen.findByText('Pizza Palace')
-    expect(screen.getByText(/Metropolis · \$\$/)).toBeInTheDocument()
+    const card = await screen.findByText('Pizza Palace')
+    const cardBody = card.closest('.rest-card')
+    expect(cardBody).toHaveTextContent(/Metropolis.*₹₹/s)
   })
 
   it('the empty state names the search that found nothing', async () => {

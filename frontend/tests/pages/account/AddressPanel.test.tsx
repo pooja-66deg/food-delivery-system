@@ -52,8 +52,8 @@ describe('AddressPanel editing', () => {
     const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
     const city = cityInputs[0]
     await userEvent.clear(city)
-    await userEvent.type(city, 'Manchester')
-    await userEvent.keyboard('{Enter}')
+    await userEvent.type(city, 'Manchester{Enter}')
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(mocks.updateAddress).toHaveBeenCalledTimes(1))
