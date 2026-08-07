@@ -29,7 +29,7 @@ describe('BrowseFilters', () => {
   it('re-picking the active chip clears that filter', async () => {
     renderFilters({ ...NO_FACETS, price_band: 2 })
 
-    await userEvent.click(screen.getByRole('button', { name: '$$' }))
+    await userEvent.click(screen.getByRole('button', { name: '₹₹' }))
 
     expect(onChange).toHaveBeenCalledWith({ sort: 'name', price_band: undefined })
   })
