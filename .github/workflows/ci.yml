@@ -126,12 +126,4 @@ jobs:
         run: |
           gcloud builds submit \
             --config infra/gcp/cloudbuild.yaml \
-            --substitutions=\
-          _REGION=${{ vars.GCP_REGION || 'us-central1' }},\
-          _AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }},\
-          _CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }},\
-          _VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }},\
-          _API_URL=${{ vars.GCP_API_URL }},\
-          _FE_URL=${{ vars.GCP_FE_URL }},\
-          _MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }},\
-          _TAG=${{ github.sha }}
+            --substitutions="_REGION=${{ vars.GCP_REGION || 'us-central1' }},_AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }},_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }},_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }},_API_URL=${{ vars.GCP_API_URL }},_FE_URL=${{ vars.GCP_FE_URL }},_MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }},_TAG=${{ github.sha }}"
