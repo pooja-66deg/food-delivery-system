@@ -44,7 +44,7 @@ class KafkaConsumer(ABC):
         )
 
     @abstractmethod
-    async def handle(self, event: BaseEvent) -> None:
+    def handle(self, event: BaseEvent) -> None:
         """Handle a received event.
 
         This method should be overridden by subclasses to implement
@@ -71,10 +71,8 @@ class KafkaConsumer(ABC):
                     if message.value:
                         event_data = message.value
                         event = BaseEvent(**event_data)
-                        # Note: handle() is async but run() is sync.
-                        # In a real implementation, you'd use asyncio.run()
-                        # or run this in an async context.
                         logger.info(f"Received event {event.id} of type {event.event_type}")
+                        self.handle(event)
                 except Exception as e:
                     logger.error(f"Error processing message: {e}")
         except KafkaError as e:

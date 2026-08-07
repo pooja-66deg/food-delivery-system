@@ -6,6 +6,7 @@ from kafka.errors import KafkaError
 
 from src.shared.events import BaseEvent
 from src.shared.kafka_producer import KafkaProducer
+from src.shared.kafka_consumer import KafkaConsumer
 
 
 class TestKafkaProducer:
@@ -211,3 +212,169 @@ class TestKafkaProducer:
         # Should raise the RuntimeError
         with pytest.raises(RuntimeError):
             await producer.publish(event)
+
+
+class TestKafkaConsumer:
+    """Test suite for KafkaConsumer."""
+
+    def test_consumer_invokes_handle_on_message_received(self):
+        """Test that KafkaConsumer calls handle() when a message is received."""
+        # Create a test consumer implementation
+        class TestConsumer(KafkaConsumer):
+            def __init__(self, topics, **kwargs):
+                # Don't call super().__init__ to avoid real Kafka connection
+                self.topics = topics
+                self.handled_events = []
+                self.consumer = None
+
+            def handle(self, event: BaseEvent) -> None:
+                """Track events handled."""
+                self.handled_events.append(event)
+
+        # Create mock message
+        mock_message = MagicMock()
+        mock_message.value = {
+            "id": "test-event-1",
+            "timestamp": "2024-01-15T10:30:00+00:00",
+            "source_service": "orders",
+            "event_type": "order.created",
+            "data": {"order_id": "123"}
+        }
+
+        # Create consumer instance and mock the consumer
+        consumer = TestConsumer(topics=["order.created"])
+        consumer.consumer = MagicMock()
+        # Simulate one message then StopIteration to exit run loop
+        consumer.consumer.__iter__ = MagicMock(
+            return_value=iter([mock_message])
+        )
+
+        # Call run (which should invoke handle)
+        consumer.run()
+
+        # Verify handle was invoked
+        assert len(consumer.handled_events) == 1
+        assert consumer.handled_events[0].id == "test-event-1"
+        assert consumer.handled_events[0].source_service == "orders"
+        assert consumer.handled_events[0].event_type == "order.created"
+        assert consumer.handled_events[0].data["order_id"] == "123"
+
+    def test_consumer_handle_receives_correct_event_data(self):
+        """Test that handle() receives properly deserialized BaseEvent."""
+        class TrackingConsumer(KafkaConsumer):
+            def __init__(self, topics, **kwargs):
+                self.topics = topics
+                self.last_event = None
+                self.consumer = None
+
+            def handle(self, event: BaseEvent) -> None:
+                self.last_event = event
+
+        # Create mock message with complex data
+        mock_message = MagicMock()
+        complex_data = {
+            "order_id": "456",
+            "items": [
+                {"id": "item1", "qty": 2, "price": 10.50},
+                {"id": "item2", "qty": 1, "price": 25.00}
+            ],
+            "total": 45.50
+        }
+        mock_message.value = {
+            "id": "complex-event",
+            "timestamp": "2024-01-15T10:30:00+00:00",
+            "source_service": "orders",
+            "event_type": "order.placed",
+            "data": complex_data
+        }
+
+        consumer = TrackingConsumer(topics=["order.placed"])
+        consumer.consumer = MagicMock()
+        consumer.consumer.__iter__ = MagicMock(
+            return_value=iter([mock_message])
+        )
+
+        consumer.run()
+
+        # Verify event was properly deserialized
+        assert consumer.last_event is not None
+        assert isinstance(consumer.last_event, BaseEvent)
+        assert consumer.last_event.id == "complex-event"
+        assert consumer.last_event.data == complex_data
+        assert consumer.last_event.data["items"][0]["qty"] == 2
+
+    def test_consumer_handles_multiple_messages(self):
+        """Test that KafkaConsumer processes multiple messages sequentially."""
+        class CountingConsumer(KafkaConsumer):
+            def __init__(self, topics, **kwargs):
+                self.topics = topics
+                self.event_count = 0
+                self.consumer = None
+
+            def handle(self, event: BaseEvent) -> None:
+                self.event_count += 1
+
+        # Create multiple mock messages
+        messages = [
+            MagicMock(value={
+                "id": f"event-{i}",
+                "timestamp": "2024-01-15T10:30:00+00:00",
+                "source_service": "orders",
+                "event_type": "order.created",
+                "data": {"order_id": str(i)}
+            })
+            for i in range(3)
+        ]
+
+        consumer = CountingConsumer(topics=["order.created"])
+        consumer.consumer = MagicMock()
+        consumer.consumer.__iter__ = MagicMock(return_value=iter(messages))
+
+        consumer.run()
+
+        # Verify all messages were handled
+        assert consumer.event_count == 3
+
+    def test_consumer_continues_on_message_error(self):
+        """Test that consumer continues processing after error in a message."""
+        class RobustConsumer(KafkaConsumer):
+            def __init__(self, topics, **kwargs):
+                self.topics = topics
+                self.successful_events = []
+                self.consumer = None
+
+            def handle(self, event: BaseEvent) -> None:
+                self.successful_events.append(event.id)
+
+        # Create messages, where one has invalid data
+        valid_message1 = MagicMock(value={
+            "id": "event-1",
+            "timestamp": "2024-01-15T10:30:00+00:00",
+            "source_service": "orders",
+            "event_type": "order.created",
+            "data": {}
+        })
+
+        invalid_message = MagicMock(value=None)
+
+        valid_message2 = MagicMock(value={
+            "id": "event-2",
+            "timestamp": "2024-01-15T10:30:00+00:00",
+            "source_service": "orders",
+            "event_type": "order.created",
+            "data": {}
+        })
+
+        consumer = RobustConsumer(topics=["order.created"])
+        consumer.consumer = MagicMock()
+        consumer.consumer.__iter__ = MagicMock(
+            return_value=iter([valid_message1, invalid_message, valid_message2])
+        )
+
+        # Run without raising an exception
+        consumer.run()
+
+        # Verify valid messages were processed despite error
+        assert len(consumer.successful_events) == 2
+        assert "event-1" in consumer.successful_events
+        assert "event-2" in consumer.successful_events
