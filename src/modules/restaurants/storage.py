@@ -1,8 +1,9 @@
-"""Local image storage for restaurant/menu images.
+"""Image storage abstraction — routes to local or GCS based on environment.
 
-Files are written under ``settings.media_root`` and served at ``/media``. Swap
-``save_image`` for a Cloud Storage / S3 upload later — the return value (a public
-URL path) is the only contract callers depend on.
+Local development (ENVIRONMENT=development): save to media_root, served by NGINX.
+Production (ENVIRONMENT=production): upload to GCS, return public URL.
+
+Both return the same URL format; callers don't know which backend is in use.
 """
 import os
 import uuid
@@ -17,7 +18,20 @@ _MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 async def save_image(upload: UploadFile, subdir: str) -> str:
-    """Validate and store an uploaded image; return its public URL path."""
+    """Validate and store an uploaded image; return its public URL path.
+
+    Routes to local disk (development) or GCS (production) based on ENVIRONMENT.
+    """
+    if settings.environment == "production":
+        from src.modules.restaurants.storage_gcs import save_image_gcs
+        return await save_image_gcs(upload, subdir)
+    else:
+        # Local development: save to disk
+        return await _save_image_local(upload, subdir)
+
+
+async def _save_image_local(upload: UploadFile, subdir: str) -> str:
+    """Save image to local disk; return /media URL."""
     ext = _ALLOWED.get(upload.content_type or "")
     if ext is None:
         raise ValidationException("Unsupported image type. Use JPEG, PNG, or WebP.")

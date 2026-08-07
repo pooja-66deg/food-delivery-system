@@ -17,6 +17,8 @@ substitutions:
   _FE_SERVICE: food-frontend
   _CLOUDSQL_INSTANCE: ""               # PROJECT:REGION:INSTANCE
   _VPC_CONNECTOR: ""                   # Serverless VPC Access connector (for Memorystore)
+  # GCS bucket for restaurant/menu images (public, Cloud Run service account needs objectCreator role)
+  _GCS_BUCKET_NAME: ""
   _API_URL: ""                         # Public API URL the frontend calls (set after first API deploy or use a custom domain)
   # Public frontend URL. The API needs it for two things, and a deploy without it
   # is quietly broken rather than obviously broken:
@@ -134,7 +136,7 @@ steps:
       # .a.run.app and the newer SERVICE-PROJECTNUMBER.REGION.run.app), CORS
       # matches Origin by exact string, and whichever one is missing from the
       # allowlist blocks every request made from it.
-      - --set-env-vars=^@^ENVIRONMENT=production@KAFKA_BROKERS=disabled:9092@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}
+      - --set-env-vars=^@^ENVIRONMENT=production@KAFKA_BROKERS=disabled:9092@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}
       # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
       # Geocoding permission and must never reach the browser. Without it the
       # API still serves ETAs, computed straight-line instead of via Google.

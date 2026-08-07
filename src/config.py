@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Media (uploaded images)
     media_root: str = "media"
 
+    # Google Cloud Storage (production only)
+    gcs_bucket_name: Optional[str] = None
+
     # Kafka
     kafka_brokers: str = "localhost:9092"
     kafka_consumer_group: str = "food-delivery-group"
