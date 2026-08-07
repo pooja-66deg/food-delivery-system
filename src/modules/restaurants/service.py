@@ -113,3 +113,14 @@ async def update_restaurant(
     await session.commit()
     await session.refresh(restaurant)
     return restaurant
+
+
+async def list_cities(session: AsyncSession) -> list[str]:
+    """Return a sorted list of unique cities from all restaurants."""
+    result = await session.scalars(
+        select(Restaurant.city)
+        .distinct()
+        .order_by(Restaurant.city)
+        .where(Restaurant.city.isnot(None))
+    )
+    return sorted(list(set(result.all())))

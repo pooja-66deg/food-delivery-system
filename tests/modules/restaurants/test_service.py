@@ -77,3 +77,18 @@ async def test_update_restaurant_by_non_owner_forbidden(db_session):
 
     with pytest.raises(ForbiddenException):
         await service.update_restaurant(db_session, r.id, intruder, RestaurantUpdate(name="Hacked"))
+
+
+@pytest.mark.asyncio
+async def test_list_cities_returns_unique_cities(db_session):
+    owner = await _owner(db_session)
+    await service.create_restaurant(db_session, owner, _restaurant(name="Pizza Palace", city="Metropolis"))
+    await service.create_restaurant(db_session, owner, _restaurant(name="Burger Barn", city="Metropolis"))
+    await service.create_restaurant(db_session, owner, _restaurant(name="Taco Stand", city="Springfield"))
+    await service.create_restaurant(db_session, owner, _restaurant(name="Noodle House", city="Portland"))
+
+    cities = await service.list_cities(db_session)
+
+    assert cities == ["Metropolis", "Portland", "Springfield"]
+    assert len(cities) == 3
+    assert cities == sorted(cities)

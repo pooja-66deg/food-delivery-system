@@ -126,7 +126,7 @@ export function AdminPage() {
                   <StatTile label="Users" value={String(stats.users)} />
                   <StatTile label="Restaurants" value={String(stats.restaurants)} />
                   <StatTile label="Orders" value={String(stats.orders_total)} />
-                  <StatTile label="GMV" value={`$${Number(stats.gross_merchandise_value).toFixed(2)}`} accent />
+                  <StatTile label="GMV" value={`₹${Number(stats.gross_merchandise_value).toFixed(2)}`} accent />
                 </div>
                 <h2 className="admin-subhead">Orders by status</h2>
                 {Object.keys(stats.orders_by_status).length === 0 ? (
@@ -158,7 +158,7 @@ export function AdminPage() {
                     <span className="mono">#{o.id}</span>
                     <span><span className="chip">{statusLabel(o.status)}</span></span>
                     <span className="muted">{o.payment_status}</span>
-                    <span className="price">${Number(o.total).toFixed(2)}</span>
+                    <span className="price">₹{Number(o.total).toFixed(2)}</span>
                     <span className="muted">{new Date(o.created_at).toLocaleString()}</span>
                     <span>
                       {!TERMINAL.has(o.status) && (

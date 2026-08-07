@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.adapters.database import get_db
 from src.adapters.redis import get_redis
 from src.modules.delivery import location, service
-from src.modules.delivery.schemas import DeliveryRead, TrackingRead
+from src.modules.delivery.schemas import AvailableDriver, DeliveryRead, TrackingRead
 from src.modules.users.dependencies import get_current_user, require_role
 from src.modules.users.models import User
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/delivery", tags=["delivery"])
 
@@ -22,6 +23,10 @@ class StatusBody(BaseModel):
 class LocationBody(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
+
+
+class ReassignBody(BaseModel):
+    driver_id: int
 
 
 @router.get("/assignments", response_model=list[DeliveryRead])
@@ -82,3 +87,24 @@ async def tracking(
     redis=Depends(get_redis),
 ):
     return await service.tracking_for_order(session, user, redis, order_id)
+
+
+@router.get("/available-drivers", response_model=list[AvailableDriver])
+async def available_drivers(
+    restaurant: User = Depends(require_role("restaurant", "admin")),
+    session: AsyncSession = Depends(get_db),
+):
+    """List all drivers available for assignment (not currently on an active delivery)."""
+    return await service.list_available_drivers(session)
+
+
+@router.post("/orders/{order_id}/reassign", response_model=DeliveryRead)
+async def reassign(
+    order_id: int,
+    body: ReassignBody,
+    restaurant: User = Depends(require_role("restaurant", "admin")),
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    """Reassign a delivery to a different driver (restaurant override)."""
+    return await service.reassign_delivery_for_order(session, order_id, body.driver_id, redis=redis)

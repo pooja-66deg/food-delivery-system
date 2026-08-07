@@ -41,7 +41,7 @@ export function OrderOps({ orders, onChanged }: { orders: Order[]; onChanged: ()
             <div>
               <div className="menu-item-name">Order #{o.id}</div>
               <div className="muted">
-                {o.items.reduce((n, i) => n + i.quantity, 0)} item(s) · ${Number(o.total).toFixed(2)}
+                {o.items.reduce((n, i) => n + i.quantity, 0)} item(s) · ₹{Number(o.total).toFixed(2)}
               </div>
             </div>
             <span className="badge">{statusLabel(o.status)}</span>

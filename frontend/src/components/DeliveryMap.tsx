@@ -1,6 +1,3 @@
-// Live delivery tracking. Renders a Google map when a browser key is configured
-// and a text panel when it is not — the ETA comes from the server either way, so
-// the information is identical and only the presentation drops.
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import { useEffect, useRef, useState } from 'react'
 
@@ -11,12 +8,15 @@ export function mapsKey(): string | undefined {
   return key ? key : undefined
 }
 
+// SVG icons for markers
+const BIKE_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSI4IiBjeT0iMjQiIHI9IjYiIGZpbGw9IiNmZjY2MzMiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIi8+PHBhdGggZD0iTTEyIDEwTDIwIDEwTDIwIDIySDEyVjEwWiIgZmlsbD0iI2ZmNjYzMyIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48Y2lyY2xlIGN4PSIyNCIgY3k9IjI0IiByPSI2IiBmaWxsPSIjZmY2NjMzIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg=='
+const RESTAURANT_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHJ4PSIyIiBmaWxsPSIjZmY0NDAwIiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIvPjwvc3ZnPg=='
+const HOME_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTYgNEw0IDE0VjI4SDEyVjIwSDIwVjI4SDI4VjE0TDE2IDRaIiBmaWxsPSIjNDRBQTk5IiBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg=='
+
 export function etaLabel(tracking: Tracking): string | null {
   if (tracking.eta_minutes === null) return null
   const distance =
-    tracking.distance_km !== null ? ` · ${tracking.distance_km.toFixed(1)} km away` : ''
-  // "estimated" is the honest word for the haversine fallback. A Google ETA
-  // accounts for traffic and does not need the hedge.
+    tracking.distance_km !== null ? ` · ₹{tracking.distance_km.toFixed(1)} km away` : ''
   const hedge = tracking.eta_source === 'estimate' ? ' (estimated)' : ''
   return `Arriving in ~${tracking.eta_minutes} min${distance}${hedge}`
 }
@@ -32,22 +32,16 @@ function points(tracking: Tracking): { key: string; point: Coordinate; title: st
   ].filter((m): m is { key: string; point: Coordinate; title: string } => m.point !== null)
 }
 
-/**
- * The Maps SDK is imperative and long-lived, so it is created once per mount and
- * then *mutated* as tracking updates. Re-creating the map on every 5-second poll
- * would flicker and re-fit the viewport under the user.
- */
 function useTrackingMap(apiKey: string | undefined, tracking: Tracking) {
   const container = useRef<HTMLDivElement | null>(null)
-  const map = useRef<google.maps.Map | null>(null)
-  const markerCtor = useRef<typeof google.maps.Marker | null>(null)
-  const markers = useRef<Map<string, google.maps.Marker>>(new Map())
+  const map = useRef<any>(null)
+  const markerCtor = useRef<any>(null)
+  const markers = useRef<Map<string, any>>(new Map())
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
 
   const active = Boolean(apiKey) && tracking.driver !== null
 
-  // Load the SDK and create the map. Runs once per mount.
   useEffect(() => {
     if (!active || !apiKey) return
     let cancelled = false
@@ -66,21 +60,14 @@ function useTrackingMap(apiKey: string | undefined, tracking: Tracking) {
         setReady(true)
       })
       .catch(() => {
-        // A blocked key, an offline browser, or a referrer rejection all land
-        // here. The text panel still carries the ETA, so degrade rather than
-        // leave an empty grey box.
         if (!cancelled) setFailed(true)
       })
 
     return () => {
       cancelled = true
     }
-    // apiKey and `active` decide whether a map exists at all; tracking changes
-    // are handled by the mutation effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, active])
 
-  // Move the markers and re-fit the viewport as new positions arrive.
   useEffect(() => {
     const Marker = markerCtor.current
     if (!map.current || !Marker) return
@@ -91,15 +78,34 @@ function useTrackingMap(apiKey: string | undefined, tracking: Tracking) {
     for (const { key, point, title } of known) {
       const position = latLng(point)
       const existing = markers.current.get(key)
+
+      // Choose icon based on marker type
+      let iconUrl: string | undefined
+      if (key === 'driver') {
+        iconUrl = BIKE_ICON
+      } else if (key === 'restaurant') {
+        iconUrl = RESTAURANT_ICON
+      } else if (key === 'destination') {
+        iconUrl = HOME_ICON
+      }
+
+      const iconConfig = iconUrl ? {
+        url: iconUrl,
+        scaledSize: { width: 32, height: 32 },
+      } : undefined
+
       if (existing) {
         existing.setPosition(position)
       } else {
-        markers.current.set(key, new Marker({ map: map.current, position, title }))
+        markers.current.set(key, new Marker({
+          map: map.current,
+          position,
+          title,
+          icon: iconConfig,
+        }))
       }
     }
 
-    // A bounds *literal* rather than new google.maps.LatLngBounds(): no extra
-    // global to reach for, and it is trivially inspectable.
     const lats = known.map((m) => m.point.latitude)
     const lngs = known.map((m) => m.point.longitude)
     map.current.fitBounds(
@@ -113,7 +119,6 @@ function useTrackingMap(apiKey: string | undefined, tracking: Tracking) {
     )
   }, [tracking, ready])
 
-  // Drop the markers when the card unmounts; the map goes with its container.
   useEffect(
     () => () => {
       markers.current.forEach((marker) => marker.setMap(null))

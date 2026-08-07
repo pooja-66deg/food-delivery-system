@@ -36,6 +36,8 @@ router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
 # Only restaurant owners (or admins) may manage restaurants and menus.
 owner_only = require_role("restaurant", "admin")
+# Only admins may create new restaurants
+admin_only = require_role("admin")
 
 
 # ---------- Public browsing ----------
@@ -104,6 +106,13 @@ async def popular_cuisines(
     return [CuisineCount(cuisine=cuisine, count=count) for cuisine, count in rows]
 
 
+@router.get("/cities", response_model=dict[str, list[str]])
+async def get_cities(session: AsyncSession = Depends(get_db)) -> dict[str, list[str]]:
+    """Return a list of all unique cities where restaurants operate."""
+    cities = await service.list_cities(session)
+    return {"cities": cities}
+
+
 @router.get("/{restaurant_id}", response_model=RestaurantDetail)
 async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get_db)):
     restaurant = await service.get_restaurant(session, restaurant_id)
@@ -118,7 +127,7 @@ async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get
 @router.post("", response_model=RestaurantResponse, status_code=status.HTTP_201_CREATED)
 async def create_restaurant(
     data: RestaurantCreate,
-    user: User = Depends(owner_only),
+    user: User = Depends(admin_only),
     session: AsyncSession = Depends(get_db),
 ):
     return await service.create_restaurant(session, user, data)

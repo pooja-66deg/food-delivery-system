@@ -1,6 +1,5 @@
 import type { BrowseParams, RestaurantSort } from '../api/restaurants'
 
-/** The filter subset this control owns — search and city live in the toolbar. */
 export type Facets = Pick<
   BrowseParams,
   'min_rating' | 'price_band' | 'vegetarian_only' | 'open_only' | 'sort'
@@ -17,9 +16,9 @@ const SORTS: { value: RestaurantSort; label: string }[] = [
 
 const RATINGS = [4, 3]
 const BANDS = [
-  { value: 1, label: '$' },
-  { value: 2, label: '$$' },
-  { value: 3, label: '$$$' },
+  { value: 1, label: '₹' },
+  { value: 2, label: '₹₹' },
+  { value: 3, label: '₹₹₹' },
 ]
 
 interface BrowseFiltersProps {
@@ -27,18 +26,9 @@ interface BrowseFiltersProps {
   onChange: (next: Facets) => void
 }
 
-/**
- * Rating, price, dietary and sort controls for the browse page.
- *
- * Every control reports the whole next filter set rather than a single field, so
- * the page issues exactly one request per change instead of one per field.
- * Re-picking an active chip clears it — that is the only affordance a chip has
- * for "undo", short of a separate reset control per row.
- */
 export function BrowseFilters({ value, onChange }: BrowseFiltersProps) {
   const set = (patch: Partial<Facets>) => onChange({ ...value, ...patch })
 
-  /** Toggle semantics: picking the active value again clears the filter. */
   const pick = <K extends keyof Facets>(key: K, next: Facets[K]) =>
     set({ [key]: value[key] === next ? undefined : next } as Partial<Facets>)
 

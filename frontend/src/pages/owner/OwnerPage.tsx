@@ -134,9 +134,11 @@ export function OwnerPage() {
             stock and pricing.
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <span aria-hidden="true">+</span> New restaurant
-        </Button>
+        {user?.role === 'admin' && (
+          <Button onClick={() => setAddOpen(true)}>
+            <span aria-hidden="true">+</span> New restaurant
+          </Button>
+        )}
       </header>
 
       {error && <Alert>{error}</Alert>}
@@ -150,7 +152,7 @@ export function OwnerPage() {
         <StatTile label="Live orders" value={String(liveOrders.length)} icon={<ClockIcon />} />
         <StatTile
           label="Order value today"
-          value={`$${orderValueToday(orders, loadedAt).toFixed(2)}`}
+          value={`₹${orderValueToday(orders, loadedAt).toFixed(2)}`}
           icon={<CutleryIcon />}
         />
       </div>
@@ -182,7 +184,9 @@ export function OwnerPage() {
             <Loading />
           ) : mine.length === 0 ? (
             <EmptyState>
-              No restaurants yet. Use “New restaurant” to create your first one.
+              {user?.role === 'admin'
+                ? 'No restaurants yet. Use “New restaurant” to create your first one.'
+                : 'No restaurants assigned yet. Contact an administrator to add you to a restaurant.'}
             </EmptyState>
           ) : (
             <div className="venue-list">

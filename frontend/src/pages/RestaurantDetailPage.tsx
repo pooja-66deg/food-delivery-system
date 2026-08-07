@@ -92,7 +92,7 @@ export function RestaurantDetailPage() {
           )}
           {restaurant.cuisine && <span className="chip">{restaurant.cuisine}</span>}
           <span className="chip">{restaurant.city}</span>
-          <span className="chip">Min order ${Number(restaurant.min_order_amount).toFixed(2)}</span>
+          <span className="chip">Min order ₹{Number(restaurant.min_order_amount).toFixed(2)}</span>
         </div>
       </motion.div>
 
@@ -124,7 +124,7 @@ export function RestaurantDetailPage() {
                     </div>
                   </div>
                   <div className="menu-item-actions">
-                    <div className="price">${Number(item.price).toFixed(2)}</div>
+                    <div className="price">₹{Number(item.price).toFixed(2)}</div>
                     {isCustomer && (
                       <Button
                         variant="ghost"

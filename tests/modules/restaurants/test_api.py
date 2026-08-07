@@ -91,3 +91,21 @@ async def test_create_restaurant_requires_auth(api_client):
         json={"name": "Nope", "city": "Metropolis", "address_line": "1", "phone": "+15550000000"},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_cities_endpoint_returns_unique_cities(api_client):
+    headers = await _owner_headers(api_client)
+
+    # Create restaurants in different cities
+    await api_client.post("/restaurants", json={"name": "Pizza Palace", "city": "Metropolis", "address_line": "1", "phone": "+15550000000"}, headers=headers)
+    await api_client.post("/restaurants", json={"name": "Burger Barn", "city": "Metropolis", "address_line": "2", "phone": "+15550000001"}, headers=headers)
+    await api_client.post("/restaurants", json={"name": "Taco Stand", "city": "Springfield", "address_line": "3", "phone": "+15550000002"}, headers=headers)
+    await api_client.post("/restaurants", json={"name": "Noodle House", "city": "Portland", "address_line": "4", "phone": "+15550000003"}, headers=headers)
+
+    # Endpoint should return cities in sorted order
+    resp = await api_client.get("/restaurants/cities")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "cities" in body
+    assert body["cities"] == ["Metropolis", "Portland", "Springfield"]

@@ -98,7 +98,7 @@ export function StockRow({ item, onEdit, onSetStock, onSetPrice, onDelete }: Sto
         />
       </label>
 
-      <span className="stock-row-total">${Number(item.price).toFixed(2)}</span>
+      <span className="stock-row-total">₹{Number(item.price).toFixed(2)}</span>
 
       <button
         type="button"

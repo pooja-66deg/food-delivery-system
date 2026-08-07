@@ -127,7 +127,7 @@ export function OrdersPage() {
                   <div className="muted">{new Date(o.created_at).toLocaleString()}</div>
                 </div>
                 <span className="badge">{statusLabel(o.status)}</span>
-                <div className="price">${Number(o.total).toFixed(2)}</div>
+                <div className="price">₹{Number(o.total).toFixed(2)}</div>
               </Link>
               {o.status === 'PAYMENT_PENDING' && (
                 <Button

@@ -92,7 +92,7 @@ export function FavoritesPage() {
                     {r.city}
                     {r.price_band ? ` · ${BAND_LABELS[r.price_band]}` : ''}
                   </span>
-                  <span>Min ${Number(r.min_order_amount).toFixed(2)}</span>
+                  <span>Min ₹{Number(r.min_order_amount).toFixed(2)}</span>
                 </div>
               </Link>
             </div>

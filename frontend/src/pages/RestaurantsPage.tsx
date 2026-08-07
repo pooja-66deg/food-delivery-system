@@ -9,6 +9,7 @@ import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/rest
 import { errorMessage } from '../api/client'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { BrowseFilters, NO_FACETS } from '../components/BrowseFilters'
+import { CityDropdown } from '../components/CityDropdown'
 import { FavoriteButton } from '../components/FavoriteButton'
 import type { Facets } from '../components/BrowseFilters'
 import { PopularCuisines } from '../components/PopularCuisines'
@@ -18,7 +19,7 @@ import { reviewCountLabel } from '../reviews/RatingSummary'
 
 const PAGE_SIZE = 12
 
-const BAND_LABELS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$' }
+const BAND_LABELS: Record<number, string> = { 1: '₹', 2: '₹₹', 3: '₹₹₹' }
 
 export function RestaurantsPage() {
   const navigate = useNavigate()
@@ -180,12 +181,9 @@ export function RestaurantsPage() {
           onSelect={onSuggestionChosen}
           fetchSuggestions={fetchSuggestions}
         />
-        <input
-          className="input"
-          placeholder="City"
+        <CityDropdown
           value={city}
-          onChange={(e) => setCity(e.target.value)}
-          style={{ maxWidth: 200 }}
+          onChange={setCity}
         />
         <Button type="submit">Search</Button>
       </form>
@@ -260,7 +258,7 @@ export function RestaurantsPage() {
                     {r.city}
                     {r.price_band ? ` · ${BAND_LABELS[r.price_band]}` : ''}
                   </span>
-                  <span>Min ${Number(r.min_order_amount).toFixed(2)}</span>
+                  <span>Min ₹{Number(r.min_order_amount).toFixed(2)}</span>
                 </div>
               </Link>
             </motion.div>

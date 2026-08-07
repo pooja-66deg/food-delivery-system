@@ -33,6 +33,12 @@ export interface Tracking {
   eta_source: 'google' | 'estimate' | null
 }
 
+export interface Driver {
+  id: number
+  first_name: string
+  last_name: string
+}
+
 export const deliveryApi = {
   assignments: () => request<Delivery[]>('/delivery/assignments', { auth: true }),
   accept: (orderId: number) =>
@@ -56,5 +62,12 @@ export const deliveryApi = {
       method: 'POST',
       auth: true,
       body: { latitude, longitude },
+    }),
+  availableDrivers: () => request<Driver[]>('/delivery/available-drivers', { auth: true }),
+  reassign: (orderId: number, driverId: number) =>
+    request<Delivery>(`/delivery/orders/${orderId}/reassign`, {
+      method: 'POST',
+      auth: true,
+      body: { driver_id: driverId },
     }),
 }
