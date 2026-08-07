@@ -15,8 +15,9 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
 }) => {
   return (
     <div className="field">
-      <label>Street Address</label>
+      <label htmlFor="street-address">Street Address</label>
       <input
+        id="street-address"
         type="text"
         value={value}
         onChange={(e) => onChange?.(e.target.value)}

@@ -36,8 +36,6 @@ router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
 # Only restaurant owners (or admins) may manage restaurants and menus.
 owner_only = require_role("restaurant", "admin")
-# Only admins may create new restaurants
-admin_only = require_role("admin")
 
 
 # ---------- Public browsing ----------
@@ -127,7 +125,7 @@ async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get
 @router.post("", response_model=RestaurantResponse, status_code=status.HTTP_201_CREATED)
 async def create_restaurant(
     data: RestaurantCreate,
-    user: User = Depends(admin_only),
+    user: User = Depends(owner_only),
     session: AsyncSession = Depends(get_db),
 ):
     return await service.create_restaurant(session, user, data)

@@ -132,7 +132,9 @@ describe('RestaurantsPage', () => {
     renderPage()
     await screen.findByText('Pizza Palace')
 
-    await userEvent.type(screen.getByPlaceholderText('City'), 'gotham')
+    const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
+    await userEvent.type(cityInputs[0], 'gotham')
+    await userEvent.keyboard('{Enter}')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() =>
@@ -291,8 +293,9 @@ describe('RestaurantsPage', () => {
   it('shows the price band on a card', async () => {
     renderPage()
 
-    await screen.findByText('Pizza Palace')
-    expect(screen.getByText(/Metropolis · \$\$/)).toBeInTheDocument()
+    const card = await screen.findByText('Pizza Palace')
+    const cardBody = card.closest('.rest-card')
+    expect(cardBody).toHaveTextContent(/Metropolis.*₹₹/s)
   })
 
   it('the empty state names the search that found nothing', async () => {

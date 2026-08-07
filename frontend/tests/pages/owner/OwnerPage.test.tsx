@@ -163,7 +163,7 @@ describe('OwnerPage access', () => {
     mocks.list.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 })
     render(<OwnerPage />)
 
-    expect(await screen.findByText(/No restaurants yet/)).toBeInTheDocument()
+    expect(await screen.findByText(/No restaurants assigned yet/)).toBeInTheDocument()
   })
 })
 
@@ -199,7 +199,7 @@ describe('OwnerPage stat tiles', () => {
     render(<OwnerPage />)
 
     const tile = (await screen.findByText('Order value today')).closest('.stat-tile')
-    await waitFor(() => expect(tile).toHaveTextContent('$32.50'))
+    await waitFor(() => expect(tile).toHaveTextContent('₹32.50'))
   })
 
   it('leaves out cancelled orders, which are not trade', async () => {
@@ -209,7 +209,7 @@ describe('OwnerPage stat tiles', () => {
     render(<OwnerPage />)
 
     const tile = (await screen.findByText('Order value today')).closest('.stat-tile')
-    await waitFor(() => expect(tile).toHaveTextContent('$0.00'))
+    await waitFor(() => expect(tile).toHaveTextContent('₹0.00'))
   })
 })
 
@@ -286,6 +286,7 @@ describe('OwnerPage opening a venue', () => {
 
 describe('OwnerPage creating a restaurant', () => {
   it('keeps the create form behind a button rather than on the page', async () => {
+    mocks.auth.user = { id: 1, role: 'admin' }
     render(<OwnerPage />)
     await screen.findByRole('button', { name: /Pizza Palace/ })
 
@@ -298,6 +299,7 @@ describe('OwnerPage creating a restaurant', () => {
   })
 
   it('a created restaurant closes the dialog and opens its venue', async () => {
+    mocks.auth.user = { id: 1, role: 'admin' }
     const created = { ...PIZZA, id: 9, name: 'New Spot' }
     mocks.create.mockResolvedValue(created)
     render(<OwnerPage />)
@@ -305,8 +307,10 @@ describe('OwnerPage creating a restaurant', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /New restaurant/ }))
     await userEvent.type(screen.getByLabelText('Name'), 'New Spot')
-    await userEvent.type(screen.getByLabelText('City'), 'Metropolis')
-    await userEvent.type(screen.getByLabelText('Address'), '2 St')
+    const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
+    await userEvent.type(cityInputs[0], 'Metropolis')
+    await userEvent.keyboard('{Enter}')
+    await userEvent.type(screen.getByPlaceholderText('Street address'), '2 St')
     await userEvent.type(screen.getByLabelText('Phone'), '5550000000')
     // The refetch has to include the new restaurant for it to be openable.
     mocks.list.mockResolvedValue({
