@@ -158,6 +158,7 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen || predictions.length === 0) {
       if (e.key === 'Enter' && searchInput.trim()) {
+        e.preventDefault()
         onChange(searchInput.trim())
       }
       return
@@ -227,8 +228,9 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
   if (useFallback) {
     return (
       <div className="field">
-        <label>City</label>
+        <label htmlFor="city-input">City</label>
         <input
+          id="city-input"
           type="text"
           value={searchInput}
           onChange={(e) => {
@@ -246,9 +248,10 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
 
   return (
     <div className="field">
-      <label>City</label>
+      <label htmlFor="city-dropdown-input">City</label>
       <div className="city-dropdown-container" ref={containerRef}>
         <input
+          id="city-dropdown-input"
           ref={inputRef}
           type="text"
           value={searchInput}

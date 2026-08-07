@@ -40,7 +40,7 @@ describe('AddressPanel editing', () => {
   it('prefills the form with the address being edited', async () => {
     await openEditor()
 
-    expect(screen.getByLabelText('Street Address')).toHaveValue('221B Baker Street')
+    expect(screen.getByPlaceholderText('Start typing your address...')).toHaveValue('221B Baker Street')
     const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
     expect(cityInputs[0]).toHaveValue('London')
     expect(screen.getByLabelText('Postal code')).toHaveValue('NW1')
@@ -53,6 +53,7 @@ describe('AddressPanel editing', () => {
     const city = cityInputs[0]
     await userEvent.clear(city)
     await userEvent.type(city, 'Manchester')
+    await userEvent.keyboard('{Enter}')
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(mocks.updateAddress).toHaveBeenCalledTimes(1))
@@ -66,7 +67,7 @@ describe('AddressPanel editing', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(screen.queryByLabelText('Street Address')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByPlaceholderText('Start typing your address...')).not.toBeInTheDocument())
     expect(mocks.listAddresses).toHaveBeenCalledTimes(2)
   })
 
@@ -75,7 +76,7 @@ describe('AddressPanel editing', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(screen.queryByLabelText('Street Address')).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Start typing your address...')).not.toBeInTheDocument()
     expect(mocks.updateAddress).not.toHaveBeenCalled()
   })
 
@@ -84,9 +85,10 @@ describe('AddressPanel editing', () => {
     await screen.findByText('221B Baker Street', { exact: false })
 
     await userEvent.click(screen.getByRole('button', { name: '+ Add' }))
-    await userEvent.type(screen.getByLabelText('Street Address'), '1 New Road')
+    await userEvent.type(screen.getByPlaceholderText('Start typing your address...'), '1 New Road')
     const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
     await userEvent.type(cityInputs[0], 'Leeds')
+    await userEvent.keyboard('{Enter}')
     await userEvent.type(screen.getByLabelText('Postal code'), 'LS1')
     await userEvent.click(screen.getByRole('button', { name: 'Save address' }))
 
@@ -101,6 +103,6 @@ describe('AddressPanel editing', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(screen.getByText(/could not save address/i)).toBeInTheDocument())
-    expect(screen.getByLabelText('Street Address')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Start typing your address...')).toBeInTheDocument()
   })
 })
