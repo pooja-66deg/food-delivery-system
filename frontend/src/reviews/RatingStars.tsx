@@ -12,6 +12,7 @@ export function RatingStars({ value }: { value: number | null }) {
   if (value === null || value === undefined) return null
 
   const filled = Math.round(value)
+  console.log('RatingStars', { value, filled })
 
   return (
     <span className="rating-stars" role="img" aria-label={`${value} out of 5`}>
