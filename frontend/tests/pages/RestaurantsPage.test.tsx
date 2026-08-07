@@ -132,7 +132,7 @@ describe('RestaurantsPage', () => {
     renderPage()
     await screen.findByText('Pizza Palace')
 
-    await userEvent.type(screen.getByPlaceholderText('City'), 'gotham')
+    await userEvent.type(screen.getByRole('textbox', { name: 'City' }), 'gotham')
     await userEvent.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() =>

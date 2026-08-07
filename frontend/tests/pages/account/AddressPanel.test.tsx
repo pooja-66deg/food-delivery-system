@@ -40,15 +40,17 @@ describe('AddressPanel editing', () => {
   it('prefills the form with the address being edited', async () => {
     await openEditor()
 
-    expect(screen.getByLabelText('Address line 1')).toHaveValue('221B Baker Street')
-    expect(screen.getByLabelText('City')).toHaveValue('London')
+    expect(screen.getByLabelText('Street Address')).toHaveValue('221B Baker Street')
+    const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
+    expect(cityInputs[0]).toHaveValue('London')
     expect(screen.getByLabelText('Postal code')).toHaveValue('NW1')
   })
 
   it('patches only the edited address', async () => {
     await openEditor()
 
-    const city = screen.getByLabelText('City')
+    const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
+    const city = cityInputs[0]
     await userEvent.clear(city)
     await userEvent.type(city, 'Manchester')
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -64,7 +66,7 @@ describe('AddressPanel editing', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    await waitFor(() => expect(screen.queryByLabelText('Address line 1')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByLabelText('Street Address')).not.toBeInTheDocument())
     expect(mocks.listAddresses).toHaveBeenCalledTimes(2)
   })
 
@@ -73,7 +75,7 @@ describe('AddressPanel editing', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(screen.queryByLabelText('Address line 1')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Street Address')).not.toBeInTheDocument()
     expect(mocks.updateAddress).not.toHaveBeenCalled()
   })
 
@@ -82,8 +84,9 @@ describe('AddressPanel editing', () => {
     await screen.findByText('221B Baker Street', { exact: false })
 
     await userEvent.click(screen.getByRole('button', { name: '+ Add' }))
-    await userEvent.type(screen.getByLabelText('Address line 1'), '1 New Road')
-    await userEvent.type(screen.getByLabelText('City'), 'Leeds')
+    await userEvent.type(screen.getByLabelText('Street Address'), '1 New Road')
+    const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
+    await userEvent.type(cityInputs[0], 'Leeds')
     await userEvent.type(screen.getByLabelText('Postal code'), 'LS1')
     await userEvent.click(screen.getByRole('button', { name: 'Save address' }))
 
@@ -98,6 +101,6 @@ describe('AddressPanel editing', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(screen.getByText(/could not save address/i)).toBeInTheDocument())
-    expect(screen.getByLabelText('Address line 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Street Address')).toBeInTheDocument()
   })
 })

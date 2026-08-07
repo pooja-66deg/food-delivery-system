@@ -120,7 +120,7 @@ const order = (overrides: Record<string, unknown> = {}) => ({
 })
 
 beforeEach(() => {
-  mocks.auth.user = { id: 1, role: 'restaurant' }
+  mocks.auth.user = { id: 1, role: 'admin' }
   mocks.list
     .mockReset()
     .mockResolvedValue({ items: [PIZZA, CURRY], total: 2, limit: 100, offset: 0 })

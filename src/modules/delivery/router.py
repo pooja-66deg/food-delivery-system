@@ -9,7 +9,6 @@ from src.modules.delivery import location, service
 from src.modules.delivery.schemas import AvailableDriver, DeliveryRead, TrackingRead
 from src.modules.users.dependencies import get_current_user, require_role
 from src.modules.users.models import User
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/delivery", tags=["delivery"])
 
