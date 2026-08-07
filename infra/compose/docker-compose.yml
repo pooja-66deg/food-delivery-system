@@ -44,29 +44,150 @@ services:
       timeout: 5s
       retries: 5
 
-  # Kafka is not used by any feature until Milestone 5 (delivery/notification
-  # events). It's disabled here to keep the local stack clean and fast — the API
-  # already tolerates Kafka being absent. It will be reintroduced in KRaft mode
-  # (no Zookeeper, which avoids the broker-registration race) when M5 needs it.
-  #
-  # kafka:
-  #   image: confluentinc/cp-kafka:7.5.0
-  #   container_name: fooddelivery_kafka
-  #   ports: ["9092:9092"]
-  #   restart: unless-stopped
-  #   environment:
-  #     KAFKA_NODE_ID: 1
-  #     KAFKA_PROCESS_ROLES: broker,controller
-  #     KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-  #     KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
-  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-  #     KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  #     KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  #     CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+  # Zookeeper - required for Kafka broker coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fooddelivery_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # API Service
+  # Kafka - event streaming for microservices
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: fooddelivery_kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Microservices PostgreSQL databases
+  # Each service gets its own database and schema for data isolation
+
+  postgres-orders:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_orders
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: orders_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_orders_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d orders_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-payments:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_payments
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: payments_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_payments_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d payments_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-users:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_users
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: users_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_users_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d users_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-restaurants:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_restaurants
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: restaurants_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_restaurants_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d restaurants_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-delivery:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_delivery
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: delivery_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_delivery_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d delivery_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-notifications:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_notifications
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: notifications_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_notifications_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d notifications_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Service (Monolith - kept for backward compatibility)
   api:
     build:
       context: ../..
@@ -125,6 +246,223 @@ services:
     ports:
       - "5173:80"
 
+  # API Gateway - routes requests to individual microservices
+  api-gateway:
+    image: nginx:alpine
+    container_name: fooddelivery_api_gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../../infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - orders-service
+      - payments-service
+      - users-service
+      - restaurants-service
+      - delivery-service
+      - notifications-service
+      - admin-service
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Orders Microservice (placeholder - implementation in Task 3+)
+  orders-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_orders_service
+    depends_on:
+      postgres-orders:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-orders:5432/orders_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: orders-service
+    ports:
+      - "8001:8000"
+    command: echo "Orders service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Payments Microservice (placeholder - implementation in Task 3+)
+  payments-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_payments_service
+    depends_on:
+      postgres-payments:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-payments:5432/payments_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: payments-service
+    ports:
+      - "8002:8000"
+    command: echo "Payments service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Users Microservice (placeholder - implementation in Task 3+)
+  users-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_users_service
+    depends_on:
+      postgres-users:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-users:5432/users_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: users-service
+    ports:
+      - "8003:8000"
+    command: echo "Users service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Restaurants Microservice (placeholder - implementation in Task 3+)
+  restaurants-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_restaurants_service
+    depends_on:
+      postgres-restaurants:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-restaurants:5432/restaurants_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: restaurants-service
+    ports:
+      - "8004:8000"
+    command: echo "Restaurants service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Delivery Microservice (placeholder - implementation in Task 3+)
+  delivery-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_delivery_service
+    depends_on:
+      postgres-delivery:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-delivery:5432/delivery_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: delivery-service
+    ports:
+      - "8005:8000"
+    command: echo "Delivery service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Notifications Microservice (placeholder - implementation in Task 3+)
+  notifications-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_notifications_service
+    depends_on:
+      postgres-notifications:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-notifications:5432/notifications_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: notifications-service
+    ports:
+      - "8006:8000"
+    command: echo "Notifications service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Admin Microservice (placeholder - implementation in Task 3+)
+  admin-service:
+    image: python:3.11-slim
+    container_name: fooddelivery_admin_service
+    depends_on:
+      postgres-orders:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://fooduser:foodpass@postgres-orders:5432/orders_db
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-secret-change-me
+      ENVIRONMENT: development
+      SERVICE_NAME: admin-service
+    ports:
+      - "8007:8000"
+    command: echo "Admin service placeholder - implementation in Task 3+"
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('healthy')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
+  postgres_orders_data:
+  postgres_payments_data:
+  postgres_users_data:
+  postgres_restaurants_data:
+  postgres_delivery_data:
+  postgres_notifications_data:

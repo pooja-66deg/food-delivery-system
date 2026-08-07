@@ -1,0 +1,42 @@
+# Task 2 Review Package — Add GCS Configuration
+
+## Summary
+File modified: src/config.py
+Lines added: 3
+Tests: 589 passed, 1 skipped
+Status: No regressions
+
+## Modified Files
+
+### src/config.py
+Added gcs_bucket_name field to Settings class (after media_root):
+
+```python
+# Google Cloud Storage (production only)
+gcs_bucket_name: Optional[str] = None
+```
+
+Location: Lines 60-61 (after media_root setting)
+
+## Task Requirements Checklist
+- [x] gcs_bucket_name field added to Settings class
+- [x] Field placed after media_root
+- [x] Correct type annotation: Optional[str]
+- [x] Default value: None
+- [x] Environment variable loading verified
+- [x] All tests pass (589 passed)
+- [x] No breaking changes
+- [x] Follows existing code style
+
+## Spec Compliance
+- [x] Global Constraint: Python 3.11–3.13 (verified)
+- [x] No test failures
+- [x] Clean implementation
+- [x] Minimal change (3 lines)
+
+## Code Quality
+- Minimal addition (3 lines)
+- Follows existing patterns in config.py
+- Proper type annotation with Optional[str]
+- Consistent with pydantic-settings conventions
+- All 589 tests pass, 1 skipped
