@@ -246,9 +246,27 @@ steps:
         done
 
   # -----------------------------------------------------------------------
-  # 5. Deploy the services. Internal ingress: the gateway is the only public
-  #    door, so a service cannot be reached directly from the internet even if
-  #    its auth were misconfigured.
+  # 5. Deploy the services.
+  #
+  # Two flags below look contradictory and are not, so they are worth spelling
+  # out — getting them wrong is how the gateway ends up 403ing on every request.
+  #
+  # --ingress=internal-and-cloud-load-balancing is the network door: nothing
+  # from the public internet reaches these, only traffic arriving through the
+  # VPC. That is what the gateway's --vpc-egress=all-traffic (step 6) buys.
+  #
+  # --allow-unauthenticated is the *IAM* door, and opening it is deliberate.
+  # Cloud Run's IAM check wants a Google identity token in the Authorization
+  # header — the same header that already carries the end user's JWT, which is
+  # what these services actually authorise against (shared/identity.py). Only one
+  # token fits, and the app's is the one that knows who the customer is. So
+  # authorisation happens in the application, and the network door is what keeps
+  # strangers out.
+  #
+  # Belt-and-braces alternative, if you want IAM as well: put the services behind
+  # an external Load Balancer with serverless NEGs and let it do the identity
+  # token. It is more moving parts for a second lock on a door that is already
+  # unreachable.
   # -----------------------------------------------------------------------
   - id: deploy-services
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -271,7 +289,7 @@ steps:
             --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" \
             --region="${_REGION}" --platform=managed \
             --ingress=internal-and-cloud-load-balancing \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
             --vpc-connector="${_VPC_CONNECTOR}" --vpc-egress=private-ranges-only \
             --min-instances=1 \
@@ -323,6 +341,12 @@ steps:
   # 6. The gateway: the only public door to the API. Its upstreams are the
   #    service URLs, substituted into the nginx config at container start —
   #    see infra/gcp/gateway.Dockerfile.
+  #
+  #    --vpc-egress=all-traffic is what makes step 5's internal ingress work.
+  #    A *.run.app address is a public range, so with private-ranges-only the
+  #    gateway's calls would leave over the internet, arrive as external traffic
+  #    and be refused by services that only accept internal. Routing all egress
+  #    through the connector makes them internal.
   # -----------------------------------------------------------------------
   - id: deploy-gateway
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
@@ -336,6 +360,8 @@ steps:
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
+      - --vpc-connector=${_VPC_CONNECTOR}
+      - --vpc-egress=all-traffic
       - --set-env-vars=^@^USERS_URL=${_USERS_URL}@RESTAURANTS_URL=${_RESTAURANTS_URL}@ORDERS_URL=${_ORDERS_URL}@PAYMENTS_URL=${_PAYMENTS_URL}@DELIVERY_URL=${_DELIVERY_URL}@NOTIFICATIONS_URL=${_NOTIFICATIONS_URL}@ADMIN_URL=${_ADMIN_URL}
       - --quiet
 
