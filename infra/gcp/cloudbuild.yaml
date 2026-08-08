@@ -230,7 +230,12 @@ steps:
       - |
         set -e
         for svc in users restaurants orders payments delivery notifications admin; do
-          echo "== migrating $$svc"
+          # `tr`, not bash's ${svc^^}: that is a bash 4 feature, and a shell
+          # without it leaves the name unexpanded, which gcloud rejects as an
+          # invalid secret — a usage error, not a migration failure, so the log
+          # says nothing about migrations at all.
+          upper=$$(printf '%s' "$$svc" | tr '[:lower:]' '[:upper:]')
+          echo "== migrating $$svc (secret $${upper}_DATABASE_URL)"
           # The job is replaced on every deploy so it always runs the image
           # being deployed — a migration from an older image is how a schema
           # ends up behind the code that needs it.
@@ -238,7 +243,7 @@ steps:
             --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" \
             --region="${_REGION}" \
             --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
-            --set-secrets="DATABASE_URL=$${svc^^}_DATABASE_URL:latest" \
+            --set-secrets="DATABASE_URL=$${upper}_DATABASE_URL:latest" \
             --command=alembic --args=upgrade,head \
             --max-retries=1 --quiet
           # --wait, so a failed migration fails the build instead of letting a
