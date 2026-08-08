@@ -63,3 +63,14 @@ monitor = [
     "opentelemetry-exporter-prometheus==0.50b0",
     "prometheus-client==0.21.1",
 ]
+
+# The repository is not a distributable package — it is a shared library plus
+# seven services, each built into its own image with --no-install-project. Left
+# to itself setuptools sees a flat layout with several top-level directories and
+# refuses to guess, so it is told plainly: install `shared`, ignore the rest.
+#
+# `shared` is here rather than nothing because pytest and the service images
+# both import it, and being explicit is what keeps `uv sync` from failing the
+# moment another top-level directory appears.
+[tool.setuptools]
+packages = ["shared"]

@@ -25,7 +25,7 @@
 #
 # **Pub/Sub replaces Kafka here.** Not managed Kafka: its fixed cluster cost is
 # wrong for this volume where Pub/Sub is per-message with no floor. Services do
-# not know the difference — see src/shared/messaging.py — so the compose stack
+# not know the difference — see shared/messaging.py — so the compose stack
 # keeps Kafka and developers keep needing no cloud credentials.
 # ---------------------------------------------------------------------------
 
@@ -102,15 +102,16 @@ steps:
         export DATABASE_URL="postgresql://u:p@localhost:5432/db" \
                REDIS_URL="redis://localhost:6379/0" \
                JWT_SECRET_KEY="ci-secret" KAFKA_BROKERS="localhost:9092"
+        # The shared package, then each service in its own process — they all
+        # have a package named `app`, so one pytest run would import one and
+        # serve it to all of them.
         uv run pytest -q
-        # One process per service: they all have a package named `app`, so a
-        # single pytest run would import one and serve it to all of them.
         ./services/test.sh
 
   # -----------------------------------------------------------------------
   # 2. Build and push every image, in parallel. Each service's Dockerfile
-  #    copies src/shared plus its own app/ — never src/modules, so an image
-  #    cannot import another service even by accident.
+  #    copies the shared package plus its own app/ — never a sibling's, so an
+  #    image cannot import another service even by accident.
   # -----------------------------------------------------------------------
   - id: build-services
     name: gcr.io/cloud-builders/docker

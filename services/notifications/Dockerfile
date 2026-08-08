@@ -5,10 +5,8 @@
 #
 #   docker build -f services/notifications/Dockerfile -t notifications-service .
 #
-# It copies only what it needs — src/shared and its own app/ — and specifically
-# not src/modules or src/main.py. That is the point: this image cannot import
-# the monolith even by accident, which is what stops the two drifting back into
-# a single deployable.
+# It copies only the shared package and its own app/ — never another service's.
+# That is the point: an image cannot import a sibling even by accident.
 FROM python:3.11-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /usr/local/bin/uv
@@ -29,9 +27,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
     PYTHONUNBUFFERED=1
 
-# The shared package lands as `shared/`, not `src/shared/` — hence the relative
-# imports inside it.
-COPY src/shared/ ./shared/
+# Lands as `shared/`, the same name it has in the repository — so an import
+# reads identically in a test run and inside the image.
+COPY shared/ ./shared/
 COPY services/notifications/app/ ./app/
 COPY services/notifications/alembic/ ./alembic/
 COPY services/notifications/alembic.ini ./alembic.ini

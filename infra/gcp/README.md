@@ -10,7 +10,7 @@ Three choices here are worth understanding before you run anything.
 **Pub/Sub, not managed Kafka.** GCP's managed Kafka charges for cluster capacity
 whether you use it or not; Pub/Sub is per-message with no floor, which is the
 right shape at this volume. Services do not know the difference — the transport
-is behind one interface in `src/shared/messaging.py` — so the compose stack keeps
+is behind one interface in `shared/messaging.py` — so the compose stack keeps
 Kafka and a developer still needs no cloud credentials.
 
 **One Cloud SQL instance, seven databases.** A foreign key still cannot cross

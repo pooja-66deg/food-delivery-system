@@ -1,25 +1,6 @@
 name: food-delivery-system
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: fooddelivery_postgres
-    environment:
-      POSTGRES_USER: fooduser
-      POSTGRES_PASSWORD: foodpass
-      POSTGRES_DB: fooddelivery
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fooduser -d fooddelivery"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Redis Cache
   redis:
     image: redis:7-alpine
     container_name: fooddelivery_redis
@@ -192,38 +173,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  api:
-    build:
-      context: ../..
-      dockerfile: infra/docker/Dockerfile
-    container_name: fooddelivery_api
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    env_file:
-      - path: ../../.env
-        required: false
-    environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres:5432/fooddelivery
-      REDIS_URL: redis://redis:6379/0
-      DATABASE_ECHO: "false"
-      KAFKA_BROKERS: disabled:9092
-      JWT_SECRET_KEY: dev-secret-change-me
-      NOTIFICATIONS_OUTBOUND_ENABLED: "false"
-      ENVIRONMENT: development
-    ports:
-      - "8000:8000"
-    volumes:
-      - ../../src:/app/src
-      - ../../alembic:/app/alembic
-      - ../../alembic.ini:/app/alembic.ini
-    command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
-
   # Customer Web App (built + served by nginx, proxies /api to the gateway)
   frontend:
     build:
@@ -240,7 +189,8 @@ services:
         required: false
     container_name: fooddelivery_frontend
     depends_on:
-      - api
+      # The gateway, not the monolith: the frontend's nginx proxies /api to it.
+      - api-gateway
     ports:
       - "5173:80"
 
@@ -312,7 +262,7 @@ services:
   # Payments Microservice — extracted from the monolith.
   payments-service:
     build:
-      # Repo root, so the image can copy src/shared alongside the service.
+      # Repo root, so the image can copy the shared package alongside the service.
       context: ../..
       dockerfile: services/payments/Dockerfile
     container_name: fooddelivery_payments_service
@@ -357,7 +307,7 @@ services:
   # Users Microservice — extracted from the monolith.
   users-service:
     build:
-      # Repo root, so the image can copy src/shared alongside the service.
+      # Repo root, so the image can copy the shared package alongside the service.
       context: ../..
       dockerfile: services/users/Dockerfile
     container_name: fooddelivery_users_service
@@ -396,7 +346,7 @@ services:
   # Restaurants Microservice — extracted from the monolith.
   restaurants-service:
     build:
-      # Repo root, so the image can copy src/shared alongside the service.
+      # Repo root, so the image can copy the shared package alongside the service.
       context: ../..
       dockerfile: services/restaurants/Dockerfile
     container_name: fooddelivery_restaurants_service
@@ -433,7 +383,7 @@ services:
   # Delivery Microservice — extracted from the monolith.
   delivery-service:
     build:
-      # Repo root, so the image can copy src/shared alongside the service.
+      # Repo root, so the image can copy the shared package alongside the service.
       context: ../..
       dockerfile: services/delivery/Dockerfile
     container_name: fooddelivery_delivery_service
@@ -480,7 +430,7 @@ services:
   #   docker compose start notifications-service  # the backlog is delivered
   notifications-service:
     build:
-      # Repo root, so the image can copy src/shared alongside the service.
+      # Repo root, so the image can copy the shared package alongside the service.
       context: ../..
       dockerfile: services/notifications/Dockerfile
     container_name: fooddelivery_notifications_service
@@ -553,7 +503,6 @@ services:
       start_period: 20s
 
 volumes:
-  postgres_data:
   redis_data:
   postgres_orders_data:
   postgres_payments_data:

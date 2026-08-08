@@ -23,7 +23,10 @@ async def save_image(upload: UploadFile, subdir: str) -> str:
     Routes to local disk (development) or GCS (production) based on ENVIRONMENT.
     """
     if settings.environment == "production":
-        from src.modules.restaurants.storage_gcs import save_image_gcs
+        # Imported here rather than at module scope so a development run never
+        # needs google-cloud-storage credentials just to import this module.
+        from app.storage_gcs import save_image_gcs
+
         return await save_image_gcs(upload, subdir)
     else:
         # Local development: save to disk

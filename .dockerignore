@@ -22,5 +22,8 @@ frontend/dist
 !frontend/.env
 *.log
 
-# Docs / tests are not needed at runtime
+# Docs / tests are not needed at runtime — and a test suite in a production
+# image is extra surface for no benefit.
 docs
+shared/tests
+services/*/tests

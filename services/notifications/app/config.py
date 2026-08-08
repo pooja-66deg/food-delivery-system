@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     kafka_topics: str = "order-events,notification-events,user-contact-events"
 
     # Only the signing secret, not the users database. Tokens are verified
-    # locally — see src/shared/identity.py for why that matters.
+    # locally — see shared/identity.py for why that matters.
     jwt_secret_key: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
 

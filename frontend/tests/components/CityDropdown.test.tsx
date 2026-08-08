@@ -204,7 +204,13 @@ describe('CityDropdown', () => {
       fireEvent.change(input(), { target: { value: 'New' } })
       await vi.advanceTimersByTimeAsync(350)
 
-      expect(await screen.findByText(/Failed to load city suggestions/i)).toBeInTheDocument()
+      // waitFor rather than findByText: the rejection resolves a microtask after
+      // the debounce fires, and under a full parallel run that landed outside
+      // findByText's default window often enough to be flaky.
+      await waitFor(
+        () => expect(screen.getByText(/Failed to load city suggestions/i)).toBeInTheDocument(),
+        { timeout: 3000 },
+      )
     })
   })
 })
