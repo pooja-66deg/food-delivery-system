@@ -447,10 +447,10 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         _request_payment_action(session, order, "settle")
     elif refund == RefundStatus.FULL:
         _request_payment_action(session, order, "refund")
-    if to == OrderStatus.READY_FOR_PICKUP:
-        # Local import avoids an orders<->delivery import cycle.
-        from src.modules.delivery import service as delivery_service
-        await delivery_service.assign_for_order(session, order, redis=redis)
+    # No driver assignment here any more. The delivery service does it when it
+    # reads the READY_FOR_PICKUP event that _emit_status already published — so
+    # a kitchen marking food ready never waits on driver selection, and never
+    # fails because that service is busy.
     await _deliver_status(session, order)
     return await _load_full(session, order_id)
 

@@ -5,9 +5,27 @@ import { authApi } from '../api/auth'
 import type { Address } from '../api/auth'
 import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
+import { paymentsApi } from '../api/payments'
 import type { PaymentMethod } from '../api/orders'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button, EmptyState } from '../components/ui'
+
+/** How long to wait for the payments service to catch up, and how often to ask. */
+const CHECKOUT_URL_TIMEOUT_MS = 6000
+const CHECKOUT_URL_POLL_MS = 500
+
+async function hostedCheckoutUrl(orderId: number): Promise<string | null> {
+  const deadline = Date.now() + CHECKOUT_URL_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const payment = await paymentsApi.resume(orderId)
+      if (payment.checkout_url) return payment.checkout_url
+    } catch {
+    }
+    await new Promise((resolve) => setTimeout(resolve, CHECKOUT_URL_POLL_MS))
+  }
+  return null
+}
 
 export function CartPage() {
   const { cart, refresh, update, remove } = useCart()
@@ -38,11 +56,13 @@ export function CartPage() {
     try {
       const order = await ordersApi.checkout(addressId, cart.price_hash, payMethod)
       await refresh()
-      if (order.payment_checkout_url) {
-        // Hand the browser to Stripe's hosted page. Both of its return URLs
-        // come back to /orders/{id}, so there is nothing to restore here.
-        window.location.href = order.payment_checkout_url
-        return
+
+      if (payMethod === 'CARD') {
+        const url = await hostedCheckoutUrl(order.id)
+        if (url) {
+          window.location.href = url
+          return
+        }
       }
       navigate(`/orders/${order.id}`)
     } catch (e) {

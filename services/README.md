@@ -17,7 +17,7 @@ path: the frontend talks to the gateway, which routes to these.
 **One synchronous call exists on purpose.** Checkout asks the restaurants
 service to validate and reserve, because the customer is waiting and an order
 cannot be priced without an answer. It is guarded by a timeout and a circuit
-breaker ([`shared/http_client.py`](../src/shared/http_client.py)) and fails as a
+breaker ([`shared/http_client.py`](../shared/http_client.py)) and fails as a
 503, which says "retry" rather than "you were wrong". Everything else is events.
 
 **Contact details live in one place.** `user-events` carries a name and a role
@@ -38,7 +38,7 @@ fails.
 
 ```
 services/notifications/
-  Dockerfile          # built from the repo root; copies src/shared as shared/
+  Dockerfile          # built from the repo root; copies the repo's shared/ package
   app/
     main.py           # FastAPI + lifespan; /health (alive) vs /ready (can serve)
     config.py         # its own settings — not the platform's
@@ -51,7 +51,7 @@ services/notifications/
 ```
 
 **Auth without a users service.** Tokens are verified locally against the shared
-secret — see [`src/shared/identity.py`](../src/shared/identity.py). Calling the
+secret — see [`shared/identity.py`](../shared/identity.py). Calling the
 users service on every request would have made it a synchronous dependency of
 the whole platform, so its downtime would be everyone's. The cost is that a
 revocation reaches a service only when the access token expires; keeping that

@@ -8,7 +8,7 @@ import jwt
 import pytest
 from fastapi import HTTPException
 
-from src.shared.identity import Identity, JWTAuth, identity_from_claims
+from shared.identity import Identity, JWTAuth, identity_from_claims
 
 SECRET = "test-secret"
 auth = JWTAuth(SECRET)

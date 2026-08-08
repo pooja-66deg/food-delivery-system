@@ -74,7 +74,7 @@ fi
 if [ "$INFRA" = "1" ]; then
   if docker info >/dev/null 2>&1; then
     echo "[infra] bringing up Postgres/Redis/Kafka via docker compose..."
-    docker compose -f infra/compose/docker-compose.yml up -d postgres redis kafka || echo "[infra] docker compose failed; continuing."
+    docker compose -f infra/compose/docker-compose.yml up -d redis kafka zookeeper || echo "[infra] docker compose failed; continuing."
   else
     echo "[infra] Docker not available - start Postgres/Redis yourself."
   fi

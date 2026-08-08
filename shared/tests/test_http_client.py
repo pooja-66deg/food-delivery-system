@@ -7,8 +7,8 @@ that is the only reason this module exists.
 import httpx
 import pytest
 
-from src.shared.errors import ServiceUnavailableException
-from src.shared.http_client import CircuitBreaker, ServiceClient
+from shared.errors import ServiceUnavailableException
+from shared.http_client import CircuitBreaker, ServiceClient
 
 
 def test_breaker_stays_closed_below_the_threshold():
@@ -40,7 +40,7 @@ def test_breaker_half_opens_after_the_cooldown(monkeypatch):
     """After the cooldown one call goes through, or the circuit never recovers."""
     breaker = CircuitBreaker(threshold=1, cooldown_seconds=10)
     clock = [1000.0]
-    monkeypatch.setattr("src.shared.http_client.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("shared.http_client.time.monotonic", lambda: clock[0])
 
     breaker.record_failure()
     assert breaker.is_open

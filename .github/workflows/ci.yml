@@ -51,13 +51,7 @@ jobs:
         run: uv sync --frozen --extra dev --no-install-project
 
       - name: Lint
-        run: uv run flake8 src services
-
-      - name: Verify migrations
-        run: |
-          uv run alembic upgrade head
-          uv run alembic downgrade base
-          uv run alembic upgrade head
+        run: uv run flake8 shared services
 
       # Every service chain round-trips against the same Postgres this job
       # already has. A chain that cannot be undone cannot be rolled back in
@@ -89,7 +83,9 @@ jobs:
             )
           done
 
-      - name: Test
+      # The shared package — identity, messaging, the outbox, the HTTP client —
+      # which every service copies into its image.
+      - name: Test shared
         run: uv run pytest
 
       # One process per service: every service has a package named `app`, so a

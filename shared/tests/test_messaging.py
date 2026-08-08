@@ -15,7 +15,7 @@ import json
 
 import pytest
 
-from src.shared.messaging import EventConsumer, publisher_for, unwrap
+from shared.messaging import EventConsumer, publisher_for, unwrap
 
 
 def _consumer(handlers, **kwargs) -> EventConsumer:

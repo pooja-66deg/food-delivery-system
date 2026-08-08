@@ -24,11 +24,11 @@ for svc in $SERVICES; do
     continue
   fi
   echo "== $svc"
-  # PYTHONPATH: the service's own directory (for `app`) and the repo root's
-  # src/ (for `shared`, which the image copies in alongside it).
+  # PYTHONPATH: the service's own directory (for `app`) and the repo root
+  # (for `shared`, which the image copies in alongside it).
   # `uv run` so this uses the project's virtualenv whether or not one is
   # activated — which it is not in CI.
-  if PYTHONPATH="$dir:$ROOT/src" uv run --project "$ROOT" python -m pytest "$dir/tests" \
+  if PYTHONPATH="$dir:$ROOT" uv run --project "$ROOT" python -m pytest "$dir/tests" \
       -c "$ROOT/services/pytest.ini" -q --no-header 2>&1 | tail -6; then
     :
   else
