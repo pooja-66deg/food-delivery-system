@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ForbiddenException, NotFoundException
+from src.modules.events import outbox
 from src.modules.restaurants.models import Restaurant
 from src.modules.restaurants.schemas import RestaurantCreate, RestaurantUpdate
 from src.modules.reviews import ratings
@@ -15,6 +16,8 @@ from src.modules.users.models import User
 async def create_restaurant(session: AsyncSession, owner: User, data: RestaurantCreate) -> Restaurant:
     restaurant = Restaurant(owner_id=owner.id, **data.model_dump())
     session.add(restaurant)
+    await session.flush()  # assigns restaurant.id, which the event needs
+    publish_restaurant(session, restaurant)
     await session.commit()
     await session.refresh(restaurant)
     return restaurant
@@ -110,6 +113,7 @@ async def update_restaurant(
     restaurant = await owned_restaurant(session, user, restaurant_id)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(restaurant, field, value)
+    publish_restaurant(session, restaurant)
     await session.commit()
     await session.refresh(restaurant)
     return restaurant
@@ -124,3 +128,25 @@ async def list_cities(session: AsyncSession) -> list[str]:
         .where(Restaurant.city.isnot(None))
     )
     return sorted(list(set(result.all())))
+
+
+def publish_restaurant(session: AsyncSession, restaurant: Restaurant) -> None:
+    """Announce a restaurant to the services that keep a copy of it.
+
+    The orders service needs the owner (to decide who may accept an order) and
+    the name (to label a kitchen ticket). Both were joins; both would now be a
+    synchronous call on the owner dashboard's busiest read.
+
+    Nothing sensitive travels: an owner id, a name, and whether it is taking
+    orders. The menu, the address and the phone number stay here, with the
+    service that has a reason to hold them.
+    """
+    outbox.record_event(
+        session, "restaurant-events", str(restaurant.id),
+        {
+            "restaurant_id": restaurant.id,
+            "owner_id": restaurant.owner_id,
+            "name": restaurant.name,
+            "is_open": restaurant.is_open,
+        },
+    )

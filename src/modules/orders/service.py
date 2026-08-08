@@ -25,6 +25,7 @@ from src.modules.payments.models import PaymentTxStatus
 from src.modules.restaurants import inventory
 from src.modules.restaurants import service as restaurant_service
 from src.modules.restaurants.models import Restaurant
+from src.modules.users.models import Address, User
 
 _LOCK_KEY = "order_lock:{user_id}"
 _LOCK_TTL = 10
@@ -41,14 +42,56 @@ async def _restore_stock(session: AsyncSession, order: Order) -> None:
     await inventory.restore_order(session, lines)
 
 
-def _emit_status(session: AsyncSession, order: Order) -> None:
+def _display_name(user: User | None) -> str:
+    """A customer's public name: first name plus last initial, "Alex R.".
+
+    Built here rather than by the consumer, so the format is decided once by the
+    service that holds the real name.
+    """
+    if user is None:
+        return ""
+    first = (user.first_name or "").strip()
+    last = (user.last_name or "").strip()
+    if not first:
+        return ""
+    return f"{first} {last[0]}." if last else first
+
+
+async def _emit_status(session: AsyncSession, order: Order) -> None:
     """Queue a customer notification and an outbox event for the order's current
     status, in the caller's transaction (outbox pattern — same tx as the state
     change). Caller commits."""
     notification_service.notify_order_status(session, order)
+    customer = await session.get(User, order.customer_id)
+    # The two ends of the journey, for the delivery service's local snapshot. It
+    # cannot resolve a restaurant or an address itself — both live in other
+    # databases — and a driver has to be able to navigate while those services
+    # are down. So the coordinates travel with the event.
+    restaurant = await session.get(Restaurant, order.restaurant_id)
+    address = await session.get(Address, order.address_id)
     outbox.record_event(
         session, "order-events", str(order.id),
-        {"order_id": order.id, "status": order.status, "customer_id": order.customer_id},
+        {
+            "order_id": order.id,
+            "status": order.status,
+            "customer_id": order.customer_id,
+            # A display name only — "Alex R." — for a review byline. Where to
+            # *contact* this customer is the notifications service's business,
+            # resolved from its own contacts read-model, so no address travels
+            # on this topic and settles in every consumer's database.
+            "customer_name": _display_name(customer),
+            "restaurant_id": order.restaurant_id,
+            # The payments service prices from this rather than reading the
+            # order: authorising a charge must not depend on the orders service
+            # answering, or a blip there becomes a customer who cannot pay.
+            "total": str(order.total),
+            "payment_method": order.payment_method,
+            "payment_status": order.payment_status,
+            "restaurant_latitude": restaurant.latitude if restaurant is not None else None,
+            "restaurant_longitude": restaurant.longitude if restaurant is not None else None,
+            "destination_latitude": address.latitude if address is not None else None,
+            "destination_longitude": address.longitude if address is not None else None,
+        },
     )
 
 
@@ -60,7 +103,15 @@ async def _deliver_status(session: AsyncSession, *orders: Order) -> None:
     until the status change is durable. Kept as the last step of each lifecycle
     function for the same reason: a notification must never delay or interleave
     with the payment work the status change triggers.
+
+    Skipped entirely once the notifications service owns outbound delivery. Both
+    would otherwise read the same status change and send the customer two of
+    every message — the classic way a strangler migration goes wrong. The flag,
+    not a code deletion, is what makes the cut-over reversible: turn it back on
+    and the monolith resumes sending without a deploy of anything else.
     """
+    if not settings.notifications_outbound_enabled:
+        return
     for order in orders:
         await notification_service.deliver_order_status(session, order)
 
@@ -92,7 +143,7 @@ async def mark_paid(session: AsyncSession, order_id: int) -> Order:
     sm.apply_transition(session, order, OrderStatus.PAYMENT_SUCCESS, Actor.SYSTEM,
                         reason="payment confirmed")
     order.payment_status = PaymentStatus.SUCCESS.value
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await _notify_restaurant(session, order)
     await session.commit()
     await _deliver_status(session, order)
@@ -153,7 +204,7 @@ async def create_order_from_checkout(
                                 reason="COD: to be collected on delivery")
             order.payment_status = PaymentStatus.SUCCESS.value
 
-        _emit_status(session, order)
+        await _emit_status(session, order)
         if order.status == OrderStatus.PAYMENT_SUCCESS.value:
             await _notify_restaurant(session, order)
         await session.commit()
@@ -272,7 +323,7 @@ async def cancel_by_customer(session: AsyncSession, user, order_id: int) -> Orde
     refund = sm.refund_on_cancel(current, Actor.CUSTOMER)
     _record_refund(order, refund)
     await _restore_stock(session, order)
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await session.commit()
     if refund == RefundStatus.FULL:
         await payment_service.refund_payment(session, order)
@@ -286,7 +337,7 @@ async def accept_by_restaurant(session: AsyncSession, user, order_id: int) -> Or
         raise NotFoundException("Order", str(order_id))
     await restaurant_service.owned_restaurant(session, user, order.restaurant_id)
     sm.apply_transition(session, order, OrderStatus.RESTAURANT_ACCEPTED, Actor.RESTAURANT)
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await session.commit()
     await _deliver_status(session, order)
     return await _load_full(session, order_id)
@@ -302,7 +353,7 @@ async def reject_by_restaurant(session: AsyncSession, user, order_id: int, reaso
     order.cancel_reason = reason
     _record_refund(order, RefundStatus.FULL)  # kitchen rejection always refunds
     await _restore_stock(session, order)
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await session.commit()
     await payment_service.refund_payment(session, order)
     await _deliver_status(session, order)
@@ -322,7 +373,7 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         refund = sm.refund_on_cancel(current, Actor.RESTAURANT)
         _record_refund(order, refund)
         await _restore_stock(session, order)
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await session.commit()
     if to == OrderStatus.DELIVERED:
         await payment_service.settle_payment(session, order)
@@ -343,7 +394,7 @@ async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) 
     if order is None:
         raise NotFoundException("Order", str(order_id))
     sm.apply_transition(session, order, to, Actor.DRIVER)
-    _emit_status(session, order)
+    await _emit_status(session, order)
     await session.commit()
     if to == OrderStatus.DELIVERED:
         await payment_service.settle_payment(session, order)
@@ -372,7 +423,7 @@ async def expire_unpaid_orders(session: AsyncSession, now: datetime) -> int:
         # Nothing was ever captured, so there is nothing to refund.
         _record_refund(order, RefundStatus.NONE)
         await _restore_stock(session, order)
-        _emit_status(session, order)
+        await _emit_status(session, order)
     await session.commit()
     await _deliver_status(session, *stale)
     return len(stale)
@@ -391,7 +442,7 @@ async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> in
         order.cancelled_by = Actor.SYSTEM.value
         _record_refund(order, RefundStatus.FULL)
         await _restore_stock(session, order)
-        _emit_status(session, order)
+        await _emit_status(session, order)
     await session.commit()
     for order in stale:
         await payment_service.refund_payment(session, order)

@@ -106,4 +106,6 @@ async def reassign(
     redis=Depends(get_redis),
 ):
     """Reassign a delivery to a different driver (restaurant override)."""
-    return await service.reassign_delivery_for_order(session, order_id, body.driver_id, redis=redis)
+    return await service.reassign_delivery_for_order(
+        session, restaurant, order_id, body.driver_id, redis=redis
+    )

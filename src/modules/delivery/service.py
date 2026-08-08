@@ -99,7 +99,8 @@ async def list_for_driver(session: AsyncSession, driver_id: int) -> list[Deliver
     The driver cannot call the tracking endpoint (that is customer/owner/admin
     only), so the points they need for navigation ride along here.
     """
-    from src.modules.orders.models import Order  # local import to avoid cycles
+    # Local import to avoid cycles.
+    from src.modules.orders.models import Order
 
     stmt = (
         select(Delivery)
@@ -153,7 +154,8 @@ async def reject_assignment(session: AsyncSession, driver: User, order_id: int, 
     delivery.driver_id = None
     delivery.status = DeliveryStatus.UNASSIGNED.value
     delivery.accepted_at = None
-    from src.modules.orders.models import Order  # local import to avoid cycles
+    # Local import to avoid cycles.
+    from src.modules.orders.models import Order
     order = await session.get(Order, order_id)
     next_driver = await _pick_driver(session, order, redis, exclude=rejecting)
     if next_driver is not None:
@@ -201,11 +203,30 @@ async def list_available_drivers(session: AsyncSession) -> list[User]:
     return list(await session.scalars(stmt))
 
 
-async def reassign_delivery_for_order(session: AsyncSession, order_id: int, new_driver_id: int, redis=None) -> Delivery:
-    """Reassign a delivery to a different driver. Restaurant override."""
+async def reassign_delivery_for_order(
+    session: AsyncSession, user, order_id: int, new_driver_id: int, redis=None
+) -> Delivery:
+    """Reassign a delivery to a different driver. Restaurant override.
+
+    ``require_role("restaurant", "admin")`` on the route says the caller is *a*
+    restaurant, not that they own *this* one — so without the ownership check
+    below any restaurant account could reassign the driver on any order in the
+    platform. Every other restaurant action goes through ``owned_restaurant``;
+    this one was the exception.
+    """
+    # Local imports: orders and restaurants both import delivery.
+    from src.modules.orders.models import Order
+    from src.modules.restaurants import service as restaurant_service
+
     delivery = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
     if delivery is None:
         raise NotFoundException("Delivery", str(order_id))
+
+    order = await session.get(Order, order_id)
+    if order is None:
+        raise NotFoundException("Order", str(order_id))
+    # Raises 403/404 unless this user manages that restaurant.
+    await restaurant_service.owned_restaurant(session, user, order.restaurant_id)
 
     new_driver = await session.get(User, new_driver_id)
     if new_driver is None or new_driver.role != "driver":

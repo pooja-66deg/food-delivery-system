@@ -1,14 +1,3 @@
-# Local development stack.
-#
-# This file lives under infra/, so every host path below is relative to
-# infra/compose/ — "../.." is the repository root. Run it from anywhere with:
-#   docker compose -f infra/compose/docker-compose.yml up --build
-# or let run.sh do it for you.
-#
-# The project name is pinned rather than derived. Compose would otherwise name
-# the project after this file's directory ("compose"), which would rename the
-# volumes and strand the Postgres data anyone already has from when this file
-# sat in the repository root.
 name: food-delivery-system
 
 services:
@@ -187,7 +176,23 @@ services:
       timeout: 5s
       retries: 5
 
-  # API Service (Monolith - kept for backward compatibility)
+  postgres-admin:
+    image: postgres:15-alpine
+    container_name: fooddelivery_postgres_admin
+    environment:
+      POSTGRES_USER: fooduser
+      POSTGRES_PASSWORD: foodpass
+      POSTGRES_DB: admin_db
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres_admin_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fooduser -d admin_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ../..
@@ -198,24 +203,18 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # Third-party credentials (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, Twilio,
-    # SendGrid, Google Maps) come from the repo-root .env. Optional: without it
-    # each integration falls back to its stand-in. The environment: block below
-    # wins over anything here, so a host .env cannot redirect the container at
-    # a localhost database.
+      kafka:
+        condition: service_healthy
     env_file:
       - path: ../../.env
         required: false
     environment:
       DATABASE_URL: postgresql://fooduser:foodpass@postgres:5432/fooddelivery
       REDIS_URL: redis://redis:6379/0
-      # .env.example ships DATABASE_ECHO=true for someone running uvicorn by
-      # hand; echoing every statement into the container log is not what anyone
-      # wants from `compose up`. Pinned here so the env_file cannot turn it on.
       DATABASE_ECHO: "false"
-      # Kafka disabled for now (see note above); the app tolerates its absence.
       KAFKA_BROKERS: disabled:9092
       JWT_SECRET_KEY: dev-secret-change-me
+      NOTIFICATIONS_OUTBOUND_ENABLED: "false"
       ENVIRONMENT: development
     ports:
       - "8000:8000"
@@ -223,10 +222,9 @@ services:
       - ../../src:/app/src
       - ../../alembic:/app/alembic
       - ../../alembic.ini:/app/alembic.ini
-    # Apply DB migrations before serving (schema is no longer created at runtime).
     command: sh -c "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
 
-  # Customer Web App (built + served by nginx, proxies /api to the backend)
+  # Customer Web App (built + served by nginx, proxies /api to the gateway)
   frontend:
     build:
       context: ../..
@@ -263,14 +261,23 @@ services:
       - notifications-service
       - admin-service
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      # 127.0.0.1, not localhost: inside the container localhost resolves to
+      # ::1 first, and nginx's `listen 8080` binds IPv4 only — so the probe was
+      # refused while the gateway was serving perfectly well from outside.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Orders Microservice (placeholder - implementation in Task 3+)
+  # Orders Microservice — extracted from the monolith.
+  #
+  # The one service that calls another synchronously: checkout asks restaurants
+  # to validate and reserve, because the customer is waiting for the answer.
+  # Guarded by a timeout and a circuit breaker — see shared/http_client.py.
   orders-service:
-    image: python:3.11-slim
+    build:
+      context: ../..
+      dockerfile: services/orders/Dockerfile
     container_name: fooddelivery_orders_service
     depends_on:
       postgres-orders:
@@ -280,24 +287,34 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-orders:5432/orders_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-orders:5432/orders_db
+      DATABASE_ECHO: "false"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_GROUP_ID: orders-service
+      KAFKA_TOPICS: payment-events,delivery-events,address-events,restaurant-events,user-events
       REDIS_URL: redis://redis:6379/0
+      RESTAURANTS_SERVICE_URL: http://restaurants-service:8000
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: orders-service
     ports:
       - "8001:8000"
-    command: echo "Orders service placeholder - implementation in Task 3+"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Payments Microservice (placeholder - implementation in Task 3+)
+  # Payments Microservice — extracted from the monolith.
   payments-service:
-    image: python:3.11-slim
+    build:
+      # Repo root, so the image can copy src/shared alongside the service.
+      context: ../..
+      dockerfile: services/payments/Dockerfile
     container_name: fooddelivery_payments_service
     depends_on:
       postgres-payments:
@@ -306,25 +323,43 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Stripe keys come from the repo-root .env. Without them the deterministic
+    # stand-in provider takes over, which is a working service in dev.
+    env_file:
+      - path: ../../.env
+        required: false
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-payments:5432/payments_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-payments:5432/payments_db
+      # .env.example ships DATABASE_ECHO=true for someone running uvicorn by
+      # hand. This service reads that same .env for its Stripe keys, so pin it
+      # here or every statement lands in the container log.
+      DATABASE_ECHO: "false"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_GROUP_ID: payments-service
+      KAFKA_TOPICS: order-events,payment-commands
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: payments-service
     ports:
       - "8002:8000"
-    command: echo "Payments service placeholder - implementation in Task 3+"
+    # Migrations as a start step: the service owns its schema, so it applies it.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Users Microservice (placeholder - implementation in Task 3+)
+  # Users Microservice — extracted from the monolith.
   users-service:
-    image: python:3.11-slim
+    build:
+      # Repo root, so the image can copy src/shared alongside the service.
+      context: ../..
+      dockerfile: services/users/Dockerfile
     container_name: fooddelivery_users_service
     depends_on:
       postgres-users:
@@ -334,51 +369,73 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-users:5432/users_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-users:5432/users_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_GROUP_ID: users-service
       REDIS_URL: redis://redis:6379/0
+      # Only the signing secret — not another service's database. Tokens are
+      # verified locally, so this service does not go down when users does.
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: users-service
     ports:
       - "8003:8000"
-    command: echo "Users service placeholder - implementation in Task 3+"
+    # Migrations as a start step: the service owns its schema, so it applies it.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      # /health, not /ready: this asks whether the process is alive. A database
+      # blip must not make the orchestrator restart a healthy process.
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Restaurants Microservice (placeholder - implementation in Task 3+)
+  # Restaurants Microservice — extracted from the monolith.
   restaurants-service:
-    image: python:3.11-slim
+    build:
+      # Repo root, so the image can copy src/shared alongside the service.
+      context: ../..
+      dockerfile: services/restaurants/Dockerfile
     container_name: fooddelivery_restaurants_service
     depends_on:
       postgres-restaurants:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-restaurants:5432/restaurants_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-restaurants:5432/restaurants_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_URL: redis://redis:6379/0
+      KAFKA_GROUP_ID: restaurants-service
+      KAFKA_TOPICS: order-events
+      # Only the signing secret — not another service's database. Tokens are
+      # verified locally, so this service does not go down when users does.
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: restaurants-service
     ports:
       - "8004:8000"
-    command: echo "Restaurants service placeholder - implementation in Task 3+"
+    # Migrations as a start step: the service owns its schema, so it applies it.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      # /health, not /ready: this asks whether the process is alive. A database
+      # blip must not make the orchestrator restart a healthy process.
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Delivery Microservice (placeholder - implementation in Task 3+)
+  # Delivery Microservice — extracted from the monolith.
   delivery-service:
-    image: python:3.11-slim
+    build:
+      # Repo root, so the image can copy src/shared alongside the service.
+      context: ../..
+      dockerfile: services/delivery/Dockerfile
     container_name: fooddelivery_delivery_service
     depends_on:
       postgres-delivery:
@@ -388,74 +445,112 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-delivery:5432/delivery_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-delivery:5432/delivery_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_GROUP_ID: delivery-service
+      KAFKA_TOPICS: order-events,user-events
       REDIS_URL: redis://redis:6379/0
+      # Only the signing secret — not another service's database. Tokens are
+      # verified locally, so this service does not go down when users does.
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: delivery-service
     ports:
       - "8005:8000"
-    command: echo "Delivery service placeholder - implementation in Task 3+"
+    # Migrations as a start step: the service owns its schema, so it applies it.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      # /health, not /ready: this asks whether the process is alive. A database
+      # blip must not make the orchestrator restart a healthy process.
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Notifications Microservice (placeholder - implementation in Task 3+)
+  # Notifications Microservice — the first real one.
+  #
+  # Nothing calls it synchronously; it only consumes order events. Stop it and
+  # orders keep succeeding, with the events waiting in Kafka until it returns.
+  # That is the property the whole split exists for, and it is testable here:
+  #
+  #   docker compose stop notifications-service   # place an order: still works
+  #   docker compose start notifications-service  # the backlog is delivered
   notifications-service:
-    image: python:3.11-slim
+    build:
+      # Repo root, so the image can copy src/shared alongside the service.
+      context: ../..
+      dockerfile: services/notifications/Dockerfile
     container_name: fooddelivery_notifications_service
     depends_on:
       postgres-notifications:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-notifications:5432/notifications_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-notifications:5432/notifications_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_URL: redis://redis:6379/0
+      KAFKA_GROUP_ID: notifications-service
+      KAFKA_TOPICS: order-events,notification-events,user-contact-events
+      # Only the signing secret — not the users database. Tokens are verified
+      # locally, so this service does not go down when users-service does.
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: notifications-service
     ports:
       - "8006:8000"
-    command: echo "Notifications service placeholder - implementation in Task 3+"
+    # Migrations as a start step: the service owns its schema, so it applies it.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      # /health, not /ready: this asks whether the process is alive. A database
+      # blip must not make the orchestrator restart a healthy process.
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
-  # Admin Microservice (placeholder - implementation in Task 3+)
+  # Admin Microservice — the operator console.
+  #
+  # The only service that reads across the whole platform, and it does it from
+  # local copies rather than by calling everyone: a console that fans out is
+  # down whenever any one service is. The cost is that a number may lag a second
+  # or two, which for reporting is the right trade.
   admin-service:
-    image: python:3.11-slim
+    build:
+      context: ../..
+      dockerfile: services/admin/Dockerfile
     container_name: fooddelivery_admin_service
     depends_on:
-      postgres-orders:
+      postgres-admin:
         condition: service_healthy
       kafka:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://fooduser:foodpass@postgres-orders:5432/orders_db
+      DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-admin:5432/admin_db
+      DATABASE_ECHO: "false"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_URL: redis://redis:6379/0
+      KAFKA_GROUP_ID: admin-service
+      KAFKA_TOPICS: order-events,user-events,user-contact-events,restaurant-events
+      ORDERS_SERVICE_URL: http://orders-service:8000
       JWT_SECRET_KEY: dev-secret-change-me
       ENVIRONMENT: development
       SERVICE_NAME: admin-service
     ports:
       - "8007:8000"
-    command: echo "Admin service placeholder - implementation in Task 3+"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "print('healthy')"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
 volumes:
   postgres_data:
@@ -465,4 +560,5 @@ volumes:
   postgres_users_data:
   postgres_restaurants_data:
   postgres_delivery_data:
+  postgres_admin_data:
   postgres_notifications_data:

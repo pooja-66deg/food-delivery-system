@@ -1,9 +1,27 @@
 # GCP Deployment
 
-Target: **Cloud Run** (API + frontend), **Cloud SQL** (Postgres), **Memorystore**
-(Redis), **Secret Manager** (secrets), **Artifact Registry** (images), **Cloud
-Build** (CI/CD). Serverless-first for the MVP; the same images move to **GKE
-Autopilot** later without code changes.
+Target: **Cloud Run** (seven services + gateway + frontend), **Cloud SQL**
+(Postgres, one database per service), **Memorystore** (Redis), **Pub/Sub**
+(events), **Secret Manager** (secrets), **Artifact Registry** (images), **Cloud
+Build** (CI/CD).
+
+Three choices here are worth understanding before you run anything.
+
+**Pub/Sub, not managed Kafka.** GCP's managed Kafka charges for cluster capacity
+whether you use it or not; Pub/Sub is per-message with no floor, which is the
+right shape at this volume. Services do not know the difference — the transport
+is behind one interface in `src/shared/messaging.py` — so the compose stack keeps
+Kafka and a developer still needs no cloud credentials.
+
+**One Cloud SQL instance, seven databases.** A foreign key still cannot cross
+between them, which is the isolation that actually matters, at a fraction of
+seven instances' cost. Being straight about the trade: they share a failure
+domain and a connection limit. Splitting the busiest onto its own instance is the
+next step when load justifies it, and it needs no code change.
+
+**The gateway is the only public door.** Services deploy with
+`--ingress=internal-and-cloud-load-balancing`, so none is reachable from the
+internet even if its auth were misconfigured.
 
 > Everything here creates config only. The `gcloud` commands must be run by you
 > against your own GCP project (there is no cloud access from the dev harness).
@@ -27,12 +45,18 @@ gcloud services enable run.googleapis.com sqladmin.googleapis.com \
 gcloud artifacts repositories create food-delivery \
   --repository-format=docker --location=$REGION
 
-# 3. Cloud SQL (PostgreSQL 15)
+# 3. Cloud SQL (PostgreSQL 15). The per-service databases are created by the
+#    build pipeline, so only the instance and the user are needed here.
+#    db-f1-micro is fine for staging; seven services sharing it will want more.
 gcloud sql instances create food-db --database-version=POSTGRES_15 \
   --tier=db-f1-micro --region=$REGION
-gcloud sql databases create fooddelivery --instance=food-db
 gcloud sql users create fooduser --instance=food-db --password=STRONG_PASSWORD
 # connection name looks like: PROJECT_ID:us-central1:food-db
+
+# 3b. Pub/Sub. Topics and subscriptions are created by the pipeline too — see the
+#     provision-pubsub step, which is the only place their names are written down
+#     besides each service's KAFKA_TOPICS. Just enable the API.
+gcloud services enable pubsub.googleapis.com
 
 # 4. Memorystore (Redis) + a Serverless VPC Access connector so Cloud Run can reach it
 gcloud redis instances create food-cache --size=1 --region=$REGION
@@ -40,9 +64,14 @@ gcloud compute networks vpc-access connectors create food-connector \
   --region=$REGION --range=10.8.0.0/28
 
 # 5. Secrets (Secret Manager)
-#    DATABASE_URL uses the Cloud SQL unix socket; our engine adds +asyncpg automatically.
-printf 'postgresql://fooduser:STRONG_PASSWORD@/fooddelivery?host=/cloudsql/%s:%s:food-db' \
-  "$PROJECT_ID" "$REGION" | gcloud secrets create DATABASE_URL --data-file=-
+#    One DATABASE_URL per service, because each has its own database. They use
+#    the Cloud SQL unix socket; each service's engine adds +asyncpg itself.
+for svc in users restaurants orders payments delivery notifications admin; do
+  UPPER=$(echo $svc | tr a-z A-Z)
+  printf 'postgresql://fooduser:STRONG_PASSWORD@/%s_db?host=/cloudsql/%s:%s:food-db' \
+    "$svc" "$PROJECT_ID" "$REGION" \
+    | gcloud secrets create "${UPPER}_DATABASE_URL" --data-file=-
+done
 printf 'redis://REDIS_PRIVATE_IP:6379/0' | gcloud secrets create REDIS_URL --data-file=-
 printf 'a-long-random-production-secret' | gcloud secrets create JWT_SECRET_KEY --data-file=-
 #    Server-side Google Maps key: Routes API (delivery ETAs) + Geocoding API
@@ -54,13 +83,42 @@ printf 'AIza-your-SERVER-key' | gcloud secrets create GOOGLE_MAPS_API_KEY --data
 # 6. Let Cloud Run's service account read the secrets (and connect to Cloud SQL)
 PROJECT_NUM=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 SA="$PROJECT_NUM-compute@developer.gserviceaccount.com"
-for s in DATABASE_URL REDIS_URL JWT_SECRET_KEY GOOGLE_MAPS_API_KEY; do
+SECRETS="REDIS_URL JWT_SECRET_KEY GOOGLE_MAPS_API_KEY"
+for svc in USERS RESTAURANTS ORDERS PAYMENTS DELIVERY NOTIFICATIONS ADMIN; do
+  SECRETS="$SECRETS ${svc}_DATABASE_URL"
+done
+for s in $SECRETS; do
   gcloud secrets add-iam-policy-binding $s \
     --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor
 done
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:$SA" --role=roles/cloudsql.client
+# Publishing and subscribing. Every service does both, so this is granted once
+# at the project level rather than per topic.
+for role in roles/pubsub.publisher roles/pubsub.subscriber; do
+  gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SA" --role="$role"
+done
+# The gateway calls the services, which are deployed --no-allow-unauthenticated,
+# so it needs permission to invoke them.
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA" --role=roles/run.invoker
 ```
+
+## The first deploy takes two passes
+
+The gateway needs each service's Cloud Run URL, and the frontend needs the
+gateway's — none of which exist until something has been deployed. So:
+
+1. Run the pipeline with the URL substitutions empty. Everything deploys; the
+   gateway 502s and the frontend has no API. That is expected.
+2. Read the URLs off `gcloud run services list --region=$REGION`.
+3. Run it again with `_USERS_URL`, `_RESTAURANTS_URL`, `_ORDERS_URL`,
+   `_PAYMENTS_URL`, `_DELIVERY_URL`, `_NOTIFICATIONS_URL`, `_ADMIN_URL`,
+   `_GATEWAY_URL` and `_FE_URL` filled in.
+
+Note that `_GATEWAY_URL` is baked into the SPA bundle at build time, so changing
+it needs a rebuild and not just a redeploy.
 
 ## Automatic deployment on merge to `main`
 

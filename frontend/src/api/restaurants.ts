@@ -150,6 +150,11 @@ export const restaurantsApi = {
 
   listCities: () => request<CitiesResponse>('/restaurants/cities', { auth: true }),
 
+  /** The cards behind a set of ids — how a favourites list is hydrated.
+   *  Favourites live in the users service and can only store ids. */
+  lookup: (ids: number[]) =>
+    request<Restaurant[]>(`/restaurants/lookup?ids=${ids.join(',')}`, { auth: true }),
+
   get: (id: number) => request<RestaurantDetail>(`/restaurants/${id}`, { auth: true }),
 
   // Owner management

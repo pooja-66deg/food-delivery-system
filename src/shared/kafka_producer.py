@@ -1,11 +1,10 @@
 """Kafka producer for publishing domain events to topics."""
 import json
 import logging
-from typing import Optional
 from kafka import KafkaProducer as _KafkaProducer
 from kafka.errors import KafkaError
 
-from src.shared.events import BaseEvent
+from .events import BaseEvent
 
 logger = logging.getLogger(__name__)
 

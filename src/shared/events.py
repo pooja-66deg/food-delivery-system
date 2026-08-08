@@ -1,6 +1,6 @@
 """Base event models and schemas for cross-service communication."""
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 import uuid
 

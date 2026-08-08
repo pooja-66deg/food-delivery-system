@@ -24,6 +24,8 @@ async def relay_outbox(session: AsyncSession, batch_size: int = 100) -> int:
         .order_by(OutboxEvent.id)
         .limit(batch_size)
     )
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        stmt = stmt.with_for_update(skip_locked=True)
     rows = list(await session.scalars(stmt))
     published = 0
     for row in rows:

@@ -117,13 +117,10 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
         try {
           setIsLoading(true)
           setError(null)
-          console.log('Fetching city predictions for:', inputValue)
           const result = await autocompleteRef.current!.getPlacePredictions({
             input: inputValue,
             componentRestrictions: { country: 'in' },
           })
-
-          console.log('Raw predictions received:', result.predictions)
           const allPredictions = result.predictions || []
 
           const seenCities = new Set<string>()
@@ -136,17 +133,20 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
               cityPredictions.push(pred)
             }
           }
-
-          console.log('Unique city predictions:', cityPredictions.length)
+          // Ten is what fits the dropdown without scrolling; Places returns
+          // up to five per request anyway, so this is a ceiling not a filter.
           const sliced = cityPredictions.slice(0, 10)
-          console.log('Setting predictions to:', sliced)
           setPredictions(sliced)
-          console.log('Should open dropdown:', sliced.length > 0)
           setIsOpen(sliced.length > 0)
         } catch (err) {
           console.error('Autocomplete error:', err)
           setError('Failed to load city suggestions')
           setPredictions([])
+          // Opened on purpose. The panel is the only place the message renders,
+          // and it used to open only when there were predictions — so a failed
+          // lookup set an error nobody could ever see and the field just sat
+          // there looking like it was still thinking.
+          setIsOpen(true)
         } finally {
           setIsLoading(false)
         }
@@ -198,9 +198,7 @@ export const CityDropdown: React.FC<CityDropdownProps> = ({
   }
 
   const handleSelectPrediction = (prediction: Prediction) => {
-    console.log('City prediction selected:', prediction)
     const cityName = prediction.main_text || prediction.structured_formatting?.main_text || ''
-    console.log('City name extracted:', cityName)
     if (cityName) {
       setSearchInput(cityName)
       onChange(cityName)

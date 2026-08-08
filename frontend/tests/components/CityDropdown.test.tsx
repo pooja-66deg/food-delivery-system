@@ -1,362 +1,210 @@
-import React from 'react'
-import { render, fireEvent, waitFor } from '@testing-library/react'
+// The city picker: Google Places when a key is configured, a plain text input
+// when it is not.
+//
+// This file previously sat at the repository root, outside frontend/, where
+// vitest's `include` never reached it — so 362 lines of assertions had never run
+// once. They were written against an imagined component and every one of them
+// failed the moment it was collected. What follows tests the component that
+// actually exists.
+//
+// Two things about it shape every test here:
+//
+//   - the fallback decision happens in an effect, not during render, so the
+//     first paint is always the Places variant and assertions have to wait;
+//   - search is debounced by 300ms, so predictions never appear synchronously.
+
+import { render, fireEvent, waitFor, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { CityDropdown } from '../../src/components/CityDropdown'
 
-const mockPredictions = [
-  { place_id: '1', description: 'New York, NY, USA', main_text: 'New York', types: ['locality'] },
-  { place_id: '2', description: 'New Orleans, LA, USA', main_text: 'New Orleans', types: ['locality'] },
-  { place_id: '3', description: 'Newark, NJ, USA', main_text: 'Newark', types: ['locality'] },
+const PREDICTIONS = [
+  {
+    place_id: '1',
+    description: 'New York, NY, USA',
+    structured_formatting: { main_text: 'New York', secondary_text: 'NY, USA' },
+  },
+  {
+    place_id: '2',
+    description: 'New Orleans, LA, USA',
+    structured_formatting: { main_text: 'New Orleans', secondary_text: 'LA, USA' },
+  },
 ]
 
-const mockGetPlacePredictions = jest.fn()
+const getPlacePredictions = vi.fn()
+
+/** Put a Places API in place and pretend a browser key is configured. */
+function withPlaces(predictions = PREDICTIONS) {
+  vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+  getPlacePredictions.mockResolvedValue({ predictions })
+  ;(window as unknown as Record<string, unknown>).google = {
+    maps: { places: { AutocompleteService: vi.fn(() => ({ getPlacePredictions })) } },
+  }
+}
+
+/** The input the component renders once it has settled on a mode. */
+const input = () => screen.getByRole('textbox') as HTMLInputElement
 
 beforeEach(() => {
-  jest.clearAllMocks()
+  vi.clearAllMocks()
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+})
 
-  // Mock window.google
-  ;(window as any).google = {
-    maps: {
-      places: {
-        AutocompleteService: jest.fn(() => ({
-          getPlacePredictions: mockGetPlacePredictions,
-        })),
-      },
-    },
-  }
-
-  // Default mock to return predictions
-  mockGetPlacePredictions.mockResolvedValue({ predictions: mockPredictions })
-
-  // Clear environment variable
-  delete (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllEnvs()
+  delete (window as unknown as Record<string, unknown>).google
 })
 
 describe('CityDropdown', () => {
-  describe('Fallback behavior', () => {
-    it('renders text input when API key is missing', () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      const input = container.querySelector('input[type="text"]')
-      expect(input).toBeInTheDocument()
-      expect(input).toHaveAttribute('placeholder', 'Enter city')
+  describe('without a Maps key', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '')
     })
 
-    it('updates value when typing in fallback mode', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
+    it('falls back to a plain text input', async () => {
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+
+      // Awaited, not asserted immediately: the fallback is decided in an effect,
+      // so the first render is still the Places variant.
+      await waitFor(() =>
+        expect(input()).toHaveAttribute('placeholder', 'Enter city'),
       )
+    })
 
-      const input = container.querySelector('input[type="text"]') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New York' } })
+    it('reports every keystroke, since there is nothing to select from', async () => {
+      const onChange = vi.fn()
+      render(<CityDropdown value="" onChange={onChange} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Enter city'))
 
-      await waitFor(() => {
-        expect(onChange).toHaveBeenCalledWith('New York')
-      })
+      fireEvent.change(input(), { target: { value: 'Metropolis' } })
+      expect(onChange).toHaveBeenCalledWith('Metropolis')
     })
   })
 
-  describe('Search functionality', () => {
-    beforeEach(() => {
-      ;(import.meta as any).env = { VITE_GOOGLE_MAPS_API_KEY: 'test-key' }
+  describe('with a Maps key', () => {
+    // Wrapped, not passed directly: vitest calls a beforeEach hook with a test
+    // context argument, which would land in `predictions` and is not an array.
+    beforeEach(() => withPlaces())
+
+    it('searches only after the debounce, not on every keystroke', async () => {
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
+
+      fireEvent.change(input(), { target: { value: 'New' } })
+      expect(getPlacePredictions).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(350)
+      await waitFor(() => expect(getPlacePredictions).toHaveBeenCalledTimes(1))
     })
 
-    it('renders searchable input with API key', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('restricts results to one country', async () => {
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      await waitFor(() => {
-        const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-        expect(input).toBeInTheDocument()
-      })
-    })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
 
-    it('fetches predictions when user types', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
-
-      await waitFor(
-        () => {
-          expect(mockGetPlacePredictions).toHaveBeenCalledWith(
-            expect.objectContaining({ input: 'New', types: ['(cities)'] })
-          )
-        },
-        { timeout: 500 }
+      await waitFor(() =>
+        expect(getPlacePredictions).toHaveBeenCalledWith(
+          expect.objectContaining({ componentRestrictions: { country: 'in' } }),
+        ),
       )
     })
 
-    it('displays predictions in dropdown', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('lists what came back', async () => {
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
 
-      await waitFor(() => {
-        const items = container.querySelectorAll('.city-dropdown-item')
-        expect(items.length).toBe(3)
-        expect(items[0].textContent).toBe('New York')
-        expect(items[1].textContent).toBe('New Orleans')
-        expect(items[2].textContent).toBe('Newark')
-      })
+      expect(await screen.findByText('New York')).toBeInTheDocument()
+      expect(screen.getByText('New Orleans')).toBeInTheDocument()
     })
 
-    it('shows "No cities found" when search returns no predictions', async () => {
-      mockGetPlacePredictions.mockResolvedValueOnce({ predictions: [] })
+    it('reports the city, not the full description, when one is picked', async () => {
+      const onChange = vi.fn()
+      render(<CityDropdown value="" onChange={onChange} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
+      fireEvent.click(await screen.findByText('New York'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'XYZ' } })
-
-      await waitFor(() => {
-        const empty = container.querySelector('.city-dropdown-empty')
-        expect(empty?.textContent).toBe('No cities found')
-      })
+      // "New York", not "New York, NY, USA" — the field stores a city.
+      expect(onChange).toHaveBeenCalledWith('New York')
+      expect(screen.queryByText('New Orleans')).not.toBeInTheDocument()
     })
 
-    it('closes dropdown when clicking outside', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <div>
-          <CityDropdown value="" onChange={onChange} />
-          <div data-testid="outside">Outside</div>
-        </div>
-      )
+    it('picks with the keyboard', async () => {
+      const onChange = vi.fn()
+      render(<CityDropdown value="" onChange={onChange} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
+      await screen.findByText('New York')
 
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).toBeInTheDocument()
-      })
-
-      fireEvent.mouseDown(container.querySelector('[data-testid="outside"]')!)
-
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).not.toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Selection', () => {
-    beforeEach(() => {
-      ;(import.meta as any).env = { VITE_GOOGLE_MAPS_API_KEY: 'test-key' }
-    })
-
-    it('calls onChange with city name when prediction is clicked', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
-
-      await waitFor(() => {
-        const items = container.querySelectorAll('.city-dropdown-item')
-        expect(items.length).toBeGreaterThan(0)
-      })
-
-      const firstItem = container.querySelector('.city-dropdown-item') as HTMLDivElement
-      fireEvent.click(firstItem)
+      fireEvent.keyDown(input(), { key: 'ArrowDown' })
+      fireEvent.keyDown(input(), { key: 'Enter' })
 
       expect(onChange).toHaveBeenCalledWith('New York')
     })
 
-    it('closes dropdown after selection', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('closes on Escape without choosing anything', async () => {
+      const onChange = vi.fn()
+      render(<CityDropdown value="" onChange={onChange} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
+      await screen.findByText('New York')
 
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).toBeInTheDocument()
-      })
+      fireEvent.keyDown(input(), { key: 'Escape' })
 
-      const firstItem = container.querySelector('.city-dropdown-item') as HTMLDivElement
-      fireEvent.click(firstItem)
-
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).not.toBeInTheDocument()
-      })
-    })
-  })
-
-  describe('Keyboard navigation', () => {
-    beforeEach(() => {
-      ;(import.meta as any).env = { VITE_GOOGLE_MAPS_API_KEY: 'test-key' }
+      await waitFor(() => expect(screen.queryByText('New York')).not.toBeInTheDocument())
+      expect(onChange).not.toHaveBeenCalled()
     })
 
-    it('navigates predictions with arrow keys', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('closes when the click lands elsewhere', async () => {
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
+      await screen.findByText('New York')
 
-      await waitFor(() => {
-        const items = container.querySelectorAll('.city-dropdown-item')
-        expect(items.length).toBeGreaterThan(0)
-      })
+      fireEvent.mouseDown(document.body)
 
-      fireEvent.keyDown(input, { key: 'ArrowDown' })
-
-      await waitFor(() => {
-        const firstItem = container.querySelector('.city-dropdown-item.active')
-        expect(firstItem?.textContent).toBe('New York')
-      })
-
-      fireEvent.keyDown(input, { key: 'ArrowDown' })
-
-      await waitFor(() => {
-        const items = container.querySelectorAll('.city-dropdown-item.active')
-        const active = items[0]
-        expect(active?.textContent).toBe('New Orleans')
-      })
+      await waitFor(() => expect(screen.queryByText('New York')).not.toBeInTheDocument())
     })
 
-    it('selects prediction with Enter key', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('says so when there is nothing to show', async () => {
+      withPlaces([])
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      fireEvent.change(input(), { target: { value: 'zzzz' } })
+      await vi.advanceTimersByTimeAsync(350)
 
-      await waitFor(() => {
-        const items = container.querySelectorAll('.city-dropdown-item')
-        expect(items.length).toBeGreaterThan(0)
-      })
-
-      fireEvent.keyDown(input, { key: 'ArrowDown' })
-
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-item.active')).toBeInTheDocument()
-      })
-
-      fireEvent.keyDown(input, { key: 'Enter' })
-
-      await waitFor(() => {
-        expect(onChange).toHaveBeenCalledWith('New York')
-      })
+      // The dropdown stays shut rather than showing an empty box: a panel with
+      // nothing in it reads as broken.
+      await waitFor(() => expect(getPlacePredictions).toHaveBeenCalled())
+      expect(screen.queryByText('New York')).not.toBeInTheDocument()
     })
 
-    it('closes dropdown with Escape key', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
+    it('surfaces a failed lookup instead of showing nothing', async () => {
+      vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-key')
+      getPlacePredictions.mockRejectedValue(new Error('quota exceeded'))
 
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
+      render(<CityDropdown value="" onChange={vi.fn()} />)
+      await waitFor(() => expect(input()).toHaveAttribute('placeholder', 'Search city'))
 
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).toBeInTheDocument()
-      })
+      fireEvent.change(input(), { target: { value: 'New' } })
+      await vi.advanceTimersByTimeAsync(350)
 
-      fireEvent.keyDown(input, { key: 'Escape' })
-
-      await waitFor(() => {
-        expect(container.querySelector('.city-dropdown-menu')).not.toBeInTheDocument()
-      })
-    })
-
-    it('selects from fallback input with Enter key', async () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      const input = container.querySelector('input[type="text"]') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'Custom City' } })
-      fireEvent.keyDown(input, { key: 'Enter' })
-
-      expect(onChange).toHaveBeenCalledWith('Custom City')
-    })
-  })
-
-  describe('Error handling', () => {
-    beforeEach(() => {
-      ;(import.meta as any).env = { VITE_GOOGLE_MAPS_API_KEY: 'test-key' }
-    })
-
-    it('shows error message when API call fails', async () => {
-      mockGetPlacePredictions.mockRejectedValueOnce(new Error('API Error'))
-
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      fireEvent.change(input, { target: { value: 'New' } })
-
-      await waitFor(() => {
-        const error = container.querySelector('.city-dropdown-error')
-        expect(error?.textContent).toContain('Failed to load city suggestions')
-      })
-    })
-  })
-
-  describe('Props', () => {
-    beforeEach(() => {
-      ;(import.meta as any).env = { VITE_GOOGLE_MAPS_API_KEY: 'test-key' }
-    })
-
-    it('respects disabled prop', () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} disabled />
-      )
-
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      expect(input.disabled).toBe(true)
-    })
-
-    it('respects required prop', () => {
-      const onChange = jest.fn()
-      const { container } = render(
-        <CityDropdown value="" onChange={onChange} required />
-      )
-
-      const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-      expect(input.required).toBe(true)
-    })
-
-    it('syncs value prop changes to input', async () => {
-      const onChange = jest.fn()
-      const { rerender, container } = render(
-        <CityDropdown value="" onChange={onChange} />
-      )
-
-      rerender(<CityDropdown value="New York" onChange={onChange} />)
-
-      await waitFor(() => {
-        const input = container.querySelector('.city-dropdown-input') as HTMLInputElement
-        expect(input.value).toBe('New York')
-      })
+      expect(await screen.findByText(/Failed to load city suggestions/i)).toBeInTheDocument()
     })
   })
 })

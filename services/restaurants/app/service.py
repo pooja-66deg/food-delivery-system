@@ -1,0 +1,152 @@
+"""Business logic for restaurant profiles."""
+
+from typing import Sequence
+
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.errors import ForbiddenException, NotFoundException
+from app import outbox
+from app.models import Restaurant
+from app.schemas import RestaurantCreate, RestaurantUpdate
+from app import ratings
+from shared.identity import Identity
+
+
+async def create_restaurant(session: AsyncSession, owner: Identity, data: RestaurantCreate) -> Restaurant:
+    restaurant = Restaurant(owner_id=owner.user_id, **data.model_dump())
+    session.add(restaurant)
+    await session.flush()  # assigns restaurant.id, which the event needs
+    publish_restaurant(session, restaurant)
+    await session.commit()
+    await session.refresh(restaurant)
+    return restaurant
+
+
+async def get_restaurant(session: AsyncSession, restaurant_id: int) -> Restaurant:
+    restaurant = await session.get(Restaurant, restaurant_id)
+    if restaurant is None:
+        raise NotFoundException("Restaurant", str(restaurant_id))
+    return restaurant
+
+
+async def attach_ratings(session: AsyncSession, restaurants: Sequence[Restaurant]) -> None:
+    """Set each restaurant's rating fields for the response schemas to read.
+
+    Called explicitly by the browse and detail routes rather than from
+    ``get_restaurant``, which checkout also uses and has no need for ratings.
+    One query for the whole page.
+    """
+    if not restaurants:
+        return
+    summaries = await ratings.summary_for(session, [r.id for r in restaurants])
+    for restaurant in restaurants:
+        summary = summaries.get(restaurant.id, ratings.EMPTY)
+        restaurant.rating_average = summary.average
+        restaurant.review_count = summary.count
+        restaurant.rating_breakdown = summary.breakdown
+
+
+# Shortest term that earns a suggestion lookup — one character matches most of
+# the table and is never a useful hint.
+SUGGEST_MIN_CHARS = 2
+
+
+def _matches_term(term: str):
+    """Name-or-cuisine predicate shared by browse and suggest.
+
+    Both paths use it so a suggestion can never appear that pressing Search
+    then fails to return. `cuisine` is nullable, but `NULL ILIKE x` is NULL
+    rather than true, so untagged restaurants drop out without a COALESCE.
+    """
+    pattern = f"%{term}%"
+    return or_(Restaurant.name.ilike(pattern), Restaurant.cuisine.ilike(pattern))
+
+
+async def suggest_restaurants(
+    session: AsyncSession, q: str, limit: int = 8
+) -> list[Restaurant]:
+    """Typeahead hits for a partial query. Empty below SUGGEST_MIN_CHARS."""
+    term = (q or "").strip()
+    if len(term) < SUGGEST_MIN_CHARS:
+        return []
+    stmt = (
+        select(Restaurant)
+        .where(_matches_term(term))
+        .order_by(Restaurant.name)
+        .limit(limit)
+    )
+    return list(await session.scalars(stmt))
+
+
+async def popular_cuisines(session: AsyncSession, limit: int = 8) -> list[tuple[str, int]]:
+    """Cuisines by restaurant count, busiest first.
+
+    Ties break on name so the ordering is deterministic and tests are stable.
+    """
+    count = func.count(Restaurant.id)
+    stmt = (
+        select(Restaurant.cuisine, count)
+        .where(Restaurant.cuisine.isnot(None), Restaurant.cuisine != "")
+        .group_by(Restaurant.cuisine)
+        .order_by(count.desc(), Restaurant.cuisine)
+        .limit(limit)
+    )
+    return [(cuisine, total) for cuisine, total in await session.execute(stmt)]
+
+
+async def owned_restaurant(session: AsyncSession, user: Identity, restaurant_id: int) -> Restaurant:
+    """Return the restaurant if the user may manage it, else raise.
+
+    404 if it doesn't exist; 403 if it exists but the user is neither the owner
+    nor an admin.
+    """
+    restaurant = await get_restaurant(session, restaurant_id)
+    if restaurant.owner_id != user.user_id and user.role != "admin":
+        raise ForbiddenException("You do not manage this restaurant")
+    return restaurant
+
+
+async def update_restaurant(
+    session: AsyncSession, restaurant_id: int, user: Identity, data: RestaurantUpdate
+) -> Restaurant:
+    restaurant = await owned_restaurant(session, user, restaurant_id)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(restaurant, field, value)
+    publish_restaurant(session, restaurant)
+    await session.commit()
+    await session.refresh(restaurant)
+    return restaurant
+
+
+async def list_cities(session: AsyncSession) -> list[str]:
+    """Return a sorted list of unique cities from all restaurants."""
+    result = await session.scalars(
+        select(Restaurant.city)
+        .distinct()
+        .order_by(Restaurant.city)
+        .where(Restaurant.city.isnot(None))
+    )
+    return sorted(list(set(result.all())))
+
+
+def publish_restaurant(session: AsyncSession, restaurant: Restaurant) -> None:
+    """Announce a restaurant to the services that keep a copy of it.
+
+    The orders service needs the owner (to decide who may accept an order) and
+    the name (to label a kitchen ticket). Both were joins; both would now be a
+    synchronous call on the owner dashboard's busiest read.
+
+    Nothing sensitive travels: an owner id, a name, and whether it is taking
+    orders. The menu, the address and the phone number stay here, with the
+    service that has a reason to hold them.
+    """
+    outbox.record_event(
+        session, "restaurant-events", str(restaurant.id),
+        {
+            "restaurant_id": restaurant.id,
+            "owner_id": restaurant.owner_id,
+            "name": restaurant.name,
+            "is_open": restaurant.is_open,
+        },
+    )

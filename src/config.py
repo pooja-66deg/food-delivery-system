@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     kafka_brokers: str = "localhost:9092"
     kafka_consumer_group: str = "food-delivery-group"
 
+    # Outbox relay — the loop that publishes recorded events to Kafka.
+    # Off only for tests and one-off scripts: with it off, events are still
+    # recorded transactionally but never reach any consumer.
+    outbox_relay_enabled: bool = True
+    outbox_relay_interval_seconds: float = 1.0
+    outbox_relay_batch_size: int = 100
+
+    # Whether this process still sends the outbound (email/SMS/push) copies of
+    # an order status change. Set false wherever the notifications service is
+    # running, or the customer gets two of every message. Defaults true so a
+    # deploy without the service behaves exactly as before.
+    notifications_outbound_enabled: bool = True
+
     # Third-party Services
     stripe_api_key: Optional[str] = None
     stripe_secret_key: Optional[str] = None

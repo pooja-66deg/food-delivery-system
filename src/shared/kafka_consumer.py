@@ -6,7 +6,7 @@ from typing import Optional, List
 from kafka import KafkaConsumer as _KafkaConsumer
 from kafka.errors import KafkaError
 
-from src.shared.events import BaseEvent
+from .events import BaseEvent
 
 logger = logging.getLogger(__name__)
 

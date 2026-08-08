@@ -5,7 +5,7 @@ This module provides:
 - AsyncSessionLocal: Factory function for creating async database sessions
 - Common column types and utilities for consistency across services
 """
-from typing import Optional, AsyncGenerator
+from typing import AsyncGenerator
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
