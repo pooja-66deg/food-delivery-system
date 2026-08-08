@@ -1,1 +1,0 @@
-"""Restaurants module initialization."""
