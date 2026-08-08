@@ -10,6 +10,7 @@ from src.config import settings
 from src.core.exceptions import ConflictException, UnauthorizedException
 from src.core.jwt import create_access_token, create_refresh_token, verify_token
 from src.core.security import hash_password, verify_password
+from src.modules.events import outbox
 from src.modules.users import otp as otp_module
 from src.modules.users import tokens as token_store
 from src.modules.users.models import User
@@ -147,6 +148,11 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
     )
     session.add(user)
     try:
+        # Flush rather than commit first: it assigns user.id, which the event
+        # needs, and still raises the duplicate below. The event then commits in
+        # the same transaction as the user — the whole point of the outbox.
+        await session.flush()
+        publish_user(session, user)
         await session.commit()
     except IntegrityError:
         # Lost the race against a concurrent registration with the same
@@ -155,6 +161,39 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
         raise ConflictException("Email or phone already registered")
     await session.refresh(user)
     return user
+
+
+def publish_user(session: AsyncSession, user: User) -> None:
+    """Announce a user's current state to whoever keeps a copy of it.
+
+    Services do not read the users table — it is in another database — so those
+    that need a name or a role keep a local read-model and update it from this.
+    The delivery service's driver roster is the first such consumer.
+
+    Two topics, deliberately. ``user-events`` carries what several services
+    need — a role, a display name, whether the account is active — and anyone
+    may subscribe. Contact details go to ``user-contact-events``, which is
+    restricted to services with a reason to hold them: notifications, which
+    sends to an address, and admin, which displays one to a human operator.
+
+    Splitting them is the whole point: on one topic, every consumer of a name
+    would also receive an email address it has no use for and would then be
+    storing. Never the password hash, on either.
+    """
+    outbox.record_event(
+        session, "user-events", str(user.id),
+        {
+            "user_id": user.id,
+            "role": user.role,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_active": user.is_active,
+        },
+    )
+    outbox.record_event(
+        session, "user-contact-events", str(user.id),
+        {"user_id": user.id, "email": user.email, "phone": user.phone},
+    )
 
 
 async def refresh_tokens(session: AsyncSession, redis, refresh_token: str) -> TokenResponse:

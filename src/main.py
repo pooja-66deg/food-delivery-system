@@ -14,6 +14,7 @@ from src.adapters.database import engine
 from src.adapters.redis import init_redis, close_redis
 from src.adapters.kafka import init_kafka, close_kafka
 from src.core.exceptions import AppException
+from src.modules.events.relay import start_relay, stop_relay
 from src.modules.users.router import auth_router, users_router
 from src.modules.restaurants.router import router as restaurants_router
 from src.modules.cart.router import router as cart_router
@@ -50,12 +51,17 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up...")
     await init_redis()
     init_kafka()
+    # After init_kafka: the relay checks whether Kafka is switched on at all
+    # before deciding to run.
+    start_relay()
     logger.info("Application started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down...")
+    # Before close_kafka, so an in-flight batch still has a producer to send on.
+    await stop_relay()
     await close_redis()
     close_kafka()
     await engine.dispose()

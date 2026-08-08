@@ -151,6 +151,10 @@ activemq-data/
 
 # Environments
 .env
+# Per-service compose environment. The .example is tracked; this one is not —
+# it carries a JWT secret and six database passwords, and "they are only dev
+# values" is how a real one eventually ends up in a commit.
+.env.services
 .envrc
 .venv
 env/

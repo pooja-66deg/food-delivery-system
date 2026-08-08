@@ -51,7 +51,7 @@ jobs:
         run: uv sync --frozen --extra dev --no-install-project
 
       - name: Lint
-        run: uv run flake8 src
+        run: uv run flake8 src services
 
       - name: Verify migrations
         run: |
@@ -59,8 +59,43 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
 
+      # Every service chain round-trips against the same Postgres this job
+      # already has. A chain that cannot be undone cannot be rolled back in
+      # production either.
+      - name: Verify service migrations
+        run: |
+          # Created with psycopg2 rather than psql, which is not guaranteed on
+          # the runner and would fail late and confusingly if it were missing.
+          uv run python - <<'PY'
+          import os, psycopg2
+          url = os.environ["DATABASE_URL"]
+          conn = psycopg2.connect(url)
+          conn.autocommit = True
+          with conn.cursor() as cur:
+              for svc in ("users", "restaurants", "orders", "payments",
+                          "delivery", "notifications", "admin"):
+                  cur.execute(f'DROP DATABASE IF EXISTS {svc}_db')
+                  cur.execute(f'CREATE DATABASE {svc}_db')
+          conn.close()
+          PY
+          for svc in users restaurants orders payments delivery notifications admin; do
+            echo "== $svc"
+            (
+              cd services/$svc
+              export DATABASE_URL="${DATABASE_URL%/*}/${svc}_db"
+              uv run --project ../.. alembic upgrade head
+              uv run --project ../.. alembic downgrade base
+              uv run --project ../.. alembic upgrade head
+            )
+          done
+
       - name: Test
         run: uv run pytest
+
+      # One process per service: every service has a package named `app`, so a
+      # single pytest run would import one and serve it to all of them.
+      - name: Test services
+        run: ./services/test.sh
 
   frontend:
     runs-on: ubuntu-latest
@@ -103,10 +138,10 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_CLOUDSQL_INSTANCE: ${{ vars.GCP_CLOUDSQL_INSTANCE }}
           GCP_VPC_CONNECTOR: ${{ vars.GCP_VPC_CONNECTOR }}
-          GCP_API_URL: ${{ vars.GCP_API_URL }}
+          GCP_GATEWAY_URL: ${{ vars.GCP_GATEWAY_URL }}
           GCP_FE_URL: ${{ vars.GCP_FE_URL }}
         run: |
-          for name in GCP_PROJECT_ID GCP_CLOUDSQL_INSTANCE GCP_VPC_CONNECTOR GCP_API_URL GCP_FE_URL; do
+          for name in GCP_PROJECT_ID GCP_CLOUDSQL_INSTANCE GCP_VPC_CONNECTOR GCP_GATEWAY_URL GCP_FE_URL; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing repository variable: $name (Settings -> Secrets and variables -> Actions -> Variables)"
               exit 1
@@ -124,7 +159,26 @@ jobs:
 
       - name: Deploy
         run: |
-          SUBS="_REGION=${{ vars.GCP_REGION || 'us-central1' }},_AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }},_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }},_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }},_GCS_BUCKET_NAME=${{ vars.GCP_GCS_BUCKET_NAME }},_API_URL=${{ vars.GCP_API_URL }},_FE_URL=${{ vars.GCP_FE_URL }},_MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }},_STRIPE_PUBLISHABLE_KEY=${{ vars.GCP_STRIPE_PUBLISHABLE_KEY }},_TAG=${{ github.sha }}"
+          # The service URLs are what the gateway routes to and what orders
+          # calls for checkout. Empty on the very first deploy — see
+          # infra/gcp/README.md, "The first deploy takes two passes".
+          SUBS="_REGION=${{ vars.GCP_REGION || 'us-central1' }}"
+          SUBS="$SUBS,_AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }}"
+          SUBS="$SUBS,_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }}"
+          SUBS="$SUBS,_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }}"
+          SUBS="$SUBS,_GCS_BUCKET_NAME=${{ vars.GCP_GCS_BUCKET_NAME }}"
+          SUBS="$SUBS,_GATEWAY_URL=${{ vars.GCP_GATEWAY_URL }}"
+          SUBS="$SUBS,_FE_URL=${{ vars.GCP_FE_URL }}"
+          SUBS="$SUBS,_USERS_URL=${{ vars.GCP_USERS_URL }}"
+          SUBS="$SUBS,_RESTAURANTS_URL=${{ vars.GCP_RESTAURANTS_URL }}"
+          SUBS="$SUBS,_ORDERS_URL=${{ vars.GCP_ORDERS_URL }}"
+          SUBS="$SUBS,_PAYMENTS_URL=${{ vars.GCP_PAYMENTS_URL }}"
+          SUBS="$SUBS,_DELIVERY_URL=${{ vars.GCP_DELIVERY_URL }}"
+          SUBS="$SUBS,_NOTIFICATIONS_URL=${{ vars.GCP_NOTIFICATIONS_URL }}"
+          SUBS="$SUBS,_ADMIN_URL=${{ vars.GCP_ADMIN_URL }}"
+          SUBS="$SUBS,_MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }}"
+          SUBS="$SUBS,_STRIPE_PUBLISHABLE_KEY=${{ vars.GCP_STRIPE_PUBLISHABLE_KEY }}"
+          SUBS="$SUBS,_TAG=${{ github.sha }}"
           gcloud builds submit \
             --config infra/gcp/cloudbuild.yaml \
             --substitutions="$SUBS"

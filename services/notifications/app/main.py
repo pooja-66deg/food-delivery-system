@@ -1,0 +1,68 @@
+"""The notifications service.
+
+Its own process, its own database, its own deploy. The first service split out
+of the monolith, chosen because nothing calls it synchronously: if this process
+is not running, no order fails — the events wait in Kafka and are delivered when
+it comes back.
+
+Two liveness facts worth separating, because the gateway needs to tell them
+apart: ``/health`` says the process is up, ``/ready`` says it can serve. A
+service whose database is unreachable is up but not ready, and routing traffic
+to it turns a fast failure into a hanging request.
+"""
+
+import logging
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from sqlalchemy import text
+
+from app.config import settings
+from app.consumer import start_consumer, stop_consumer
+from app.db import engine
+from app.router import router
+
+logging.basicConfig(level=settings.log_level)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+
+    logger.info("%s starting", settings.service_name)
+    # Schema is Alembic's job (services/notifications/alembic), run as a deploy
+    # step — never created at runtime.
+    start_consumer(asyncio.get_running_loop())
+    yield
+    logger.info("%s shutting down", settings.service_name)
+    stop_consumer()
+    await engine.dispose()
+
+
+app = FastAPI(title="Notifications Service", version="0.1.0", lifespan=lifespan)
+app.include_router(router)
+
+
+@app.get("/health", tags=["ops"])
+async def health():
+    """Is the process alive? Deliberately checks nothing else.
+
+    If this reported on the database too, a database blip would make the
+    orchestrator kill and restart a perfectly healthy process — which is how a
+    dependency outage becomes an outage of its own.
+    """
+    return {"status": "ok", "service": settings.service_name}
+
+
+@app.get("/ready", tags=["ops"])
+async def ready():
+    """Can it actually serve? This one does check the database."""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Not ready: %s", exc)
+        return {"status": "degraded", "database": "unreachable"}
+    return {"status": "ready"}

@@ -12,18 +12,6 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependencies in their own layer, before the source, so editing application code
-# does not reinstall them.
-#
-# --frozen              install exactly what uv.lock says and fail rather than
-#                       re-resolve, so the image cannot drift from the committed lock.
-# --no-install-project  install the dependencies but not the app itself. The app is
-#                       imported as `src.main:app` from /app below — the same way
-#                       pytest and alembic reach it. Installing this src-layout
-#                       package would instead expose `core`, `modules` and `main` as
-#                       top-level names and break every `src.` import.
-# --no-dev              belt and braces; dev tooling is an opt-in extra, so it is
-#                       already excluded.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 

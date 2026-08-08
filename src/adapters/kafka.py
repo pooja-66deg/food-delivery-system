@@ -21,6 +21,18 @@ logger = logging.getLogger(__name__)
 producer: Optional[KafkaProducer] = None
 
 
+def is_configured() -> bool:
+    """Whether Kafka is switched on at all (e.g. KAFKA_BROKERS=disabled turns it off).
+
+    Distinct from "the broker is reachable": a configured-but-down broker is a
+    failure worth retrying, whereas a deliberately disabled one means nothing
+    should be trying to publish in the first place. The outbox relay needs to
+    tell those apart — see ``src.modules.events.relay``.
+    """
+    host = settings.kafka_brokers.split(":")[0].strip().lower()
+    return bool(settings.kafka_brokers) and host not in ("", "disabled", "none", "off")
+
+
 def init_kafka() -> None:
     """Initialize the Kafka producer.
 
@@ -30,8 +42,7 @@ def init_kafka() -> None:
     global producer
     # Allow explicitly turning Kafka off (e.g. KAFKA_BROKERS=disabled) so local
     # setups without a broker start cleanly instead of logging connection errors.
-    host = settings.kafka_brokers.split(":")[0].strip().lower()
-    if not settings.kafka_brokers or host in ("", "disabled", "none", "off"):
+    if not is_configured():
         producer = None
         logger.info("Kafka disabled (KAFKA_BROKERS=%s); event publishing is off.", settings.kafka_brokers)
         return

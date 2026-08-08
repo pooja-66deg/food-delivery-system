@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ConflictException, NotFoundException
 from src.modules.delivery.providers import GeocodeProvider, geocode_provider
+from src.modules.events import outbox
 from src.modules.users.models import Address, User
 from src.modules.users.schemas import AddressCreate, AddressUpdate, UserUpdate
 
@@ -60,9 +61,34 @@ async def add_address(
         address.longitude = point.longitude
 
     session.add(address)
+    await session.flush()  # assigns address.id, which the event needs
+    publish_address(session, address)
     await session.commit()
     await session.refresh(address)
     return address
+
+
+def publish_address(session: AsyncSession, address: Address) -> None:
+    """Announce an address to the services that deliver to it.
+
+    The orders service keeps a copy: checkout has to know where an order is
+    going, and asking this service for it on every checkout would make placing
+    an order fail whenever this one is slow.
+
+    City and coordinates only — never the street line. A consumer that needs to
+    measure a distance and match a city does not need to know where somebody
+    lives, and what it cannot receive it cannot leak.
+    """
+    outbox.record_event(
+        session, "address-events", str(address.id),
+        {
+            "address_id": address.id,
+            "user_id": address.user_id,
+            "city": address.city,
+            "latitude": address.latitude,
+            "longitude": address.longitude,
+        },
+    )
 
 
 async def list_addresses(session: AsyncSession, user: User) -> list[Address]:
@@ -112,6 +138,10 @@ async def update_address(
         address.latitude = point.latitude if point else None
         address.longitude = point.longitude if point else None
 
+    # Republished on every edit, not just a move: a city change alters which
+    # restaurants can deliver here, and a consumer holding the old one would
+    # accept an order nobody can fulfil.
+    publish_address(session, address)
     await session.commit()
     await session.refresh(address)
     return address

@@ -1,0 +1,123 @@
+# API gateway — production template.
+#
+# The same routing as infra/nginx/nginx.conf, with one difference that forces a
+# template: locally the upstreams are container names on a compose network, and
+# on Cloud Run they are https URLs that do not exist until the services have been
+# deployed once. They arrive as environment variables and are substituted at
+# container start (see infra/gcp/gateway.Dockerfile).
+#
+# Keep the two files in step. They are deliberately not generated from one
+# another: the local one should stay readable without running anything, and a
+# generated file nobody reads is a file nobody notices drifting.
+
+server {
+    listen ${PORT};
+    server_name _;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 30s;
+
+    # Cloud Run terminates TLS and routes by Host, so the upstream host has to be
+    # the service's own hostname rather than the client's — proxy_set_header Host
+    # $host would send the gateway's and get a 404 from the wrong service.
+    proxy_ssl_server_name on;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 6m;
+
+    # Cloud Run's DNS, needed because these upstreams are resolved at request
+    # time from a variable rather than at startup from a literal.
+    resolver 169.254.169.254 valid=30s;
+
+    location = /health {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"ok","service":"api-gateway"}';
+    }
+
+    # ---- users service ---------------------------------------------------
+    location /api/auth/ {
+        set $upstream ${USERS_URL};
+        proxy_pass $upstream/auth/;
+    }
+
+    location /api/users/ {
+        set $upstream ${USERS_URL};
+        proxy_pass $upstream/users/;
+    }
+
+    # No trailing slash: matches /api/favorites as well as /api/favorites/ids.
+    location /api/favorites {
+        set $upstream ${USERS_URL};
+        proxy_pass $upstream/favorites;
+    }
+
+    # ---- restaurants service ---------------------------------------------
+    location /api/restaurants {
+        set $upstream ${RESTAURANTS_URL};
+        proxy_pass $upstream/restaurants;
+    }
+
+    location /api/reviews {
+        set $upstream ${RESTAURANTS_URL};
+        proxy_pass $upstream/reviews;
+    }
+
+    # In production images live in GCS and their stored URLs are absolute, so the
+    # browser goes straight there and this never fires. Kept so a deployment
+    # still holding /media paths from before the GCS switch does not 404.
+    location /media/ {
+        set $upstream ${RESTAURANTS_URL};
+        proxy_pass $upstream/media/;
+    }
+
+    # ---- orders service --------------------------------------------------
+    location /api/orders {
+        set $upstream ${ORDERS_URL};
+        proxy_pass $upstream/orders;
+    }
+
+    location /api/cart {
+        set $upstream ${ORDERS_URL};
+        proxy_pass $upstream/cart;
+    }
+
+    # ---- payments service ------------------------------------------------
+    #
+    # The webhook is public by design: Stripe has no token to present, and the
+    # HMAC over the raw body is what authenticates it. Listed first so it is not
+    # shadowed by the authenticated routes below.
+    location = /api/payments/webhook {
+        set $upstream ${PAYMENTS_URL};
+        proxy_pass $upstream/payments/webhook;
+    }
+
+    location /api/payments {
+        set $upstream ${PAYMENTS_URL};
+        proxy_pass $upstream/payments;
+    }
+
+    # ---- delivery service ------------------------------------------------
+    location /api/delivery/ {
+        set $upstream ${DELIVERY_URL};
+        proxy_pass $upstream/delivery/;
+    }
+
+    # ---- notifications service -------------------------------------------
+    location /api/notifications {
+        set $upstream ${NOTIFICATIONS_URL};
+        proxy_pass $upstream/notifications;
+    }
+
+    # ---- admin service ---------------------------------------------------
+    location /api/admin/ {
+        set $upstream ${ADMIN_URL};
+        proxy_pass $upstream/admin/;
+    }
+
+    location / {
+        return 404;
+    }
+}

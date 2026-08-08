@@ -1,64 +1,95 @@
-# Cloud Build pipeline: test -> build -> push to Artifact Registry -> deploy to Cloud Run.
+# Cloud Build pipeline for the split platform:
+#   test -> build 9 images -> provision Pub/Sub -> migrate -> deploy
 #
 # Trigger:  gcloud builds submit --config infra/gcp/cloudbuild.yaml \
 #             --substitutions=_REGION=us-central1,_AR_REPO=food-delivery,\
 # _CLOUDSQL_INSTANCE=PROJECT:us-central1:food-db,_VPC_CONNECTOR=food-connector,\
-# _API_URL=https://food-api-xxxx.run.app,_TAG=abc1234
-#
-# _TAG must be a real tag. See the substitution comment below: leaving it to
-# Cloud Build's SHORT_SHA breaks every manual build.
+# _TAG=abc1234
 #
 # One-time infrastructure setup lives in infra/gcp/README.md.
+#
+# ---------------------------------------------------------------------------
+# Three things about this pipeline are worth knowing before changing it.
+#
+# **It bootstraps in two passes.** The gateway needs each service's Cloud Run
+# URL, and the frontend needs the gateway's — none of which exist until the
+# first deploy. So the first run leaves those substitutions empty (the gateway
+# 502s, the frontend has no API), you read the URLs off the console, and the
+# second run wires them. Same chicken-and-egg the single-service version had
+# with _API_URL, now with eight of them.
+#
+# **Migrations run as Cloud Run jobs, not build steps.** A build step has no
+# route to a private Cloud SQL instance without the auth proxy; a Cloud Run job
+# gets the same --add-cloudsql-instances the service does. Each service migrates
+# its own database, which is the point of separate chains.
+#
+# **Pub/Sub replaces Kafka here.** Not managed Kafka: its fixed cluster cost is
+# wrong for this volume where Pub/Sub is per-message with no floor. Services do
+# not know the difference — see src/shared/messaging.py — so the compose stack
+# keeps Kafka and developers keep needing no cloud credentials.
+# ---------------------------------------------------------------------------
 
 substitutions:
   _REGION: us-central1
   _AR_REPO: food-delivery              # Artifact Registry repository name
-  _API_SERVICE: food-api
-  _FE_SERVICE: food-frontend
   _CLOUDSQL_INSTANCE: ""               # PROJECT:REGION:INSTANCE
   _VPC_CONNECTOR: ""                   # Serverless VPC Access connector (for Memorystore)
-  # GCS bucket for restaurant/menu images (public, Cloud Run service account needs objectCreator role)
+  # GCS bucket for restaurant/menu images (public; the restaurants service's
+  # account needs objectCreator on it).
   _GCS_BUCKET_NAME: ""
-  _API_URL: ""                         # Public API URL the frontend calls (set after first API deploy or use a custom domain)
-  # Public frontend URL. The API needs it for two things, and a deploy without it
-  # is quietly broken rather than obviously broken:
+
+  # Public URL of the API gateway — what the frontend calls. Empty on the first
+  # pass; set it on the second.
+  _GATEWAY_URL: ""
+  # Public frontend URL. The users service needs it for two things, and a deploy
+  # without it is quietly broken rather than obviously broken:
   #   - CORS_ORIGINS — the frontend is a separate Cloud Run service on its own
-  #     origin, so without it every browser request is rejected. The default
-  #     allowlist is localhost, which is right for dev and useless here.
+  #     origin, so without it every browser request is rejected.
   #   - FRONTEND_BASE_URL — password-reset and email-verification links are built
   #     from it, so an unset value mails the recipient a link to their own machine.
   _FE_URL: ""
+
+  # Internal Cloud Run URLs the gateway routes to, and that orders calls for
+  # checkout. Empty on the first pass. Services are deployed with
+  # --ingress=internal-and-cloud-load-balancing so only the gateway and each
+  # other can reach them; the gateway itself is the public door.
+  _USERS_URL: ""
+  _RESTAURANTS_URL: ""
+  _ORDERS_URL: ""
+  _PAYMENTS_URL: ""
+  _DELIVERY_URL: ""
+  _NOTIFICATIONS_URL: ""
+  _ADMIN_URL: ""
+
   # Browser-side Google Maps key, baked into the SPA bundle. Public by
   # construction, so it must be a referrer-restricted key with only the Maps
   # JavaScript API enabled — NOT the server key, which lives in Secret Manager
-  # and carries Routes + Geocoding permission. Unset: tracking shows the ETA as
-  # text with no map.
+  # and carries Routes + Geocoding permission.
   _MAPS_BROWSER_KEY: ""
   # Stripe publishable key (pk_test_… / pk_live_…), baked into the SPA bundle.
-  # Public by construction, so a substitution and not a secret — it can only
-  # tokenise cards, never charge. The matching sk_… secret key goes in Secret
-  # Manager. Unset: checkout shows COD only, because CartPage hides the card
-  # option when no publishable key is present.
+  # Public by construction — it can only tokenise cards, never charge.
   _STRIPE_PUBLISHABLE_KEY: ""
+
   # Image tag. Deliberately not Cloud Build's SHORT_SHA built-in: that is only
   # populated for builds invoked by a trigger, so a manual
   # `gcloud builds submit` expanded it to "" and produced the invalid reference
   # "…/api:", which the docker CLI rejects with exit 125. Pass it explicitly —
   #   manual:  _TAG=$(git rev-parse --short HEAD)
   #   trigger: _TAG=$SHORT_SHA
-  # "latest" is only the default so a bare submit works; prefer a real sha, or
-  # you cannot tell which revision is running or roll back by tag.
   _TAG: latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8   # nine image builds; the default is slower than the wait is worth
 
 # NOTE: images are pushed by explicit steps below, not by a top-level `images:`
 # block. That block only runs after every step succeeds, so the deploy steps
 # would try to pull tags that do not exist in Artifact Registry yet.
 
 steps:
-  # 1. Run the test suite (uses in-memory SQLite + fakeredis, so no live infra needed).
+  # -----------------------------------------------------------------------
+  # 1. Tests. Both suites: the platform's, and each service's own.
+  # -----------------------------------------------------------------------
   - id: test
     name: python:3.11-slim
     entrypoint: bash
@@ -72,90 +103,285 @@ steps:
                REDIS_URL="redis://localhost:6379/0" \
                JWT_SECRET_KEY="ci-secret" KAFKA_BROKERS="localhost:9092"
         uv run pytest -q
+        # One process per service: they all have a package named `app`, so a
+        # single pytest run would import one and serve it to all of them.
+        ./services/test.sh
 
-  # 2. Build + push the API image.
-  - id: build-api
+  # -----------------------------------------------------------------------
+  # 2. Build and push every image, in parallel. Each service's Dockerfile
+  #    copies src/shared plus its own app/ — never src/modules, so an image
+  #    cannot import another service even by accident.
+  # -----------------------------------------------------------------------
+  - id: build-services
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     args:
-      - build
-      - -f
-      - infra/docker/Dockerfile
-      - -t
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}"
-      - .
+      - -c
+      - |
+        set -e
+        for svc in users restaurants orders payments delivery notifications admin; do
+          docker build -f services/$$svc/Dockerfile \
+            -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" . &
+        done
+        wait
+        for svc in users restaurants orders payments delivery notifications admin; do
+          docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}"
+        done
 
-  - id: push-api
+  - id: build-gateway
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     args:
-      - push
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}"
+      - -c
+      - |
+        set -e
+        docker build -f infra/gcp/gateway.Dockerfile \
+          -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gateway:${_TAG}" .
+        docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gateway:${_TAG}"
 
-  # 3. Build + push the frontend image (API URL baked in at build time).
   - id: build-frontend
     name: gcr.io/cloud-builders/docker
+    entrypoint: bash
     args:
-      - build
-      - -f
-      - infra/gcp/frontend.Dockerfile
-      - --build-arg
-      - "VITE_API_URL=${_API_URL}"
-      - --build-arg
-      - "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}"
-      - --build-arg
-      - "VITE_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_KEY}"
-      - -t
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
-      - .
+      - -c
+      - |
+        set -e
+        docker build -f infra/gcp/frontend.Dockerfile \
+          --build-arg "VITE_API_URL=${_GATEWAY_URL}" \
+          --build-arg "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}" \
+          --build-arg "VITE_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_KEY}" \
+          -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}" .
+        docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
 
-  - id: push-frontend
-    name: gcr.io/cloud-builders/docker
+  # -----------------------------------------------------------------------
+  # 3. Pub/Sub. Topics, and one subscription per (service, topic) — the name
+  #    the consumer derives at runtime, so the two have to agree exactly.
+  #    See EventConsumer._run_pubsub for the other half of this contract.
+  # -----------------------------------------------------------------------
+  - id: provision-pubsub
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
     args:
-      - push
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}"
+      - -c
+      - |
+        set -e
+        # Idempotent: the pipeline runs on every deploy, and ALREADY_EXISTS is
+        # the expected outcome from the second run onwards.
+        create_topic() {
+          gcloud pubsub topics create "$$1" --quiet 2>/dev/null || true
+        }
+        create_sub() {
+          # ack deadline: the handler timeout in EventConsumer is 30s, so a
+          # shorter deadline would have Pub/Sub redeliver work still in flight.
+          gcloud pubsub subscriptions create "$$1--$$2" --topic="$$2" \
+            --ack-deadline=60 --message-retention-duration=7d \
+            --enable-message-ordering --quiet 2>/dev/null || true
+        }
 
-  # 4. Deploy the API to Cloud Run (secrets + Cloud SQL + Memorystore via VPC).
-  - id: deploy-api
+        for t in order-events payment-events delivery-events address-events \
+                 restaurant-events user-events user-contact-events \
+                 notification-events payment-commands; do
+          create_topic "$$t"
+        done
+
+        # Mirrors each service's KAFKA_TOPICS exactly. Drift here is silent: a
+        # missing subscription means a consumer that starts cleanly and never
+        # receives anything.
+        for t in payment-events delivery-events address-events restaurant-events user-events; do
+          create_sub orders-service "$$t"; done
+        for t in order-events payment-commands; do
+          create_sub payments-service "$$t"; done
+        create_sub restaurants-service order-events
+        for t in order-events user-events; do
+          create_sub delivery-service "$$t"; done
+        for t in order-events notification-events user-contact-events; do
+          create_sub notifications-service "$$t"; done
+        for t in order-events user-events user-contact-events restaurant-events; do
+          create_sub admin-service "$$t"; done
+
+  # -----------------------------------------------------------------------
+  # 4. Databases and migrations. One Cloud SQL instance, one database per
+  #    service — a foreign key still cannot cross between them, which is the
+  #    isolation that matters, at a fraction of seven instances' cost. Worth
+  #    stating plainly: they do share a failure domain. Splitting the busiest
+  #    onto its own instance is the next step when load justifies it.
+  # -----------------------------------------------------------------------
+  - id: create-databases
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        INSTANCE="$${_CLOUDSQL_INSTANCE##*:}"
+        for svc in users restaurants orders payments delivery notifications admin; do
+          gcloud sql databases create "$${svc}_db" --instance="$$INSTANCE" --quiet 2>/dev/null || true
+        done
+    env:
+      - "_CLOUDSQL_INSTANCE=${_CLOUDSQL_INSTANCE}"
+
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    waitFor: ["build-services", "create-databases"]
+    args:
+      - -c
+      - |
+        set -e
+        for svc in users restaurants orders payments delivery notifications admin; do
+          echo "== migrating $$svc"
+          # The job is replaced on every deploy so it always runs the image
+          # being deployed — a migration from an older image is how a schema
+          # ends up behind the code that needs it.
+          gcloud run jobs deploy "$$svc-migrate" \
+            --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" \
+            --region="${_REGION}" \
+            --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
+            --set-secrets="DATABASE_URL=$${svc^^}_DATABASE_URL:latest" \
+            --command=alembic --args=upgrade,head \
+            --max-retries=1 --quiet
+          # --wait, so a failed migration fails the build instead of letting a
+          # service deploy against a schema that was never applied.
+          gcloud run jobs execute "$$svc-migrate" --region="${_REGION}" --wait --quiet
+        done
+
+  # -----------------------------------------------------------------------
+  # 5. Deploy the services.
+  #
+  # Two flags below look contradictory and are not, so they are worth spelling
+  # out — getting them wrong is how the gateway ends up 403ing on every request.
+  #
+  # --ingress=internal-and-cloud-load-balancing is the network door: nothing
+  # from the public internet reaches these, only traffic arriving through the
+  # VPC. That is what the gateway's --vpc-egress=all-traffic (step 6) buys.
+  #
+  # --allow-unauthenticated is the *IAM* door, and opening it is deliberate.
+  # Cloud Run's IAM check wants a Google identity token in the Authorization
+  # header — the same header that already carries the end user's JWT, which is
+  # what these services actually authorise against (shared/identity.py). Only one
+  # token fits, and the app's is the one that knows who the customer is. So
+  # authorisation happens in the application, and the network door is what keeps
+  # strangers out.
+  #
+  # Belt-and-braces alternative, if you want IAM as well: put the services behind
+  # an external Load Balancer with serverless NEGs and let it do the identity
+  # token. It is more moving parts for a second lock on a door that is already
+  # unreachable.
+  # -----------------------------------------------------------------------
+  - id: deploy-services
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    waitFor: ["migrate", "provision-pubsub", "test"]
+    args:
+      - -c
+      - |
+        set -e
+
+        # Shared by every service. ^@^ switches gcloud's key/value separator to
+        # "@" so a value may itself contain a comma — _FE_URL has to, because
+        # Cloud Run serves each service on two hostnames and CORS matches Origin
+        # by exact string.
+        common="ENVIRONMENT=production@MESSAGING_TRANSPORT=pubsub@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
+
+        deploy() {
+          local svc="$$1"; shift
+          gcloud run deploy "$$svc-service" \
+            --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" \
+            --region="${_REGION}" --platform=managed \
+            --ingress=internal-and-cloud-load-balancing \
+            --allow-unauthenticated \
+            --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
+            --vpc-connector="${_VPC_CONNECTOR}" --vpc-egress=private-ranges-only \
+            --min-instances=1 \
+            "$$@" --quiet
+        }
+
+        # min-instances=1 above is not a performance tweak: every service runs a
+        # Pub/Sub subscriber in a background thread, and Cloud Run stops
+        # background work on an idle instance. Scaled to zero, a service stops
+        # consuming and its read-models silently stop updating.
+
+        deploy users \
+          --set-env-vars="^@^$$common@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}" \
+          --set-secrets="DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+
+        deploy restaurants \
+          --set-env-vars="^@^$$common@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}" \
+          --set-secrets="DATABASE_URL=RESTAURANTS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+
+        deploy orders \
+          --set-env-vars="^@^$$common@RESTAURANTS_SERVICE_URL=${_RESTAURANTS_URL}" \
+          --set-secrets="DATABASE_URL=ORDERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
+
+        # Stripe keys go to payments and nowhere else. In the monolith every
+        # module shared one process and therefore one set of credentials; the
+        # split is the first time that stops being true, and it is worth keeping.
+        deploy payments \
+          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=${_FE_URL}" \
+          --set-secrets="DATABASE_URL=PAYMENTS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+
+        deploy delivery \
+          --set-env-vars="^@^$$common" \
+          --set-secrets="DATABASE_URL=DELIVERY_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+
+        # SENDGRID_* are what turn transactional email from log-only into real
+        # delivery. Both are required together: EmailSender tests `key and
+        # sender`, so mounting one without the other silently keeps the log
+        # transport and nobody notices until a customer asks where their receipt
+        # is.
+        deploy notifications \
+          --set-env-vars="^@^$$common" \
+          --set-secrets="DATABASE_URL=NOTIFICATIONS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,SENDGRID_FROM_EMAIL=SENDGRID_FROM_EMAIL:latest,TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest"
+
+        deploy admin \
+          --set-env-vars="^@^$$common@ORDERS_SERVICE_URL=${_ORDERS_URL}" \
+          --set-secrets="DATABASE_URL=ADMIN_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
+
+  # -----------------------------------------------------------------------
+  # 6. The gateway: the only public door to the API. Its upstreams are the
+  #    service URLs, substituted into the nginx config at container start —
+  #    see infra/gcp/gateway.Dockerfile.
+  #
+  #    --vpc-egress=all-traffic is what makes step 5's internal ingress work.
+  #    A *.run.app address is a public range, so with private-ranges-only the
+  #    gateway's calls would leave over the internet, arrive as external traffic
+  #    and be refused by services that only accept internal. Routing all egress
+  #    through the connector makes them internal.
+  # -----------------------------------------------------------------------
+  - id: deploy-gateway
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
+    waitFor: ["deploy-services", "build-gateway"]
     args:
       - run
       - deploy
-      - "${_API_SERVICE}"
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/api:${_TAG}
+      - api-gateway
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gateway:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
       - --vpc-connector=${_VPC_CONNECTOR}
-      - --vpc-egress=private-ranges-only
-      # CORS_ORIGINS and FRONTEND_BASE_URL both come from _FE_URL — see the
-      # substitution comment for why an unset value breaks the deployed app.
-      # The leading ^@^ switches gcloud's key/value separator from "," to "@", so
-      # _FE_URL may itself be a comma-separated list. It has to be: Cloud Run
-      # serves each service on two hostnames (the legacy PROJECT-HASH-REGION
-      # .a.run.app and the newer SERVICE-PROJECTNUMBER.REGION.run.app), CORS
-      # matches Origin by exact string, and whichever one is missing from the
-      # allowlist blocks every request made from it.
-      - --set-env-vars=^@^ENVIRONMENT=production@KAFKA_BROKERS=disabled:9092@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}
-      # GOOGLE_MAPS_API_KEY is a secret, not an env var: it carries Routes and
-      # Geocoding permission and must never reach the browser. Without it the
-      # API still serves ETAs, computed straight-line instead of via Google.
-      # SENDGRID_* are what turn transactional email from log-only into real
-      # delivery. Both are required together: EmailSender tests `key and sender`,
-      # so mounting one without the other silently keeps the log transport.
-      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,SENDGRID_FROM_EMAIL=SENDGRID_FROM_EMAIL:latest
-    waitFor: ["test", "push-api"]
+      - --vpc-egress=all-traffic
+      - --set-env-vars=^@^USERS_URL=${_USERS_URL}@RESTAURANTS_URL=${_RESTAURANTS_URL}@ORDERS_URL=${_ORDERS_URL}@PAYMENTS_URL=${_PAYMENTS_URL}@DELIVERY_URL=${_DELIVERY_URL}@NOTIFICATIONS_URL=${_NOTIFICATIONS_URL}@ADMIN_URL=${_ADMIN_URL}
+      - --quiet
 
-  # 5. Deploy the frontend to Cloud Run (static SPA served by nginx).
+  # -----------------------------------------------------------------------
+  # 7. The frontend. Static SPA served by nginx; the gateway URL was baked in
+  #    at build time, which is why a changed _GATEWAY_URL needs a rebuild and
+  #    not just a redeploy.
+  # -----------------------------------------------------------------------
   - id: deploy-frontend
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
+    waitFor: ["build-frontend", "deploy-gateway"]
     args:
       - run
       - deploy
-      - "${_FE_SERVICE}"
+      - food-frontend
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated
-    waitFor: ["push-frontend"]
+      - --quiet
+
+timeout: 3600s
