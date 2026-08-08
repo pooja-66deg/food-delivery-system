@@ -140,11 +140,32 @@ jobs:
           GCP_VPC_CONNECTOR: ${{ vars.GCP_VPC_CONNECTOR }}
           GCP_GATEWAY_URL: ${{ vars.GCP_GATEWAY_URL }}
           GCP_FE_URL: ${{ vars.GCP_FE_URL }}
+          GCP_USERS_URL: ${{ vars.GCP_USERS_URL }}
+          GCP_RESTAURANTS_URL: ${{ vars.GCP_RESTAURANTS_URL }}
+          GCP_ORDERS_URL: ${{ vars.GCP_ORDERS_URL }}
+          GCP_PAYMENTS_URL: ${{ vars.GCP_PAYMENTS_URL }}
+          GCP_DELIVERY_URL: ${{ vars.GCP_DELIVERY_URL }}
+          GCP_NOTIFICATIONS_URL: ${{ vars.GCP_NOTIFICATIONS_URL }}
+          GCP_ADMIN_URL: ${{ vars.GCP_ADMIN_URL }}
         run: |
-          for name in GCP_PROJECT_ID GCP_CLOUDSQL_INSTANCE GCP_VPC_CONNECTOR GCP_GATEWAY_URL GCP_FE_URL; do
+          # Hard requirements: without these the deploy cannot do anything at
+          # all, so failing here beats failing halfway through.
+          for name in GCP_PROJECT_ID GCP_CLOUDSQL_INSTANCE GCP_VPC_CONNECTOR; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing repository variable: $name (Settings -> Secrets and variables -> Actions -> Variables)"
               exit 1
+            fi
+          done
+
+          # The URLs are a warning, not an error, and that is the whole point of
+          # the two-pass bootstrap: on the first deploy they do not exist yet,
+          # because this run is what creates the services that have them.
+          # Requiring them here would mean the first deploy could never run.
+          for name in GCP_GATEWAY_URL GCP_FE_URL GCP_USERS_URL GCP_RESTAURANTS_URL \
+                      GCP_ORDERS_URL GCP_PAYMENTS_URL GCP_DELIVERY_URL \
+                      GCP_NOTIFICATIONS_URL GCP_ADMIN_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::warning::$name is unset — expected on the first deploy. Set it from \`gcloud run services list\` and deploy again."
             fi
           done
 
