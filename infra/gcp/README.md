@@ -64,14 +64,12 @@ gcloud compute networks vpc-access connectors create food-connector \
   --region=$REGION --range=10.8.0.0/28
 
 # 5. Secrets (Secret Manager)
-#    One DATABASE_URL per service, because each has its own database. They use
-#    the Cloud SQL unix socket; each service's engine adds +asyncpg itself.
-for svc in users restaurants orders payments delivery notifications admin; do
-  UPPER=$(echo $svc | tr a-z A-Z)
-  printf 'postgresql://fooduser:STRONG_PASSWORD@/%s_db?host=/cloudsql/%s:%s:food-db' \
-    "$svc" "$PROJECT_ID" "$REGION" \
-    | gcloud secrets create "${UPPER}_DATABASE_URL" --data-file=-
-done
+#    One DATABASE_URL per service, because each has its own database.
+#
+#    A script rather than a loop to paste: a `for` loop pasted into a terminal
+#    line by line runs with an empty loop variable and cheerfully creates a
+#    secret named `_DATABASE_URL`, which looks like it worked.
+./infra/gcp/create-secrets.sh $PROJECT_ID $REGION
 printf 'redis://REDIS_PRIVATE_IP:6379/0' | gcloud secrets create REDIS_URL --data-file=-
 printf 'a-long-random-production-secret' | gcloud secrets create JWT_SECRET_KEY --data-file=-
 #    Server-side Google Maps key: Routes API (delivery ETAs) + Geocoding API
@@ -200,8 +198,9 @@ Under **Settings → Secrets and variables → Actions**:
 | `GCP_PROJECT_ID` | yes | your project id |
 | `GCP_CLOUDSQL_INSTANCE` | yes | `PROJECT:REGION:food-db` |
 | `GCP_VPC_CONNECTOR` | yes | `food-connector` |
-| `GCP_API_URL` | yes | public API URL (see bootstrap below) |
-| `GCP_FE_URL` | yes | public frontend URL — sets `CORS_ORIGINS` **and** `FRONTEND_BASE_URL` |
+| `GCP_GATEWAY_URL` | after pass 1 | public gateway URL — baked into the SPA bundle |
+| `GCP_FE_URL` | after pass 1 | public frontend URL — sets `CORS_ORIGINS` **and** `FRONTEND_BASE_URL` |
+| `GCP_USERS_URL` … `GCP_ADMIN_URL` | after pass 1 | each service's Cloud Run URL, for the gateway to route to |
 | `GCP_REGION` | no | defaults to `us-central1` |
 | `GCP_AR_REPO` | no | defaults to `food-delivery` |
 | `GCP_MAPS_BROWSER_KEY` | no | referrer-restricted browser key; unset means ETA-as-text, no map |
@@ -231,28 +230,33 @@ connection error into an undiagnosable one.
 
 ### The first-deploy bootstrap
 
-`GCP_API_URL` and `GCP_FE_URL` are chicken-and-egg: Cloud Run assigns the URLs, but
-the frontend bundle needs the API URL at build time and the API needs the frontend
-URL for CORS. So the first deploy is a two-pass affair:
+The gateway needs each service's URL and the frontend needs the gateway's, but
+Cloud Run assigns those URLs — so the first deploy cannot have them:
 
-1. Run the manual `gcloud builds submit` below once to create both services.
-2. Read the two URLs (commands at the end of this file) and set `GCP_API_URL` and
-   `GCP_FE_URL` as repository variables.
-3. Every merge after that deploys correctly and unattended.
+1. Merge to `main` with the URL variables unset. Everything deploys; the gateway
+   502s and the frontend has no API. That is expected, not a failure.
+2. Read the URLs: `gcloud run services list --region=$REGION --format='value(metadata.name,status.url)'`
+3. Set them as repository variables and deploy again. From then on it is unattended.
 
-Mapping custom domains instead makes the URLs stable and skips the two-pass step.
+`GCP_GATEWAY_URL` is baked into the SPA bundle at build time, so changing it needs
+a rebuild, not just a redeploy. Mapping custom domains makes the URLs stable and
+skips this entirely.
 
 ### Rollback
 
 Images are tagged with the commit sha, so a rollback is a redeploy of an older tag:
 
 ```bash
-gcloud run deploy food-api --region=$REGION \
-  --image=$REGION-docker.pkg.dev/$PROJECT_ID/food-delivery/api:<old-sha>
+gcloud run deploy orders-service --region=$REGION \
+  --image=$REGION-docker.pkg.dev/$PROJECT_ID/food-delivery/orders:<old-sha>
 ```
 
-Or shift traffic without redeploying: `gcloud run services update-traffic food-api
---region=$REGION --to-revisions=<older-revision>=100`.
+Or shift traffic without redeploying: `gcloud run services update-traffic
+orders-service --region=$REGION --to-revisions=<older-revision>=100`.
+
+A schema change is the exception: migrations run forward as a deploy step and are
+not undone by redeploying an older image. Roll one back with the service's own
+chain — `cd services/orders && alembic downgrade -1`.
 
 ---
 
@@ -261,45 +265,41 @@ Or shift traffic without redeploying: `gcloud run services update-traffic food-a
 Still supported, and needed once for the bootstrap above.
 
 ```bash
-# First pass: deploy so the API gets a URL. Then re-run with _API_URL set so the
-# frontend is built pointing at it (or use a custom domain and set it once).
 gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=\
 _REGION=$REGION,\
 _AR_REPO=food-delivery,\
 _CLOUDSQL_INSTANCE=$PROJECT_ID:$REGION:food-db,\
 _VPC_CONNECTOR=food-connector,\
-_API_URL=https://food-api-REPLACE.run.app,\
-_FE_URL=https://food-frontend-REPLACE.run.app,\
-_MAPS_BROWSER_KEY=AIza-your-BROWSER-key,\
 _TAG=$(git rev-parse --short HEAD)
 ```
 
-On PowerShell (Windows), `export` and `\` line continuations do not work. Use one
-line, and note that `$PROJECT_ID:` must be written `$($env:PROJECT_ID):` or
-PowerShell parses the colon as a drive qualifier:
-
-```powershell
-$tag = git rev-parse --short HEAD
-gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions="_REGION=us-central1,_AR_REPO=food-delivery,_CLOUDSQL_INSTANCE=food-project-poc:us-central1:food-db,_VPC_CONNECTOR=food-connector,_API_URL=https://food-api-REPLACE.run.app,_TAG=$tag"
-```
-
-`_MAPS_BROWSER_KEY` appears in the build logs and in the shipped JS bundle, which
-is fine for a referrer-restricted Maps-JavaScript-only key and not fine for the
-server key. If you have only one key, leave this empty: tracking still works and
-shows the ETA as text instead of a map.
-
-Get the service URLs:
+That is pass 1 — no URL substitutions, because nothing has them yet. Read them
+back, then re-run with `_GATEWAY_URL`, `_FE_URL` and the seven `_*_URL` values
+filled in:
 
 ```bash
-gcloud run services describe food-api      --region=$REGION --format='value(status.url)'
-gcloud run services describe food-frontend --region=$REGION --format='value(status.url)'
+gcloud run services list --region=$REGION --format='value(metadata.name,status.url)'
 ```
 
+`_MAPS_BROWSER_KEY` and `_STRIPE_PUBLISHABLE_KEY` appear in the build logs and in
+the shipped JS bundle. That is fine for a referrer-restricted Maps-JavaScript key
+and a Stripe publishable key — neither can do anything on its own — and not fine
+for the server key or `sk_`, which live in Secret Manager.
+
 ## Notes
-- **Kafka**: not required for the MVP path (the app tolerates it being absent). When
-  M5 needs it, use **Managed Service for Apache Kafka** (keeps the Kafka API) or
-  **Pub/Sub**, and point `KAFKA_BROKERS` at it.
-- **CORS**: the API uses an explicit allowlist from `CORS_ORIGINS`, which the deploy
-  sets from `_FE_URL`. It is not `*`, and it must not be — the API sends credentials.
-- **Scale to GKE** later: the same Artifact Registry images deploy to GKE Autopilot;
-  add Anthos Service Mesh when the monolith is split.
+
+- **Events** go through Pub/Sub here and Kafka in the compose stack. Neither is
+  visible to a service — the transport is behind one interface in
+  `shared/messaging.py` — so local development needs no cloud credentials.
+- **CORS**: the users service uses an explicit allowlist from `CORS_ORIGINS`,
+  set from `_FE_URL`. It is not `*`, and must not be: the API sends credentials.
+  Cloud Run gives each service two hostnames and CORS matches by exact string, so
+  `_FE_URL` should list both, comma-separated.
+- **One Cloud SQL instance, seven databases.** A foreign key still cannot cross
+  between them, which is the isolation that matters, at a fraction of seven
+  instances' cost. They do share a failure domain; splitting the busiest onto its
+  own instance is the next step when load justifies it, and needs no code change.
+- **`min-instances=1` on every service is not a performance tweak.** Each runs a
+  Pub/Sub subscriber in a background thread, and Cloud Run stops background work
+  on an idle instance — scaled to zero, a service stops consuming and its
+  read-models silently stop updating.
