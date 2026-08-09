@@ -316,13 +316,54 @@ steps:
         # background work on an idle instance. Scaled to zero, a service stops
         # consuming and its read-models silently stop updating.
 
+        # Mount a secret only if it exists.
+        #
+        # Third-party integrations are optional in the code — Twilio, SendGrid
+        # and the Stripe webhook secret are all `Optional[str] = None`, and the
+        # feature degrades to log-only rather than failing. Mounting them
+        # unconditionally threw that away: a project that never configured
+        # Twilio got "Permission denied on secret ... TWILIO_ACCOUNT_SID" and
+        # the whole revision refused to start, for an integration it was not
+        # trying to use. The message names permissions, which sends you looking
+        # at IAM for a secret that simply is not there.
+        #
+        # Required secrets are NOT passed through here. A missing DATABASE_URL
+        # or JWT_SECRET_KEY must fail the deploy loudly — silently starting a
+        # service with no signing key is far worse than not starting.
+        optional_secrets() {
+          local out="" pair env name
+          for pair in "$$@"; do
+            env="$${pair%%=*}"; name="$${pair#*=}"
+            if gcloud secrets describe "$$name" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+              out="$${out:+$$out,}$${env}=$${name}:latest"
+            else
+              # stderr, not stdout: this function's stdout IS the secrets list,
+              # and a note printed to it lands inside the --set-secrets value.
+              echo "  note: secret $$name not found — $$env left unset, its feature stays off" >&2
+            fi
+          done
+          printf '%s' "$$out"
+        }
+
+        # Joins the required list with whatever optional_secrets found, without
+        # leaving a dangling comma when it found nothing.
+        with_optional() {
+          local required="$$1"; shift
+          local extra; extra="$$(optional_secrets "$$@")"
+          printf '%s' "$${required}$${extra:+,$$extra}"
+        }
+
         deploy users \
           --set-env-vars="^@^$$common@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}" \
-          --set-secrets="DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         deploy restaurants \
           --set-env-vars="^@^$$common@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}" \
-          --set-secrets="DATABASE_URL=RESTAURANTS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=RESTAURANTS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         deploy orders \
           --set-env-vars="^@^$$common@RESTAURANTS_SERVICE_URL=${_RESTAURANTS_URL}" \
@@ -331,13 +372,23 @@ steps:
         # Stripe keys go to payments and nowhere else. In the monolith every
         # module shared one process and therefore one set of credentials; the
         # split is the first time that stops being true, and it is worth keeping.
+        # STRIPE_* are optional: without them the deterministic stand-in provider
+        # takes over, which is a working service rather than a broken one. Worth
+        # knowing which half you lose — without the webhook secret no webhook can
+        # be verified, so none is trusted and card orders never settle from
+        # Stripe's callback.
         deploy payments \
           --set-env-vars="^@^$$common@FRONTEND_BASE_URL=${_FE_URL}" \
-          --set-secrets="DATABASE_URL=PAYMENTS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=PAYMENTS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            STRIPE_SECRET_KEY=STRIPE_SECRET_KEY \
+            STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET)"
 
         deploy delivery \
           --set-env-vars="^@^$$common" \
-          --set-secrets="DATABASE_URL=DELIVERY_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=DELIVERY_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         # SENDGRID_* are what turn transactional email from log-only into real
         # delivery. Both are required together: EmailSender tests `key and
@@ -346,7 +397,13 @@ steps:
         # is.
         deploy notifications \
           --set-env-vars="^@^$$common" \
-          --set-secrets="DATABASE_URL=NOTIFICATIONS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,SENDGRID_API_KEY=SENDGRID_API_KEY:latest,SENDGRID_FROM_EMAIL=SENDGRID_FROM_EMAIL:latest,TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=NOTIFICATIONS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            SENDGRID_API_KEY=SENDGRID_API_KEY \
+            SENDGRID_FROM_EMAIL=SENDGRID_FROM_EMAIL \
+            TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID \
+            TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN \
+            TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER)"
 
         deploy admin \
           --set-env-vars="^@^$$common@ORDERS_SERVICE_URL=${_ORDERS_URL}" \
