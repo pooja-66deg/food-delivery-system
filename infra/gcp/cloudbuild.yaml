@@ -20,8 +20,12 @@
 #
 # **Migrations run as Cloud Run jobs, not build steps.** A build step has no
 # route to a private Cloud SQL instance without the auth proxy; a Cloud Run job
-# gets the same --add-cloudsql-instances the service does. Each service migrates
-# its own database, which is the point of separate chains.
+# gets the same Cloud SQL mount the service does — but note the flag is spelled
+# differently on the two surfaces: `gcloud run deploy` takes
+# --add-cloudsql-instances, `gcloud run jobs deploy` only takes
+# --set-cloudsql-instances, and rejects the other as an unrecognized argument
+# (exit 2, before any migration runs). Each service migrates its own database,
+# which is the point of separate chains.
 #
 # **Pub/Sub replaces Kafka here.** Not managed Kafka: its fixed cluster cost is
 # wrong for this volume where Pub/Sub is per-message with no floor. Services do
@@ -242,7 +246,7 @@ steps:
           gcloud run jobs deploy "$$svc-migrate" \
             --image="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$$svc:${_TAG}" \
             --region="${_REGION}" \
-            --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
+            --set-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
             --set-secrets="DATABASE_URL=$${upper}_DATABASE_URL:latest" \
             --command=alembic --args=upgrade,head \
             --max-retries=1 --quiet
