@@ -1,27 +1,11 @@
-#!/usr/bin/env bash
-# Run a service's migrations against its own database.
-#
-#   ./services/migrate.sh users upgrade head
-#   ./services/migrate.sh all upgrade head
-#
-# Each service reads DATABASE_URL from the environment. Passing "all" is a
-# convenience for local setup only — in production every service migrates itself
-# as part of its own deploy, which is the point of separate chains. A single
-# command that migrates everything is a single command that can break
-# everything.
 set -euo pipefail
-
-SERVICES="users restaurants orders payments delivery notifications"
+SERVICES="users restaurants orders payments delivery notifications admin"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Host/port of the Postgres holding the per-service databases. Overridable so
-# the same script works against compose (one container per service), a single
-# local Postgres with six databases, or Cloud SQL.
 PGHOST_="${SERVICE_DB_HOST:-localhost}"
 PGUSER_="${SERVICE_DB_USER:-fooduser}"
 PGPASS_="${SERVICE_DB_PASSWORD:-foodpass}"
 
-# Compose maps each service's Postgres to its own host port.
 port_for() {
   case "$1" in
     orders) echo 5433 ;;
@@ -30,6 +14,9 @@ port_for() {
     restaurants) echo 5436 ;;
     delivery) echo 5437 ;;
     notifications) echo 5438 ;;
+    admin) echo 5439 ;;
+    # Every name in SERVICES needs an entry here, or `all` dies partway through
+    # having already migrated the services before it.
     *) echo "unknown service: $1" >&2; exit 2 ;;
   esac
 }
@@ -51,8 +38,6 @@ run_one() {
 }
 
 if [ "$TARGET" = "all" ]; then
-  # DATABASE_URL would point every service at one database, which is the exact
-  # mistake this layout exists to prevent.
   if [ -n "${DATABASE_URL:-}" ]; then
     echo "refusing: DATABASE_URL is set and 'all' would send every service to it." >&2
     exit 2

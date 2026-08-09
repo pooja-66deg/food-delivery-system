@@ -153,17 +153,48 @@ jobs:
             fi
           done
 
-          # The URLs are a warning, not an error, and that is the whole point of
-          # the two-pass bootstrap: on the first deploy they do not exist yet,
+          # Unset is a warning, not an error, and that is the whole point of the
+          # two-pass bootstrap: on the first deploy these do not exist yet,
           # because this run is what creates the services that have them.
           # Requiring them here would mean the first deploy could never run.
+          #
+          # Set-but-malformed is different, and is an error. A value like
+          # "api-gateway" — the service name rather than its URL — is not caught
+          # by an emptiness check, and _GATEWAY_URL is baked into the SPA bundle
+          # at build time: with no scheme the browser resolves it relative to the
+          # page, so every API call went to
+          # https://food-frontend.../api-gateway/auth/login and nginx answered
+          # 405 for a POST to a static path. The deploy itself went green.
+          malformed=0
           for name in GCP_GATEWAY_URL GCP_FE_URL GCP_USERS_URL GCP_RESTAURANTS_URL \
                       GCP_ORDERS_URL GCP_PAYMENTS_URL GCP_DELIVERY_URL \
                       GCP_NOTIFICATIONS_URL GCP_ADMIN_URL; do
-            if [ -z "${!name}" ]; then
+            value="${!name}"
+            if [ -z "$value" ]; then
               echo "::warning::$name is unset — expected on the first deploy. Set it from \`gcloud run services list\` and deploy again."
+              continue
             fi
+            # GCP_FE_URL is legitimately a comma-separated pair: Cloud Run serves
+            # each service on two hostnames and CORS matches Origin exactly, so
+            # each element is checked rather than the whole string.
+            IFS=',' read -ra parts <<< "$value"
+            for part in "${parts[@]}"; do
+              case "$part" in
+                https://*.run.app|https://*.run.app/*) ;;
+                https://*) echo "::warning::$name contains '$part', which is not a *.run.app URL. Intentional if you have a custom domain." ;;
+                *)
+                  echo "::error::$name is '$part' — expected a full https:// URL, not a service name or path. Read it with: gcloud run services describe SERVICE --region=\$REGION --format='value(status.url)'"
+                  malformed=1
+                  ;;
+              esac
+            done
+            # A trailing slash concatenates into a double slash in the SPA's
+            # fetch, and breaks CORS origin matching, which is byte-exact.
+            case "$value" in
+              */) echo "::error::$name has a trailing slash. Remove it."; malformed=1 ;;
+            esac
           done
+          [ "$malformed" -eq 0 ] || exit 1
 
       - uses: google-github-actions/auth@v2
         with:

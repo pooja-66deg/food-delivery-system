@@ -1,30 +1,66 @@
 # food-delivery-system
 
-A food delivery platform built as a **modular monolith** (FastAPI) with a **React + TypeScript** customer/owner web app. One deployable backend hosts a module per business domain (users, restaurants, cart, orders, payments, delivery, notifications) with service-ready boundaries.
+A food delivery platform built as **seven FastAPI microservices** behind an nginx
+gateway, with a **React + TypeScript** web app for customers, restaurant owners,
+drivers and admins.
+
+Each service owns its own database and its own migration chain. Nothing reaches
+across a boundary with a query: services talk over HTTP where an answer is needed
+now, and over events where it is not. A foreign key cannot cross a service, which
+is the constraint that keeps the split honest.
+
+| Service | Port | Owns |
+|---------|------|------|
+| `users` | 8003 | accounts, auth, profiles, addresses, favourites |
+| `restaurants` | 8004 | venues, approval status, menus, stock, reviews |
+| `orders` | 8001 | cart, checkout validation, the order state machine |
+| `payments` | 8002 | COD and card lifecycle, refunds, Stripe webhooks |
+| `delivery` | 8005 | driver roster, assignment, pickup and delivery |
+| `notifications` | 8006 | outbound email/SMS and the in-app feed |
+| `admin` | 8007 | operator console read-models and stats |
+| `api-gateway` | 8080 | the one public door; routes `/api/*` to the above |
+| `frontend` | 5173 | the SPA |
+
+The per-service ports exist for direct access and Swagger (`http://localhost:8003/docs`).
+The frontend only ever talks to the gateway on `8080` — there is no single "the API".
 
 ## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
 | Backend | FastAPI (async), Python 3.11–3.13 |
-| Database | PostgreSQL 15 (async via `asyncpg`), schema managed by **Alembic** |
-| Cache / ephemeral state | Redis 7 (cart, idempotency, rate limits, token blocklist) |
-| Events | Kafka (transactional outbox); tolerates the broker being absent |
-| Auth | JWT (HS256) with refresh + revocation. Email and password only — no one-time codes, and no self-service password reset |
+| Databases | PostgreSQL 15 per service (async via `asyncpg`), each with its own Alembic chain |
+| Cache / ephemeral state | Redis 7 (cart, idempotency, rate limits, reset tokens, token blocklist) |
+| Events | Kafka locally, Pub/Sub on Cloud Run — same code, chosen at deploy time (`shared/messaging.py`). Every publish goes through a transactional outbox |
+| Auth | JWT (HS256), refresh + revocation + session-generation eviction. Email and password, with self-service password reset |
+| Payments | Cash on delivery, and card via Stripe hosted Checkout |
 | Frontend | React 18, TypeScript, Vite, React Router, Framer Motion |
-| Tests | pytest, pytest-asyncio, aiosqlite + fakeredis (unit), Testcontainers (integration) |
+| Tests | pytest, pytest-asyncio, aiosqlite + fakeredis; Vitest + Testing Library |
 | Local orchestration | Docker Compose |
+| Deploy | Cloud Build → Cloud Run, Cloud SQL, Pub/Sub, Secret Manager |
 
 ## Features
 
-- **Customer:** register/login, browse restaurants & menus, add to cart, checkout (Cash on Delivery), track orders on a live status timeline, cancel before preparation, view notifications.
-- **Restaurant owner:** create a restaurant, manage menu (categories + items, availability), accept/reject and advance orders.
-- **Driver:** auto-assigned when an order is ready, pick up and deliver.
-- **Platform:** validated order state machine, cancellation/refund rules, COD payment lifecycle (authorize → settle on delivery → refund), transactional outbox for cross-domain events, rate limiting, and an explicit CORS allowlist.
+- **Customer:** register/login, reset a forgotten password, browse and search
+  restaurants (dish-aware, with city/cuisine/rating/price/veg/open filters),
+  cart, checkout by cash or card, live order timeline, cancel before
+  preparation, reviews, favourites, notifications.
+- **Restaurant owner:** register **one** restaurant, which starts *pending* and
+  is invisible to customers until an admin approves it. Then: menu categories
+  and items, stock, cover photos, food type, address and contact, delivery
+  radius, open/closed, and accepting and advancing orders.
+- **Driver:** auto-assigned when an order is ready; pick up and deliver.
+- **Admin:** approve or reject restaurant registrations, a full restaurant list
+  (owner, contact, status, rating, reviews), platform stats, any order, and the
+  acceptance-timeout sweep. Admins **cannot** register a restaurant — owners do
+  that themselves.
+- **Platform:** validated order state machine, cancellation and refund rules,
+  transactional outbox for every cross-service event, per-service read-models,
+  circuit-broken HTTP between services, rate limiting, CORS allowlist.
 
 ---
 
-## Quick start (Docker — recommended)
+## Quick start
 
 Requires Docker Desktop. From the repository root:
 
@@ -32,17 +68,16 @@ Requires Docker Desktop. From the repository root:
 ./run.sh --seed
 ```
 
-That builds and starts the whole stack — seven services, each with its own
-PostgreSQL database, plus Redis, Kafka, the nginx gateway and the frontend — waits
-for the gateway to answer, and creates a set of dev accounts.
+That builds and starts everything — seven services, seven PostgreSQL databases,
+Redis, Kafka, the gateway and the frontend — waits for the gateway to answer, then
+creates one account per role.
 
 | | URL |
 |---|---|
 | Frontend | http://localhost:5173 |
 | API gateway | http://localhost:8080 |
-| A service's own docs (e.g. users) | http://localhost:8003/docs |
 
-`--seed` gives you one account per role, all with password `devpassword1`:
+`--seed` accounts, all with password `devpassword1`:
 
 | Email | Role |
 |-------|------|
@@ -51,154 +86,211 @@ for the gateway to answer, and creates a set of dev accounts.
 | `driver@example.com` | driver |
 | `admin@example.com` | admin |
 
-Seeding is separate from starting, and re-runnable, so you can do it any time:
+Seeding is separate from starting and safe to re-run — an existing account is
+reused, never replaced:
 
 ```bash
 ./infra/compose/seed-dev.sh
 ```
 
-Other things you will want:
+Everything else:
 
 ```bash
 ./run.sh --logs     # follow the logs
-./run.sh --down     # stop; volumes and data survive
+./run.sh --down     # stop; volumes and your data survive
 ./run.sh --reset    # stop and DELETE every volume (asks first)
 ```
 
-> Each service is on its own port (`8001`–`8007`) for direct access and Swagger,
-> but the frontend only ever talks to the gateway on `8080`. There is no single
-> "the API" any more — that was the monolith.
+> `--reset` empties the users database, which is how every account, address and
+> favourite disappears while the other services keep rows pointing at ids that no
+> longer resolve. Re-seed afterwards.
 
 ---
 
-## Local development (frontend on the host)
+## Local development
 
 The backend is seven services with seven databases; running that outside Docker
 is not worth the setup. The frontend is different — Vite's hot reload is the
-difference between a one-second and a one-minute edit loop — so run the backend
-in Docker and the frontend on your machine:
+difference between a one-second and a one-minute edit loop:
 
 ```bash
 ./run.sh              # backend stack in Docker
-./run.sh --frontend   # Vite on the host, in a second terminal
+./run.sh --frontend   # Vite on the host, second terminal
 ```
 
-The dev server proxies `/api/*` to the gateway on `http://localhost:8080` (see
-`frontend/vite.config.ts`), so no CORS setup is needed in dev.
+The dev server proxies `/api/*` to the gateway (see `frontend/vite.config.ts`),
+so no CORS setup is needed in dev.
 
-### Working on a single service
+### Working on one service
 
-To iterate on backend code, rebuild just that service — the others keep running:
+Rebuild just that service; the rest keep running:
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml up -d --build users-service
-```
-
-Its tests need no infrastructure at all (SQLite and a fake Redis):
-
-```bash
-./services/test.sh users     # one service
-./services/test.sh           # all seven, one process each
-uv run pytest                # the shared package
+docker compose -f infra/compose/docker-compose.yml logs -f users-service
 ```
 
 ---
 
-## Environment variables
+## Tests
 
-Copy `.env.example` to `.env` and adjust as needed. Key settings:
+No infrastructure needed — every suite uses in-memory SQLite and a fake Redis.
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `DATABASE_URL` | PostgreSQL connection (async driver added automatically) | `postgresql://fooduser:foodpass@localhost:5432/fooddelivery` |
-| `REDIS_URL` | Redis connection | `redis://localhost:6379/0` |
-| `JWT_SECRET_KEY` | JWT signing secret — **change in production** | `change-me` |
-| `CORS_ORIGINS` | Comma-separated allowlist (never `*` with credentials) | `http://localhost:5173` |
-| `AUTH_RATE_MAX` / `AUTH_RATE_WINDOW_SECONDS` | Login/register rate limit | `10` / `60` |
-| `RESTAURANT_ACCEPT_TIMEOUT_SECONDS` | Auto-cancel window for unaccepted orders | `300` |
-| `KAFKA_BROKERS` | Broker list for the compose stack | `kafka:9092` |
-| `MESSAGING_TRANSPORT` | `kafka` locally, `pubsub` on Cloud Run — see `shared/messaging.py` | `kafka` |
+```bash
+uv run pytest                # the shared package (identity, messaging, outbox, http client)
+./services/test.sh           # all seven services
+./services/test.sh orders    # just one
+uv run flake8 shared services
+```
 
-The frontend reads `VITE_API_URL` (see `frontend/.env.example`); leave it unset in dev to use the Vite proxy.
+`services/test.sh` runs **one process per service**, and that is not a style
+choice: every service has a package literally named `app`, so a single pytest
+run would import one of them and quietly serve that same module to every other
+service's tests.
+
+Frontend:
+
+```bash
+cd frontend
+npm test              # Vitest + Testing Library
+npm run build         # tsc type-check, then the production build
+```
 
 ---
 
-## Database migrations (Alembic)
+## Database migrations
 
-The schema is managed by Alembic — it is **not** created at application startup.
+Each service owns its own Alembic chain under `services/<name>/alembic/`. There
+is no global migration, and no schema is created at startup.
 
 ```bash
-alembic upgrade head          # apply all pending migrations
-alembic downgrade -1          # roll back the latest migration
-alembic revision --autogenerate -m "describe change"   # create a new migration
-alembic current               # show the currently-applied revision
+# One service, against its own database.
+./services/migrate.sh users upgrade head
+./services/migrate.sh users downgrade -1
+
+# Local convenience only — production has every service migrate itself.
+./services/migrate.sh all upgrade head
 ```
 
-Compose runs `alembic upgrade head` automatically before starting the API. Tests create their own in-memory schema and do not require migrations.
+To write one:
+
+```bash
+cd services/users
+DATABASE_URL=... uv run --project ../.. alembic revision -m "describe change"
+```
+
+Autogenerate is deliberately unavailable: a service's chain spells its tables out
+in full so it runs anywhere the service's container runs, without importing
+another service's models.
+
+> **Never run `alembic downgrade base` against a database you care about.** It
+> drops every table, including `outbox_events`. Use `downgrade -1`.
+
+CI round-trips every chain (`upgrade → downgrade base → upgrade`) against a real
+Postgres, so a migration that cannot be undone fails there rather than in
+production.
 
 ---
 
-## Running tests
+## Configuration
 
-The test suite bootstraps its own env (in-memory SQLite + fake Redis), so no setup is needed:
+Two templates, for two different things:
 
-```bash
-pytest                         # full suite with coverage
-pytest -m "not integration"    # skip the Testcontainers (Docker) tests
-pytest tests/modules/orders    # a single module
-```
-
-Integration tests (`-m integration`) spin up a real PostgreSQL via Testcontainers and are skipped automatically when Docker is unavailable.
-
-Frontend type-check + build:
+| File | For |
+|------|-----|
+| `.env.services.example` | the compose stack — per-service database URLs, Postgres credentials, the JWT secret |
+| `.env.example` | third-party integrations and tunables shared across services |
 
 ```bash
-cd frontend && npm run build
+cp .env.services.example .env.services
+cp .env.example .env
 ```
 
-Lint the backend:
+Settings worth knowing:
 
-```bash
-flake8 src
-```
+| Variable | Purpose |
+|----------|---------|
+| `JWT_SECRET_KEY` | Signs and verifies every token. The same value in every service — **change it in production** |
+| `CORS_ORIGINS` | Browser origins allowed to call the users service. Never `*`, because these routes carry credentials |
+| `MESSAGING_TRANSPORT` | `kafka` locally, `pubsub` on Cloud Run |
+| `AUTH_RATE_MAX` / `AUTH_RATE_WINDOW_SECONDS` | Login, register and reset rate limit |
+| `PASSWORD_RESET_TTL_SECONDS` | How long an emailed reset link stays usable |
+| `FRONTEND_BASE_URL` | Where reset links point, and where Stripe returns a customer |
+| `RESTAURANT_ACCEPT_TIMEOUT_SECONDS` | Auto-cancel window for unaccepted orders |
+
+Third-party integrations — Stripe, SendGrid, Twilio, Google Maps — are **all
+optional**. Unset, the feature degrades rather than failing: SMS and email log
+instead of sending, card payments fall back to a deterministic stand-in
+provider, and addresses stay ungeocoded.
 
 ---
 
 ## Trying the full flow
 
-1. Register a **restaurant** account → go to **Manage** → create a restaurant, set it **Open**, add a category and menu items.
-2. Register a **customer** account → browse to the restaurant → **Add** items → open **Cart** → add a delivery address (in the same city) → **Place order (COD)**.
-3. Track the order under **Orders**; it starts at *Confirmed* (COD payment recorded).
-4. As the restaurant, accept and advance the order; mark it **Ready for pickup**.
-5. Register a **driver** account (self-registration supported) → it is auto-assigned the ready order → pick up and deliver. The customer sees the timeline update and the payment settle.
+1. **Owner** (`owner@example.com`) → **Manage** → register a restaurant. It is
+   *pending*, so customers cannot see it yet. Build the menu while you wait.
+2. **Admin** (`admin@example.com`) → **Manage restaurants** → Approve it.
+3. **Owner** → set the restaurant **Open**, add a category and items with stock.
+4. **Customer** (`customer@example.com`) → browse → add to cart → add a delivery
+   address in the same city → place the order.
+5. **Owner** → accept it, advance it, mark **Ready for pickup**.
+6. **Driver** (`driver@example.com`) → it is auto-assigned → pick up → deliver.
+   The customer's timeline updates and the payment settles.
 
 ---
 
-## Continuous integration
+## Continuous integration and deploy
 
-`.github/workflows/ci.yml` runs on push/PR: backend lint (`flake8 src`), a Postgres+Redis-backed migration up/down/up check, the full test suite, and a frontend type-check + build.
+`.github/workflows/ci.yml` runs on every push and PR:
+
+- `flake8 shared services`
+- every service's migration chain round-tripped against a real Postgres
+- the shared suite, then each service's suite in its own process
+- frontend tests, type-check and build
+
+A push to `main` additionally deploys via
+[`infra/gcp/cloudbuild.yaml`](infra/gcp/cloudbuild.yaml): tests → build nine
+images → provision Pub/Sub topics and subscriptions → run each service's
+migrations as a Cloud Run job → deploy the services, the gateway, then the
+frontend.
+
+First-time setup is [`docs/deploy-runbook.md`](docs/deploy-runbook.md). Two
+things about the pipeline are worth knowing before you touch it: it **bootstraps
+in two passes** (the gateway needs service URLs that do not exist until the first
+deploy), and migrations run as **Cloud Run jobs**, not build steps, because a
+build step has no route to a private Cloud SQL instance.
+
+---
 
 ## Project layout
 
 ```
-src/
-  core/            # jwt, security, exceptions, rate limiting
-  adapters/        # database, redis, kafka clients — how the app reaches backing services
-  modules/
-    users/         # auth, profiles, addresses, roles
-    restaurants/   # profiles, categories, menu items
-    cart/          # Redis cart + 5-gate checkout validation
-    orders/        # persisted orders, state machine, cancellation/refund
-    payments/      # COD lifecycle + provider abstraction (Stripe-ready)
-    delivery/      # driver assignment + pickup/deliver
-    notifications/ # per-status customer notifications (log channel)
-    events/        # transactional outbox + Kafka relay
-alembic/           # migrations
-infra/             # build & deploy artifacts — Docker, compose, Cloud Build
-  compose/         #   local stack (docker-compose.yml)
-  docker/          #   API + frontend images, nginx config
-  gcp/             #   Cloud Build pipeline, Cloud Run frontend image
+services/
+  users/           # auth, profiles, addresses, favourites
+  restaurants/     # venues, approval, menus, stock, reviews
+  orders/          # cart, checkout gates, order state machine
+  payments/        # COD + Stripe, refunds, webhooks
+  delivery/        # driver roster, assignment, pickup/deliver
+  notifications/   # email/SMS senders + in-app feed
+  admin/           # operator read-models and stats
+    app/           #   the service itself
+    alembic/       #   its own migration chain
+    tests/         #   its own suite, one process
+  test.sh          # run every service's suite
+  migrate.sh       # run a service's migrations
+
+shared/            # what every service copies into its image
+  identity.py      #   verifying a JWT, without a users table
+  messaging.py     #   Kafka or Pub/Sub behind one interface
+  outbox.py        #   transactional outbox + relay
+  http_client.py   #   service-to-service calls with a circuit breaker
+  errors.py, phone.py, ratelimit.py
+
 frontend/src/      # React app (pages, api bindings, auth + cart context)
-tests/             # unit (sqlite/fakeredis) + integration (Testcontainers)
-docs/              # architecture, implementation plan, specs & plans
+infra/
+  compose/         # local stack + seed-dev.sh
+  docker/          # service and frontend images, nginx gateway config
+  nginx/           # gateway routing
+  gcp/             # Cloud Build pipeline, secrets script, Cloud Run images
+docs/              # architecture, roles and permissions, deploy runbook
 ```
