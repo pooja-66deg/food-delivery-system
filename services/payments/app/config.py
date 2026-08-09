@@ -9,6 +9,8 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.cors import split_origins
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -60,6 +62,20 @@ class Settings(BaseSettings):
     stripe_currency: str = "inr"
     #: Where Stripe returns the customer after a hosted checkout.
     frontend_base_url: str = "http://localhost:5173"
+
+    #: Origins the SPA is served from. The browser checks every response this
+    #: service returns through the gateway against the page's origin, so this is
+    #: needed here and not only in users — see shared/cors.py. Comma-separated
+    #: because Cloud Run gives each service two hostnames.
+    #:
+    #: Deliberately never "*": these routes are called with credentials, and the
+    #: two together are what allow any site to make authenticated requests on a
+    #: signed-in visitor's behalf.
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return split_origins(self.cors_origins)
 
     @property
     def topics(self) -> list[str]:

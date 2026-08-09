@@ -59,9 +59,11 @@ substitutions:
   # matches Origin byte-exactly, so a single entry locks out whichever one the
   # user actually landed on. Three uses, and a deploy without it is quietly
   # broken rather than obviously broken:
-  #   - CORS_ORIGINS — the frontend is a separate Cloud Run service on its own
-  #     origin, so without it every browser request is rejected. Takes the whole
-  #     list.
+  #   - CORS_ORIGINS on *every* service — the frontend is a separate Cloud Run
+  #     service on its own origin, so without it every browser request is
+  #     rejected. Every service and not just users: the gateway forwards a
+  #     response untouched, so each one's own headers are what the browser
+  #     checks. Takes the whole list.
   #   - FRONTEND_BASE_URL on users — password-reset links are built from it, so
   #     an unset value mails the recipient a link to their own machine.
   #   - FRONTEND_BASE_URL on payments — where Stripe returns the customer.
@@ -330,7 +332,11 @@ steps:
         # "@" so a value may itself contain a comma — _FE_URL has to, because
         # Cloud Run serves each service on two hostnames and CORS matches Origin
         # by exact string.
-        common="ENVIRONMENT=production@MESSAGING_TRANSPORT=pubsub@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
+        # CORS_ORIGINS is in the shared set, not on users alone. nginx forwards a
+        # response untouched, so the browser checks each service's own headers
+        # against the SPA's origin — a service without it fails every preflight,
+        # which is what happened to everything except sign-in.
+        common="ENVIRONMENT=production@MESSAGING_TRANSPORT=pubsub@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@CORS_ORIGINS=${_FE_URL}"
 
         # CORS_ORIGINS wants every hostname the browser might send as Origin, so
         # it takes _FE_URL whole. FRONTEND_BASE_URL is the opposite: it is
@@ -399,7 +405,7 @@ steps:
         }
 
         deploy users \
-          --set-env-vars="^@^$$common@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=$$fe_primary" \
+          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"

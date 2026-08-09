@@ -9,6 +9,8 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.cors import split_origins
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -61,7 +63,7 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        return split_origins(self.cors_origins)
 
     # This service mints tokens as well as verifying them, so unlike the others
     # it needs the lifetimes too.
