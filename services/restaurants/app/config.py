@@ -36,7 +36,16 @@ class Settings(BaseSettings):
 
     #: order-events feeds review eligibility; user-events feeds the owner-name
     #: read-model the admin restaurant list reads.
-    kafka_topics: str = "order-events,user-events"
+    #: restaurant-registrations carries a new owner's venue across from the users
+    #: service at sign-up — see service.register_from_signup for why it cannot
+    #: simply be an API call.
+    kafka_topics: str = "order-events,user-events,restaurant-registrations"
+
+    #: Where "a restaurant is waiting for approval" is sent. An operations
+    #: mailbox, not a user — this service has no idea who the admins are. Unset
+    #: disables the alert and leaves the console as the way operators find
+    #: pending venues.
+    admin_alert_email: str = ""
 
     # Only the signing secret, not the users database — see shared/identity.py.
     jwt_secret_key: str = "dev-secret-change-me"

@@ -43,6 +43,41 @@ EMAIL_SUBJECT = {
 
 _SMS_STATUSES = frozenset({"OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED", "REJECTED"})
 
+# An operator's decision on a restaurant registration, worded for its owner.
+#
+# Email rather than an in-app row, and it is the one place that choice is not
+# about preference: the owner's account is inactive until they are approved, so
+# they cannot sign in to read a feed. The mail is the only channel that reaches
+# somebody the platform is currently keeping out.
+#
+# "pending" is deliberately absent. It is the status a registration already has
+# when it is created, and mailing "we have received it" on every republish of a
+# restaurant — a rename, a kitchen closing — would be noise about nothing.
+RESTAURANT_DECISION = {
+    "approved": (
+        "Your restaurant is approved",
+        "{name} has been approved. You can now sign in and start setting up "
+        "your menu — customers will see you as soon as you open the kitchen.",
+    ),
+    "rejected": (
+        "About your restaurant registration",
+        "{name} was not approved, so it will not appear to customers and you "
+        "cannot sign in yet. If you think this is a mistake, reply to this "
+        "email and we will take another look.",
+    ),
+}
+
+
+def restaurant_decision(status: str, name: str) -> tuple[str, str] | None:
+    """Subject and body for an approval decision, or None if it is not one worth
+    mailing about. Callers treat None as "nothing to send"."""
+    wording = RESTAURANT_DECISION.get(status)
+    if wording is None:
+        return None
+    subject, body = wording
+    return subject, body.format(name=name)
+
+
 # The in-app feed is written separately (it is the notification row itself), so
 # LOG never appears here.
 _CHANNELS_BY_STATUS = {

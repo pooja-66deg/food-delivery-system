@@ -322,6 +322,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-users:5432/users_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_GROUP_ID: users-service
+      # The one topic this service consumes: an operator's approval decision is
+      # what turns a pending restaurant applicant's account active.
+      KAFKA_TOPICS: restaurant-events
       REDIS_URL: redis://redis:6379/0
       # Only the signing secret — not another service's database. Tokens are
       # verified locally, so this service does not go down when users does.
@@ -359,7 +362,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-restaurants:5432/restaurants_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_GROUP_ID: restaurants-service
-      KAFKA_TOPICS: order-events,user-events
+      KAFKA_TOPICS: order-events,user-events,restaurant-registrations
+      # Where "a restaurant is waiting for approval" is mailed. Unset in compose:
+      # the log-only sender would print it anyway, and the admin console lists
+      # everything pending. Set it to see the alert take the email path.
+      ADMIN_ALERT_EMAIL: ""
       # Only the signing secret — not another service's database. Tokens are
       # verified locally, so this service does not go down when users does.
       JWT_SECRET_KEY: dev-secret-change-me
@@ -443,7 +450,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-notifications:5432/notifications_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_GROUP_ID: notifications-service
-      KAFKA_TOPICS: order-events,notification-events,user-contact-events
+      KAFKA_TOPICS: order-events,notification-events,user-contact-events,restaurant-events
       # Only the signing secret — not the users database. Tokens are verified
       # locally, so this service does not go down when users-service does.
       JWT_SECRET_KEY: dev-secret-change-me

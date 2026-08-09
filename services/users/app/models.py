@@ -47,6 +47,16 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="customer", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Where a restaurant applicant stands with the operator, mirrored from the
+    #: restaurants service by the consumer. NULL for every other role — a
+    #: customer has no application, and "approved" there would describe a
+    #: decision nobody made.
+    #:
+    #: This service does not decide it and must not: the restaurants service owns
+    #: approval. What is held here is only what login needs to say something true
+    #: to somebody it is turning away, because "inactive" alone cannot tell
+    #: "waiting" from "rejected" from "switched off last year".
+    approval_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Bumped to evict every existing session (an authenticated password change is
     # now the only thing that does so). Tokens carry the value they were minted
     # with as a "gen" claim.

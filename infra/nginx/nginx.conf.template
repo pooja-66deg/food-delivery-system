@@ -9,6 +9,31 @@
 # Keep the two files in step. They are deliberately not generated from one
 # another: the local one should stay readable without running anything, and a
 # generated file nobody reads is a file nobody notices drifting.
+#
+# The one place they cannot be identical, and it is not cosmetic
+# ---------------------------------------------------------------
+# The local file can write `proxy_pass http://users-service:8000/auth/;`, where
+# nginx replaces the matched location prefix with the directive's URI, so
+# /api/auth/register arrives upstream as /auth/register.
+#
+# That substitution does not happen when proxy_pass contains a variable. nginx
+# cannot know at parse time which part of the URI to replace, and the documented
+# behaviour is that the directive's URI is sent *as is*, replacing the whole
+# request URI. So `proxy_pass $upstream/auth/;` sent every request in this
+# location upstream as exactly "/auth/" — /api/auth/register and
+# /api/auth/login both became /auth/, which FastAPI answered 404, and
+# /api/restaurants/42 became /restaurants, which returned the entire list
+# instead of one restaurant. The gateway looked healthy the whole time: /health
+# is answered here, and the collection endpoints happen to be the ones whose
+# full path equals their prefix, so browse worked and nothing else did.
+#
+# The fix is to do the prefix strip explicitly with `rewrite ... break` and then
+# leave proxy_pass with no URI part at all, which makes nginx forward the
+# rewritten URI. Every route below maps by removing a leading /api and nothing
+# else, so it is the same one-line rewrite each time.
+#
+# If you add a location here, it needs that rewrite. A proxy_pass with both a
+# variable and a path is always wrong in this file.
 
 server {
     listen ${PORT};
@@ -40,48 +65,58 @@ server {
     # ---- users service ---------------------------------------------------
     location /api/auth/ {
         set $upstream ${USERS_URL};
-        proxy_pass $upstream/auth/;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     location /api/users/ {
         set $upstream ${USERS_URL};
-        proxy_pass $upstream/users/;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # No trailing slash: matches /api/favorites as well as /api/favorites/ids.
     location /api/favorites {
         set $upstream ${USERS_URL};
-        proxy_pass $upstream/favorites;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # ---- restaurants service ---------------------------------------------
     location /api/restaurants {
         set $upstream ${RESTAURANTS_URL};
-        proxy_pass $upstream/restaurants;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     location /api/reviews {
         set $upstream ${RESTAURANTS_URL};
-        proxy_pass $upstream/reviews;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # In production images live in GCS and their stored URLs are absolute, so the
     # browser goes straight there and this never fires. Kept so a deployment
     # still holding /media paths from before the GCS switch does not 404.
+    #
+    # The only location with no /api to strip — the path is the same on both
+    # sides — so it is also the only one that needs no rewrite.
     location /media/ {
         set $upstream ${RESTAURANTS_URL};
-        proxy_pass $upstream/media/;
+        proxy_pass $upstream;
     }
 
     # ---- orders service --------------------------------------------------
     location /api/orders {
         set $upstream ${ORDERS_URL};
-        proxy_pass $upstream/orders;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     location /api/cart {
         set $upstream ${ORDERS_URL};
-        proxy_pass $upstream/cart;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # ---- payments service ------------------------------------------------
@@ -91,30 +126,35 @@ server {
     # shadowed by the authenticated routes below.
     location = /api/payments/webhook {
         set $upstream ${PAYMENTS_URL};
-        proxy_pass $upstream/payments/webhook;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     location /api/payments {
         set $upstream ${PAYMENTS_URL};
-        proxy_pass $upstream/payments;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # ---- delivery service ------------------------------------------------
     location /api/delivery/ {
         set $upstream ${DELIVERY_URL};
-        proxy_pass $upstream/delivery/;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # ---- notifications service -------------------------------------------
     location /api/notifications {
         set $upstream ${NOTIFICATIONS_URL};
-        proxy_pass $upstream/notifications;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     # ---- admin service ---------------------------------------------------
     location /api/admin/ {
         set $upstream ${ADMIN_URL};
-        proxy_pass $upstream/admin/;
+        rewrite ^/api(/.*)$ $1 break;
+        proxy_pass $upstream;
     }
 
     location / {

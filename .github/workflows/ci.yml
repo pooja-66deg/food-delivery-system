@@ -222,6 +222,7 @@ jobs:
           SUBS="$SUBS@_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }}"
           SUBS="$SUBS@_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }}"
           SUBS="$SUBS@_GCS_BUCKET_NAME=${{ vars.GCP_GCS_BUCKET_NAME }}"
+          SUBS="$SUBS@_ADMIN_ALERT_EMAIL=${{ vars.GCP_ADMIN_ALERT_EMAIL }}"
           SUBS="$SUBS@_GATEWAY_URL=${{ vars.GCP_GATEWAY_URL }}"
           SUBS="$SUBS@_FE_URL=${{ vars.GCP_FE_URL }}"
           SUBS="$SUBS@_USERS_URL=${{ vars.GCP_USERS_URL }}"

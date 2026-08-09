@@ -5,14 +5,22 @@ Identity: registration, login, tokens, profile, addresses, favourites.
 It is the service everything else depends on and the one nothing calls. That is
 deliberate and it is the whole design: every other service verifies tokens
 locally against the shared secret and keeps its own read-model of whatever it
-needs about a user. So this service publishes constantly and consumes nothing —
-and when it is down, the rest of the platform keeps serving requests from tokens
-this service issued earlier.
+needs about a user. So this service publishes constantly and consumes almost
+nothing — and when it is down, the rest of the platform keeps serving requests
+from tokens this service issued earlier.
+
+"Almost": it subscribes to ``restaurant-events`` and to nothing else. A
+restaurant applicant registers inactive and is let in when an operator approves
+their venue, and that decision is made in the restaurants service against a row
+in another database. Consuming it keeps the direction of dependency intact —
+restaurants still does not call this service — at the cost of the one thing this
+module used to be able to claim. See app/consumer.py.
 
 What does stop while it is down: signing up, logging in, and anything else that
 needs a *new* token. That is the honest, bounded blast radius.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -21,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
+from app.consumer import start_consumer, stop_consumer
 from app.db import async_session, engine
 from app.models import OutboxEvent
 from app.redis_client import close_redis, init_redis
@@ -59,9 +68,16 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001 — a broker outage must not stop signups
         logger.exception("Outbox relay could not start; events will queue until restart")
 
+    # Inbound, and there is only one: an operator's approval decision, which is
+    # what turns a registered restaurant applicant into an account that can sign
+    # in. If this does not start, approvals are not lost — they wait on the topic
+    # and land when it does.
+    start_consumer(asyncio.get_running_loop())
+
     yield
 
     logger.info("%s shutting down", settings.service_name)
+    stop_consumer()
     if _relay is not None:
         await _relay.stop()
     if _publisher is not None:
