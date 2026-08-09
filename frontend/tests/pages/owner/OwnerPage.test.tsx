@@ -17,6 +17,7 @@ vi.mock('../../../src/api/restaurants', () => ({
   // Re-exported by the module the registration form imports; a bare object
   // mock drops it and the form fails to render at all.
   FOOD_TYPE_LABELS: { veg: 'Vegetarian', non_veg: 'Non-vegetarian', both: 'Veg & Non-veg' },
+  FOOD_TYPES: ['veg', 'non_veg', 'both'],
 }))
 
 vi.mock('../../../src/api/orders', () => ({

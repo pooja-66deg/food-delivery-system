@@ -13,13 +13,15 @@ from app.security import hash_password, verify_password
 from app import outbox
 from app import tokens as token_store
 from app.models import User
-from app.schemas import TokenResponse, UserRegister
+from app.schemas import RestaurantSignup, TokenResponse, UserRegister
 
 __all__ = [
     "register_user", "login", "refresh_tokens", "logout",
     "verify_password", "change_password",
     "request_password_reset", "reset_password",
     "is_revoked", "generation_matches",
+    "apply_restaurant_decision", "publish_restaurant_registration",
+    "PENDING_APPROVAL_MESSAGE", "REJECTED_MESSAGE",
 ]
 
 _BLOCKLIST_KEY = "jwt:blocklist:{jti}"
@@ -116,6 +118,13 @@ def _issue_tokens(user: User) -> TokenResponse:
 async def register_user(session: AsyncSession, data: UserRegister) -> User:
     """Create a new user with a hashed password.
 
+    A restaurant applicant is created *inactive*: their venue has to be approved
+    by an operator before it may trade, and an account that could sign in while
+    that decision was outstanding would let them build a listing the operator has
+    not yet agreed to host. login() rejects inactive accounts already, so the
+    gate is this one flag rather than a second code path — see
+    ``PENDING_APPROVAL_MESSAGE`` for what they are told.
+
     Raises ConflictException if the email or phone is already registered.
     """
     existing = await session.scalar(
@@ -126,6 +135,7 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
             raise ConflictException("Email already registered")
         raise ConflictException("Phone already registered")
 
+    awaiting_approval = data.role == "restaurant"
     user = User(
         email=data.email,
         phone=data.phone,
@@ -133,6 +143,8 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
         last_name=data.last_name,
         hashed_password=hash_password(data.password),
         role=data.role,
+        is_active=not awaiting_approval,
+        approval_status="pending" if awaiting_approval else None,
     )
     session.add(user)
     try:
@@ -141,6 +153,11 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
         # the same transaction as the user — the whole point of the outbox.
         await session.flush()
         publish_user(session, user)
+        if awaiting_approval:
+            # Same transaction as the user, so there is no state where an
+            # account exists with no venue for an operator to review — the
+            # applicant would be locked out with nothing pending to unlock them.
+            publish_restaurant_registration(session, user, data.restaurant)
         await session.commit()
     except IntegrityError:
         # Lost the race against a concurrent registration with the same
@@ -149,6 +166,75 @@ async def register_user(session: AsyncSession, data: UserRegister) -> User:
         raise ConflictException("Email or phone already registered")
     await session.refresh(user)
     return user
+
+
+def publish_restaurant_registration(
+    session: AsyncSession, user: User, details: RestaurantSignup
+) -> None:
+    """Hand a new applicant's venue to the service that owns restaurants.
+
+    A separate topic from ``user-events`` on purpose. That one is subscribed to
+    by everybody, and these are business contact details — a street address and a
+    phone number — which only the restaurants service has any reason to hold.
+    Putting them on the general topic would hand them to the delivery service's
+    driver roster and every other consumer of a display name.
+
+    Asynchronous, and safe to be: the one thing restaurant creation rejects is a
+    second venue for the same owner, and this owner was created moments ago in
+    the same transaction, so there is nothing for it to collide with. Everything
+    else was validated by RestaurantSignup before we got here.
+    """
+    outbox.record_event(
+        session, "restaurant-registrations", str(user.id),
+        {
+            "owner_id": user.id,
+            "name": details.name,
+            "city": details.city,
+            "address_line": details.address_line,
+            "phone": details.phone,
+            "cuisine": details.cuisine,
+            "description": details.description,
+            "food_type": details.food_type,
+        },
+    )
+
+
+async def apply_restaurant_decision(
+    session: AsyncSession, owner_id: int, status: str
+) -> bool:
+    """Mirror an operator's approval decision onto the owner's account.
+
+    This is the step that actually lets an approved owner in: registration left
+    them inactive, and nothing else ever sets that flag back. Driven by an event
+    rather than a call from the restaurants service so that approving a venue
+    does not fail when this service is restarting — the decision is already
+    committed there, and the account catches up when the event is delivered.
+
+    Returns whether anything changed, which is what tells the caller to announce
+    the user afresh. At-least-once delivery means this runs again on redelivery,
+    and the second run is a no-op rather than a second announcement.
+
+    Only ever *grants* access on "approved". A rejection records the status so
+    login can explain itself, but deliberately does not deactivate an account
+    that is already live: by the time a venue is rejected the owner may have been
+    trading for a year, and a rejection is a decision about a listing, not a ban
+    on the person.
+    """
+    user = await session.get(User, owner_id)
+    if user is None or user.role != "restaurant":
+        return False
+
+    was_active, previous = user.is_active, user.approval_status
+    user.approval_status = status
+    if status == "approved":
+        user.is_active = True
+
+    if user.is_active == was_active and user.approval_status == previous:
+        return False
+
+    publish_user(session, user)
+    await session.commit()
+    return True
 
 
 def publish_user(session: AsyncSession, user: User) -> None:
@@ -239,8 +325,49 @@ async def login(session: AsyncSession, email: str, password: str) -> TokenRespon
     Raises UnauthorizedException on unknown email, wrong password, or inactive
     account. The same error is used for all cases to avoid leaking which emails
     are registered.
+
+    A restaurant applicant is the one exception, and only *after* their password
+    has been checked. Telling them "still waiting on approval" is something they
+    need to hear — otherwise a correct password looks indistinguishable from a
+    typo and they re-register — and by that point it discloses nothing: anyone
+    holding the right password for an address already knows it is registered.
+    Getting the password wrong still yields the generic error, so the enumeration
+    property that matters is unchanged.
     """
     user = await session.scalar(select(User).where(User.email == email))
-    if user is None or not user.is_active or not verify_password(password, user.hashed_password):
+    if user is None or not verify_password(password, user.hashed_password):
         raise UnauthorizedException("Invalid email or password")
+    if not user.is_active:
+        raise UnauthorizedException(_inactive_reason(user))
     return _issue_tokens(user)
+
+
+#: Said to an applicant whose venue an operator has not decided on yet.
+PENDING_APPROVAL_MESSAGE = (
+    "Your restaurant registration is awaiting approval. "
+    "We'll email you as soon as it has been reviewed."
+)
+
+#: Said to one whose venue was turned down. The reason lives on the restaurant
+#: in the restaurants service and is shown in the owner console — which a
+#: rejected applicant cannot reach — so this points at a human instead of
+#: repeating a reason this service does not have.
+REJECTED_MESSAGE = (
+    "Your restaurant registration was not approved. "
+    "Please contact support if you think this is a mistake."
+)
+
+
+def _inactive_reason(user: User) -> str:
+    """Why this account cannot sign in, in words meant for its owner.
+
+    Only the two application outcomes get their own wording. An account that is
+    inactive for any other reason — an operator switched it off, or it predates
+    approval_status entirely — falls back to the generic message, because
+    guessing out loud is worse than saying little.
+    """
+    if user.approval_status == "pending":
+        return PENDING_APPROVAL_MESSAGE
+    if user.approval_status == "rejected":
+        return REJECTED_MESSAGE
+    return "Invalid email or password"

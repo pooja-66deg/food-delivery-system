@@ -12,6 +12,7 @@ from shared.errors import (
     NotFoundException,
 )
 from app import outbox
+from app.config import settings
 from app.models import APPROVED, PENDING, REJECTED, OwnerRow, Restaurant
 from app.schemas import RestaurantCreate, RestaurantUpdate
 from app import ratings
@@ -27,6 +28,92 @@ async def owned_by(session: AsyncSession, owner_id: int) -> list[Restaurant]:
     """
     stmt = select(Restaurant).where(Restaurant.owner_id == owner_id).order_by(Restaurant.id)
     return list(await session.scalars(stmt))
+
+
+async def register_from_signup(session: AsyncSession, payload: dict) -> Restaurant | None:
+    """Create the pending venue for someone who has just signed up as an owner.
+
+    The counterpart to create_restaurant, for the path where the owner cannot
+    call an API: business details are collected during registration precisely
+    because the account is inactive until an operator approves, so there is no
+    token to authenticate a normal create with. The users service records the
+    details in the same transaction as the account and this turns them into a
+    restaurant.
+
+    Returns None when the owner already has one. That is the idempotency the
+    at-least-once transport requires — a redelivered registration must not create
+    a second venue — and it doubles as the same one-restaurant-per-owner rule
+    create_restaurant enforces, arrived at from the other direction.
+    """
+    owner_id = payload.get("owner_id")
+    name = payload.get("name")
+    if owner_id is None or not name:
+        # Nothing recoverable here. The caller acknowledges rather than retries:
+        # a payload this shape will never become valid, and redelivering it
+        # forever would block every registration queued behind it.
+        return None
+
+    if await owned_by(session, owner_id):
+        return None
+
+    restaurant = Restaurant(
+        owner_id=owner_id,
+        name=name,
+        city=payload.get("city") or "",
+        address_line=payload.get("address_line") or "",
+        phone=payload.get("phone") or "",
+        cuisine=payload.get("cuisine"),
+        description=payload.get("description"),
+        food_type=payload.get("food_type") or "both",
+        # The same rule as create_restaurant, for the same reason — and here the
+        # applicant's account is inactive until this row is approved, so it is
+        # also what is keeping them out.
+        approval_status=PENDING,
+    )
+    session.add(restaurant)
+    await session.flush()  # assigns restaurant.id, which the event needs
+    publish_restaurant(session, restaurant)
+    alert_admin_of_submission(session, restaurant)
+    await session.commit()
+    await session.refresh(restaurant)
+    return restaurant
+
+
+def alert_admin_of_submission(session: AsyncSession, restaurant: Restaurant) -> None:
+    """Tell the operator there is something waiting for them.
+
+    Without this, approval is a queue nobody is told about: the applicant is
+    locked out until a decision is made, and the only way anyone learns a
+    decision is due is by opening the console and looking. A registration on a
+    Friday evening would sit until somebody happened to check.
+
+    Addressed to a configured mailbox rather than to admin users individually,
+    because this service does not know who the admins are — roles live in the
+    users service and their addresses only in notifications. The direct
+    notification topic already accepts a plain address for exactly this case, so
+    an operations mailbox needs no new machinery and no copy of anyone's
+    contact details here.
+
+    Unset means no alert, and that is a supported state: the console still lists
+    everything pending, so an unconfigured deployment is one where the operator
+    polls rather than one that loses registrations.
+    """
+    if not settings.admin_alert_email:
+        return
+    outbox.record_event(
+        session, "notification-events", str(restaurant.id),
+        {
+            "channel": "EMAIL",
+            "to": settings.admin_alert_email,
+            "type": "restaurant_pending",
+            "subject": f"New restaurant awaiting approval: {restaurant.name}",
+            "message": (
+                f"{restaurant.name} registered in {restaurant.city} and is "
+                f"waiting for approval. The owner cannot sign in until it is "
+                f"reviewed. Open the admin console to approve or reject it."
+            ),
+        },
+    )
 
 
 async def create_restaurant(session: AsyncSession, owner: Identity, data: RestaurantCreate) -> Restaurant:

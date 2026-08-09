@@ -47,6 +47,13 @@ export const FOOD_TYPE_LABELS: Record<FoodType, string> = {
   both: 'Veg & Non-veg',
 }
 
+/** Every food type, in display order — for populating a picker.
+ *
+ *  Derived from the labels rather than listed again, so a type added there
+ *  appears in every picker without a second edit. Exported because two forms
+ *  now offer the choice: the owner's settings, and restaurant sign-up. */
+export const FOOD_TYPES = Object.keys(FOOD_TYPE_LABELS) as FoodType[]
+
 /** One line of the admin restaurant list: a restaurant plus who owns it. */
 export interface AdminRestaurantRow extends Restaurant {
   /** Empty when no user event has been seen for that owner yet — the list

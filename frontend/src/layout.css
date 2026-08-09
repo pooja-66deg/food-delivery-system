@@ -147,6 +147,20 @@ section:first-of-type { margin-top: 0; }
   grid-template-columns: 1fr 1fr;
   gap: 0.9rem;
 }
+/* Divides one form into labelled parts — the restaurant sign-up asks for a
+   person and then a business, and without a break between them the venue's
+   address reads as the applicant's own. The rule sits above the heading rather
+   than below it so the heading stays visually attached to the fields it
+   introduces. */
+.form-section-head {
+  margin-top: 0.4rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+.form-section-head h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
 .auth-foot {
   margin-top: 1.5rem;
   font-size: 0.92rem;

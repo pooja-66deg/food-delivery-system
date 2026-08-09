@@ -1,6 +1,7 @@
 // Typed bindings for the users/auth backend endpoints.
 
 import { request } from './client'
+import type { FoodType } from './restaurants'
 
 export interface User {
   id: number
@@ -32,6 +33,25 @@ export interface Address {
 
 export type SignupRole = 'customer' | 'restaurant' | 'driver'
 
+/**
+ * The venue a restaurant applicant is registering.
+ *
+ * Collected on the sign-up form rather than afterwards because approval gates
+ * login: the account is inactive until an operator approves, so there is no
+ * later session in which to fill this in — and an operator approving a name and
+ * an email would not be reviewing a business at all.
+ */
+export interface RestaurantSignupInput {
+  name: string
+  city: string
+  address_line: string
+  /** The venue's public number, which is not the owner's personal one. */
+  phone: string
+  cuisine?: string | null
+  description?: string | null
+  food_type?: FoodType
+}
+
 export interface RegisterInput {
   email: string
   phone: string
@@ -39,6 +59,9 @@ export interface RegisterInput {
   last_name: string
   password: string
   role?: SignupRole
+  /** Required when role is 'restaurant', rejected otherwise — the backend
+   *  validates both directions, so sending it for a customer is a 422. */
+  restaurant?: RestaurantSignupInput
 }
 
 export interface AddressInput {

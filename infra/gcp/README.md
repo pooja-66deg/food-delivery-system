@@ -204,6 +204,7 @@ Under **Settings → Secrets and variables → Actions**:
 | `GCP_REGION` | no | defaults to `us-central1` |
 | `GCP_AR_REPO` | no | defaults to `food-delivery` |
 | `GCP_MAPS_BROWSER_KEY` | no | referrer-restricted browser key; unset means ETA-as-text, no map |
+| `GCP_ADMIN_ALERT_EMAIL` | no | operations mailbox told when a restaurant registers and needs approval; unset means operators find pending venues in the admin console instead |
 
 The `deploy` job fails fast with a named list if any required variable is unset,
 because a Cloud Run deploy with an empty Cloud SQL instance or API URL *succeeds*

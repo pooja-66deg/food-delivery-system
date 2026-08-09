@@ -4,7 +4,9 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator,
+)
 
 from shared.phone import normalize_optional_phone
 
@@ -30,6 +32,36 @@ def _validate_name(v: str | None) -> str | None:
 _validate_phone = normalize_optional_phone
 
 
+#: What a venue declares it serves. Kept in step with FOOD_TYPES in the
+#: restaurants service — the value is carried there verbatim, so a spelling that
+#: disagreed would be rejected only after registration had already succeeded.
+FoodType = Literal["veg", "non_veg", "both"]
+
+
+class RestaurantSignup(BaseModel):
+    """The business a restaurant applicant is registering.
+
+    Collected during sign-up rather than afterwards because approval gates
+    login: an owner who cannot sign in cannot fill in a form later, and an
+    operator approving a bare name and email would not be vetting a business at
+    all. Field constraints mirror RestaurantCreate in the restaurants service,
+    which is what ultimately stores this — validating here means a malformed
+    address is a 422 on the form the applicant is looking at, rather than an
+    event that fails silently in a consumer once they have walked away.
+    """
+
+    name: str = Field(..., min_length=1, max_length=150)
+    city: str = Field(..., min_length=1, max_length=100)
+    address_line: str = Field(..., min_length=1, max_length=255)
+    #: The venue's public number, which is not the owner's personal one above.
+    phone: str
+    cuisine: str | None = Field(default=None, max_length=80)
+    description: str | None = None
+    food_type: FoodType = "both"
+
+    _check_phone = field_validator("phone")(_validate_phone)
+
+
 class UserRegister(BaseModel):
     """Payload for email/password registration."""
 
@@ -39,6 +71,9 @@ class UserRegister(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=8, max_length=128)
     role: SelfServiceRole = "customer"
+    #: Required for the "restaurant" role, rejected for every other one. See
+    #: _restaurant_details_match_role.
+    restaurant: RestaurantSignup | None = None
 
     _check_names = field_validator("first_name", "last_name")(_validate_name)
     _check_phone = field_validator("phone")(_validate_phone)
@@ -51,6 +86,29 @@ class UserRegister(BaseModel):
         if len(v.encode("utf-8")) > 72:
             raise ValueError("password must be at most 72 bytes")
         return v
+
+    @model_validator(mode="after")
+    def _restaurant_details_match_role(self) -> "UserRegister":
+        """Business details belong to exactly one role, and are required for it.
+
+        Required, because the restaurant record is created from this payload and
+        there is no second chance to collect it — the account is inactive until
+        an operator approves, so the applicant cannot log in and supply it.
+
+        Rejected for the other roles rather than ignored: a client sending them
+        has misunderstood something, and silently dropping the field would let a
+        customer believe they had registered a venue.
+        """
+        if self.role == "restaurant":
+            if self.restaurant is None:
+                raise ValueError(
+                    "restaurant details are required when registering as a restaurant"
+                )
+        elif self.restaurant is not None:
+            raise ValueError(
+                "restaurant details are only accepted when role is 'restaurant'"
+            )
+        return self
 
 
 class LoginRequest(BaseModel):

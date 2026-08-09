@@ -42,6 +42,13 @@ substitutions:
   # account needs objectCreator on it).
   _GCS_BUCKET_NAME: ""
 
+  # Where "a restaurant is waiting for approval" is emailed. An operations
+  # mailbox, not a user: the restaurants service publishing the alert has no idea
+  # who the admins are, since roles live in the users service. Empty disables the
+  # alert, and that is a supported state — the admin console still lists every
+  # pending venue, so an unconfigured deploy is one where operators poll rather
+  # than one that drops registrations.
+  _ADMIN_ALERT_EMAIL: ""
   # Public URL of the API gateway — what the frontend calls. The plain origin,
   # with no /api suffix and no trailing slash: build-frontend appends /api when
   # it bakes VITE_API_URL into the bundle. Empty on the first pass; set it on
@@ -202,7 +209,7 @@ steps:
 
         for t in order-events payment-events delivery-events address-events \
                  restaurant-events user-events user-contact-events \
-                 notification-events payment-commands; do
+                 notification-events payment-commands restaurant-registrations; do
           create_topic "$$t"
         done
 
@@ -216,12 +223,23 @@ steps:
         # user-events: the owner-name read-model behind the admin restaurant
         # list. Names only — contact details travel on the restricted topic,
         # which this service has no reason to subscribe to.
-        for t in order-events user-events; do
+        #
+        # restaurant-registrations: a new owner's venue, handed over at sign-up.
+        # Its own topic rather than a field on user-events, because a street
+        # address and a business phone are not something every consumer of a
+        # display name should receive.
+        for t in order-events user-events restaurant-registrations; do
           create_sub restaurants-service "$$t"; done
         for t in order-events user-events; do
           create_sub delivery-service "$$t"; done
-        for t in order-events notification-events user-contact-events; do
+        # restaurant-events: approval decisions, which reach the applicant by
+        # email — this is the only service holding an address to send to, and
+        # the owner is locked out of the app until the decision goes their way.
+        for t in order-events notification-events user-contact-events restaurant-events; do
           create_sub notifications-service "$$t"; done
+        # The users service consumes exactly one topic: an approval decision is
+        # what flips a restaurant applicant's account active.
+        create_sub users-service restaurant-events
         for t in order-events user-events user-contact-events restaurant-events; do
           create_sub admin-service "$$t"; done
 
@@ -387,7 +405,7 @@ steps:
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         deploy restaurants \
-          --set-env-vars="^@^$$common@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}" \
+          --set-env-vars="^@^$$common@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}@ADMIN_ALERT_EMAIL=${_ADMIN_ALERT_EMAIL}" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=RESTAURANTS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"

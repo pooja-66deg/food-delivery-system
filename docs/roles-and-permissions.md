@@ -8,11 +8,36 @@ enforces. This reflects the implemented code (`src/modules/*`), not an aspiratio
 | Role | How it's created | Purpose |
 |------|------------------|---------|
 | **customer** | Public sign-up (default) | Browse, order, track, pay (COD) |
-| **restaurant** | Public sign-up (choose "restaurant") | Own restaurants, manage menus, handle orders |
+| **restaurant** | Public sign-up (choose "restaurant") — **the account is created inactive and cannot log in until an admin approves the venue** | Own restaurants, manage menus, handle orders |
 | **driver** | Public sign-up (choose "driver") | Pick up and deliver assigned orders |
 | **admin** | **Not** self-service — provision by promoting a user in the DB (`UPDATE users SET role='admin' WHERE email=…`) | Platform oversight; elevated access everywhere |
 
 A user has exactly one role, stored on `users.role`.
+
+### The restaurant approval gate
+
+Restaurant is the one role that cannot sign in the moment it signs up, because
+`restaurant` is self-service: without a gate, anyone could register and have a
+listing taking orders and payments within a minute.
+
+1. The sign-up form collects the **business** as well as the person — name,
+   address, city, phone, food type — because there is no later session in which
+   to supply it, and an admin approving a bare name and email would not be
+   vetting a business.
+2. The account is created with `is_active = false` and
+   `approval_status = 'pending'`. Login refuses it and says why.
+3. The venue is handed to the restaurants service on `restaurant-registrations`
+   and appears in the admin console as pending. If `ADMIN_ALERT_EMAIL` is set,
+   an alert is mailed there too.
+4. An admin approves or rejects it. That decision travels back on
+   `restaurant-events`; the users service consumes it and, on approval, sets
+   `is_active = true`.
+5. Notifications emails the owner the outcome — the only channel that reaches
+   somebody the platform is currently keeping out.
+
+A **rejection never deactivates an already-approved account**: it is a decision
+about a listing, not a ban on a person, and by then the owner may have been
+trading for a year.
 
 ## How permissions are enforced
 

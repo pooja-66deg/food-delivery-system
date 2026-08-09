@@ -37,7 +37,12 @@ class Settings(BaseSettings):
     messaging_transport: str = "kafka"
     google_cloud_project: Optional[str] = None
 
-    kafka_topics: str = "order-events,notification-events,user-contact-events"
+    #: restaurant-events: an owner locked out pending approval can only be
+    #: reached by mail, and this is the only service holding an address to
+    #: reach them at.
+    kafka_topics: str = (
+        "order-events,notification-events,user-contact-events,restaurant-events"
+    )
 
     # Only the signing secret, not the users database. Tokens are verified
     # locally — see shared/identity.py for why that matters.

@@ -34,7 +34,10 @@ class Settings(BaseSettings):
     messaging_transport: str = "kafka"
     google_cloud_project: Optional[str] = None
 
-    kafka_topics: str = ""
+    #: restaurant-events carries an operator's approval decision back to the
+    #: applicant's account — see app/consumer.py. This service publishes far more
+    #: than it consumes, which is why the list is one topic long.
+    kafka_topics: str = "restaurant-events"
 
     # Only the signing secret, not the users database — see shared/identity.py.
     jwt_secret_key: str = "dev-secret-change-me"

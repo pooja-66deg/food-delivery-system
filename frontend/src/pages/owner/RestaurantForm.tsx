@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { errorMessage } from '../../api/client'
-import { restaurantsApi, FOOD_TYPE_LABELS } from '../../api/restaurants'
+import { restaurantsApi, FOOD_TYPE_LABELS, FOOD_TYPES } from '../../api/restaurants'
 import type { FoodType, Restaurant } from '../../api/restaurants'
 import { Alert, Button, Field, PhoneField } from '../../components/ui'
 import { normalizePhone, PHONE_ERROR } from '../../lib/phone'
@@ -21,8 +21,6 @@ const EMPTY = {
   // customer Vegetarian filter reads this field.
   food_type: 'both' as FoodType,
 }
-
-const FOOD_TYPES = Object.keys(FOOD_TYPE_LABELS) as FoodType[]
 
 export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => void }) {
   const [form, setForm] = useState(EMPTY)

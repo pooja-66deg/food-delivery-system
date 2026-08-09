@@ -18,6 +18,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import service
 from app.config import settings
 from app.db import async_session
 from app.models import OrderSnapshot, OwnerRow
@@ -86,9 +87,26 @@ async def _apply_user_event(session: AsyncSession, payload: dict) -> None:
     await session.commit()
 
 
+async def _apply_registration(session: AsyncSession, payload: dict) -> None:
+    """Create the pending venue for a newly registered owner.
+
+    The one handler here that writes domain data rather than a read-model, and
+    it is the reason this service can be down while somebody signs up: the users
+    service commits the account and the details together, and the restaurant
+    appears whenever this consumer next runs.
+    """
+    restaurant = await service.register_from_signup(session, payload)
+    if restaurant is not None:
+        logger.info(
+            "[restaurants] registered %s (owner %s), pending approval",
+            restaurant.name, restaurant.owner_id,
+        )
+
+
 _HANDLERS = {
     "order-events": _apply_order_event,
     "user-events": _apply_user_event,
+    "restaurant-registrations": _apply_registration,
 }
 
 
