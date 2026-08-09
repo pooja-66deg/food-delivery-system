@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# Create the per-service database secrets, and let Cloud Run read them.
+# Create the per-service database secrets, and let Cloud Run read every secret
+# the platform mounts — not just the database ones.
+#
+# That distinction is the whole reason the second loop exists. This script used
+# to grant secretAccessor only inside the per-service DATABASE_URL loop, so the
+# ten shared secrets (Stripe, SendGrid, Twilio, Maps, JWT, Redis) never got a
+# binding from anything in the repository. Adding a secret to cloudbuild.yaml's
+# --set-secrets therefore deployed cleanly and failed at *revision* time with
+# "Permission denied on secret ... for Revision service account", which reads
+# like a Cloud Run problem rather than a missing line here.
 #
 #   ./infra/gcp/create-secrets.sh PROJECT_ID [REGION]
 #
@@ -22,6 +31,22 @@ INSTANCE="${CLOUDSQL_INSTANCE_NAME:-food-db}"
 DB_USER="${DB_USER:-fooduser}"
 
 SERVICES="users restaurants orders payments delivery notifications admin"
+
+# Every non-database secret named in cloudbuild.yaml's --set-secrets. Keep this
+# list in step with that file: a name here that the pipeline does not mount is
+# harmless, a name the pipeline mounts that is missing here is a deploy that
+# fails at revision time.
+#
+#   grep -o '[A-Z_]*=[A-Z_]*:latest' infra/gcp/cloudbuild.yaml \
+#     | sed 's/.*=//;s/:latest//' | sort -u
+#
+# These are not created here — their values come from Stripe, SendGrid, Twilio
+# and the Cloud Console, so there is nothing to generate. This script only
+# grants access to the ones that exist.
+SHARED_SECRETS="JWT_SECRET_KEY REDIS_URL GOOGLE_MAPS_API_KEY
+                STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
+                SENDGRID_API_KEY SENDGRID_FROM_EMAIL
+                TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_PHONE_NUMBER"
 
 # --- the password ----------------------------------------------------------
 if [ -z "${DB_PASSWORD:-}" ]; then
@@ -64,6 +89,36 @@ for svc in $SERVICES; do
     --role=roles/secretmanager.secretAccessor \
     --project="$PROJECT_ID" --quiet >/dev/null
 done
+
+
+# --- the shared secrets ----------------------------------------------------
+# Only the binding, never the value. A missing one is reported rather than
+# created: an empty STRIPE_SECRET_KEY would deploy happily and fail at the first
+# charge, which is far worse than a deploy that refuses to start.
+echo
+missing=""
+for name in $SHARED_SECRETS; do
+  if gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "$name" \
+      --member="serviceAccount:$RUNTIME_SA" \
+      --role=roles/secretmanager.secretAccessor \
+      --project="$PROJECT_ID" --quiet >/dev/null
+    echo "  $name — access granted"
+  else
+    missing="$missing $name"
+    echo "  $name — MISSING"
+  fi
+done
+
+if [ -n "$missing" ]; then
+  echo
+  echo "These secrets do not exist yet. Every service that mounts one will fail" >&2
+  echo "to start, with 'Permission denied on secret' — the same message you get" >&2
+  echo "for a missing binding. Create each, then re-run this script:" >&2
+  for name in $missing; do
+    echo "  printf '%s' 'VALUE' | gcloud secrets create $name --data-file=- --project=$PROJECT_ID" >&2
+  done
+fi
 
 echo
 echo "--- database secrets now ---"
