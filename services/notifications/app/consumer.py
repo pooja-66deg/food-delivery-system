@@ -52,10 +52,14 @@ async def _handle_contact(session, payload: dict) -> None:
 async def _handle_direct(session, payload: dict) -> None:
     """A one-off message another service asked us to send.
 
-    A password reset, an OTP, "the restaurant replied to your review". The
-    caller names the channel and the address when it has one — a reset goes to
-    an address that may not belong to a user at all — and otherwise this is an
-    in-app feed row.
+    "The restaurant replied to your review", and anything else that does not fit
+    an existing event. The caller names the channel and the address when it has
+    one — it may be an address that belongs to no user at all — and otherwise
+    this is an in-app feed row.
+
+    This stayed generic when the users service stopped producing on this topic.
+    Its OTP, password-reset and verification mails were the original callers;
+    the shape outlived them because it never encoded what the message was for.
     """
     user_id = payload.get("user_id")
     channel = payload.get("channel")

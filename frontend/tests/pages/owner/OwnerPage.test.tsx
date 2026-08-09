@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OwnerPage } from '../../../src/pages/owner/OwnerPage'
 
 const mocks = vi.hoisted(() => ({
-  list: vi.fn(),
+  mine: vi.fn(),
   get: vi.fn(),
   create: vi.fn(),
   forRestaurant: vi.fn(),
@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../src/api/restaurants', () => ({
-  restaurantsApi: { list: mocks.list, get: mocks.get, create: mocks.create },
+  restaurantsApi: { mine: mocks.mine, get: mocks.get, create: mocks.create },
+  // Re-exported by the module the registration form imports; a bare object
+  // mock drops it and the form fails to render at all.
+  FOOD_TYPE_LABELS: { veg: 'Vegetarian', non_veg: 'Non-vegetarian', both: 'Veg & Non-veg' },
 }))
 
 vi.mock('../../../src/api/orders', () => ({
@@ -54,6 +57,9 @@ const PIZZA = {
   address_line: '1 St',
   phone: '+15550000000',
   is_open: true,
+  approval_status: 'approved',
+  rejection_reason: null,
+  food_type: 'both',
   min_order_amount: 10,
   delivery_radius_km: null,
   rating_average: null,
@@ -121,9 +127,8 @@ const order = (overrides: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   mocks.auth.user = { id: 1, role: 'restaurant' }
-  mocks.list
-    .mockReset()
-    .mockResolvedValue({ items: [PIZZA, CURRY], total: 2, limit: 100, offset: 0 })
+  // /restaurants/mine returns a bare array, not a browse page envelope.
+  mocks.mine.mockReset().mockResolvedValue([PIZZA, CURRY])
   mocks.get.mockReset().mockImplementation((id: number) =>
     Promise.resolve(detailFor(id === 7 ? PIZZA : CURRY, [{ stock_quantity: null }])),
   )
@@ -139,31 +144,53 @@ describe('OwnerPage access', () => {
     expect(screen.getByText(/for restaurant accounts/i)).toBeInTheDocument()
   })
 
-  it('lists only the restaurants this owner owns', async () => {
-    mocks.list.mockResolvedValue({
-      items: [PIZZA, { ...CURRY, owner_id: 99 }],
-      total: 2,
-      limit: 100,
-      offset: 0,
-    })
+  it('asks for the owner\u2019s own restaurants, not a filtered browse page', async () => {
+    // Browse returns approved venues only, so filtering it by owner would hide
+    // an owner's pending restaurant from their own dashboard.
     render(<OwnerPage />)
+    await screen.findByRole('button', { name: /Pizza Palace/ })
 
-    expect(await screen.findByRole('button', { name: /Pizza Palace/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Curry House/ })).not.toBeInTheDocument()
+    expect(mocks.mine).toHaveBeenCalled()
   })
 
   it('surfaces a failure to load the list', async () => {
-    mocks.list.mockRejectedValue(new Error('boom'))
+    mocks.mine.mockRejectedValue(new Error('boom'))
     render(<OwnerPage />)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
-  it('prompts for a first restaurant when there are none', async () => {
-    mocks.list.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 })
+  it('offers registration when the owner has no restaurant', async () => {
+    mocks.mine.mockResolvedValue([])
     render(<OwnerPage />)
 
-    expect(await screen.findByText(/No restaurants assigned yet/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Register restaurant/ })).toBeInTheDocument()
+  })
+
+  it('tells an admin they do not own restaurants', async () => {
+    mocks.auth.user = { id: 1, role: 'admin' }
+    mocks.mine.mockResolvedValue([])
+    render(<OwnerPage />)
+
+    expect(await screen.findByText(/Admin accounts do not own restaurants/)).toBeInTheDocument()
+    // And is given no way to create one — that is the owner's act, not theirs.
+    expect(screen.queryByRole('button', { name: /Register restaurant/ })).not.toBeInTheDocument()
+  })
+
+  it('tells an owner their restaurant is waiting for approval', async () => {
+    mocks.mine.mockResolvedValue([{ ...PIZZA, approval_status: 'pending' }])
+    render(<OwnerPage />)
+
+    expect(await screen.findByText(/Waiting for approval/)).toBeInTheDocument()
+  })
+
+  it('tells a rejected owner why', async () => {
+    mocks.mine.mockResolvedValue([
+      { ...PIZZA, approval_status: 'rejected', rejection_reason: 'Licence not provided' },
+    ])
+    render(<OwnerPage />)
+
+    expect(await screen.findByText(/Licence not provided/)).toBeInTheDocument()
   })
 })
 
@@ -284,45 +311,46 @@ describe('OwnerPage opening a venue', () => {
   })
 })
 
-describe('OwnerPage creating a restaurant', () => {
-  it('keeps the create form behind a button rather than on the page', async () => {
-    mocks.auth.user = { id: 1, role: 'admin' }
+describe('OwnerPage registering a restaurant', () => {
+  it('puts the form on the page rather than behind a dialog', async () => {
+    // One account manages one restaurant, so registration is a one-time step.
+    // Hiding it behind a button was right when an admin added many; it is a
+    // thing to hunt for when it happens once.
+    mocks.mine.mockResolvedValue([])
     render(<OwnerPage />)
-    await screen.findByRole('button', { name: /Pizza Palace/ })
 
+    expect(await screen.findByLabelText('Name')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: /New restaurant/ }))
-
-    expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(screen.getByLabelText('Name')).toBeInTheDocument()
   })
 
-  it('a created restaurant closes the dialog and opens its venue', async () => {
-    mocks.auth.user = { id: 1, role: 'admin' }
-    const created = { ...PIZZA, id: 9, name: 'New Spot' }
+  it('offers a food type, which the customer vegetarian filter reads', async () => {
+    mocks.mine.mockResolvedValue([])
+    render(<OwnerPage />)
+
+    const select = await screen.findByLabelText('Food type')
+    expect(select).toHaveValue('both')
+    expect(screen.getByRole('option', { name: 'Vegetarian' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Non-vegetarian' })).toBeInTheDocument()
+  })
+
+  it('a registered restaurant opens its venue so the menu can be built', async () => {
+    mocks.mine.mockResolvedValue([])
+    const created = { ...PIZZA, id: 9, name: 'New Spot', approval_status: 'pending' }
     mocks.create.mockResolvedValue(created)
     render(<OwnerPage />)
-    await screen.findByRole('button', { name: /Pizza Palace/ })
 
-    await userEvent.click(screen.getByRole('button', { name: /New restaurant/ }))
-    await userEvent.type(screen.getByLabelText('Name'), 'New Spot')
+    await userEvent.type(await screen.findByLabelText('Name'), 'New Spot')
     const cityInputs = screen.getAllByPlaceholderText(/search city|enter city/i)
     await userEvent.type(cityInputs[0], 'Metropolis')
     await userEvent.keyboard('{Enter}')
     await userEvent.type(screen.getByPlaceholderText('Street address'), '2 St')
     await userEvent.type(screen.getByLabelText('Phone'), '5550000000')
-    // The refetch has to include the new restaurant for it to be openable.
-    mocks.list.mockResolvedValue({
-      items: [PIZZA, CURRY, created],
-      total: 3,
-      limit: 100,
-      offset: 0,
-    })
+    // The refetch has to include it for the workspace to open.
+    mocks.mine.mockResolvedValue([created])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Create restaurant' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Register restaurant' }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // Pending, and still opened: an owner builds their menu while they wait.
     expect(await screen.findByText('workspace for 9')).toBeInTheDocument()
   })
 })

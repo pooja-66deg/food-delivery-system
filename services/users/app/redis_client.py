@@ -1,9 +1,12 @@
-"""Redis: OTP challenges, single-use reset/verification tokens, and the
-revocation blocklist every other service reads.
+"""Redis: auth rate-limit counters, and the revocation blocklist every other
+service reads.
 
-Shared infrastructure, not another service. Unlike delivery, this one cannot
-shrug it off: an OTP login or a password reset has nowhere else to keep its
-challenge, so those routes fail honestly rather than pretending to work.
+Shared infrastructure, not another service. It once held credentials too — OTP
+challenges and single-use reset tokens — and those routes had to fail honestly
+when it was down because a challenge had nowhere else to live. Nothing here is a
+credential now, but a 503 is still the honest answer: without the blocklist a
+logged-out token would be honoured, so serving the request would be worse than
+refusing it.
 """
 
 import logging

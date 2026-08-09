@@ -1,10 +1,13 @@
 import { useState } from 'react'
 
 import { errorMessage } from '../../api/client'
-import { restaurantsApi } from '../../api/restaurants'
-import type { RestaurantDetail } from '../../api/restaurants'
+import { restaurantsApi, FOOD_TYPE_LABELS } from '../../api/restaurants'
+import type { FoodType, RestaurantDetail } from '../../api/restaurants'
 import { Alert, Button, FilePicker, Thumb } from '../../components/ui'
+import { AddressPanel } from './AddressPanel'
 import { DeliveryZonePanel } from './DeliveryZonePanel'
+
+const FOOD_TYPES = Object.keys(FOOD_TYPE_LABELS) as FoodType[]
 
 /**
  * Everything about the restaurant itself — its cover photo, whether it is taking
@@ -33,6 +36,19 @@ export function RestaurantSettings({
       onChanged()
     } catch (e) {
       setError(errorMessage(e, 'Could not update.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setFoodType(food_type: FoodType) {
+    setBusy(true)
+    setError(null)
+    try {
+      await restaurantsApi.update(detail.id, { food_type })
+      onChanged()
+    } catch (e) {
+      setError(errorMessage(e, 'Could not update food type.'))
     } finally {
       setBusy(false)
     }
@@ -85,6 +101,44 @@ export function RestaurantSettings({
           <Button variant="ghost" loading={busy} onClick={() => void toggleOpen()}>
             {detail.is_open ? 'Set closed' : 'Set open'}
           </Button>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-label">
+          <h3>Food type</h3>
+          <p className="muted">
+            What your kitchen serves. Diners filtering for vegetarian see only restaurants
+            set to “Vegetarian” — not ones that merely have vegetarian dishes.
+          </p>
+        </div>
+        <div className="setting-control">
+          <select
+            className="input"
+            aria-label="Food type"
+            value={detail.food_type}
+            disabled={busy}
+            onChange={(e) => void setFoodType(e.target.value as FoodType)}
+          >
+            {FOOD_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {FOOD_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-label">
+          <h3>Address &amp; contact</h3>
+          <p className="muted">
+            Where you are and how diners reach you. Changing this does not affect your
+            approval — an administrator vetted the business, not the street.
+          </p>
+        </div>
+        <div className="setting-control setting-control-wide">
+          <AddressPanel detail={detail} onSaved={onChanged} />
         </div>
       </div>
 

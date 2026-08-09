@@ -1,15 +1,16 @@
 """Phone number normalization, shared by every domain that stores a number.
 
 One rule, applied wherever a number reaches the API — registration, profile
-edits, OTP login, restaurant contact details: numbers are stored in E.164 form
+edits, restaurant contact details: numbers are stored in E.164 form
 (``+<country code><national number>``). A number typed without a country code
 is assumed to be Indian and gets ``+91`` prepended, so ``9876543210``,
 ``098765 43210`` and ``+91-98765-43210`` all resolve to one account instead of
 three.
 
 Normalizing here — at the schema boundary, before anything reads the value —
-is what makes lookups honest: the ``User.phone`` uniqueness constraint and the
-Redis OTP keys both key off the canonical form.
+is what makes lookups honest: the ``User.phone`` uniqueness constraint keys off
+the canonical form, so one person cannot register twice by typing their number
+two ways.
 """
 
 import re

@@ -19,17 +19,16 @@ import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { RestaurantOrdersPage } from './pages/RestaurantOrdersPage'
 import { RestaurantsPage } from './pages/RestaurantsPage'
 import { RestaurantDetailPage } from './pages/RestaurantDetailPage'
-import { VerifyEmailPage } from './pages/VerifyEmailPage'
 
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {/* Both public: a reset link is opened from a mail client that is not
+          signed in, and the token in the URL is the credential. */}
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      {/* Public: the link is opened from a mail client that may not be signed in. */}
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>

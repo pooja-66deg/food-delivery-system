@@ -24,8 +24,9 @@ def _validate_name(v: str | None) -> str | None:
     return s
 
 
-# Every phone entering the users domain lands in E.164 (see src/core/phone.py),
-# so OTP keys and the User.phone uniqueness constraint agree on one spelling.
+# Every phone entering the users domain lands in E.164 (see shared/phone.py), so
+# the User.phone uniqueness constraint sees one spelling of a number rather than
+# several — "+15551234567" and "(555) 123-4567" must not register twice.
 _validate_phone = normalize_optional_phone
 
 
@@ -66,13 +67,13 @@ class RefreshRequest(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    """Request a password-reset token for an email."""
+    """Request a password-reset link for an email."""
 
     email: EmailStr
 
 
 class ResetPasswordRequest(BaseModel):
-    """Complete a password reset with the token and a new password."""
+    """Complete a password reset with the emailed token and a new password."""
 
     token: str = Field(..., min_length=8)
     new_password: str = Field(..., min_length=8, max_length=128)
@@ -99,12 +100,6 @@ class ChangePasswordRequest(BaseModel):
         return v
 
 
-class VerifyEmailRequest(BaseModel):
-    """Payload carrying an email-verification token."""
-
-    token: str = Field(..., min_length=8)
-
-
 class TokenResponse(BaseModel):
     """Issued JWT pair."""
 
@@ -112,23 +107,6 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
-
-
-class OTPRequest(BaseModel):
-    """Payload to request an OTP."""
-
-    phone: str
-
-    _check_phone = field_validator("phone")(_validate_phone)
-
-
-class OTPVerify(BaseModel):
-    """Payload to verify an OTP and log in."""
-
-    phone: str
-    otp: str = Field(..., min_length=4, max_length=10)
-
-    _check_phone = field_validator("phone")(_validate_phone)
 
 
 class UserResponse(BaseModel):
@@ -143,7 +121,6 @@ class UserResponse(BaseModel):
     last_name: str
     role: str
     is_active: bool
-    is_email_verified: bool
     created_at: datetime
 
 

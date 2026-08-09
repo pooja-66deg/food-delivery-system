@@ -53,6 +53,12 @@ class Identity:
     role: str
     #: This token's id, for a revocation blocklist.
     token_id: Optional[str] = None
+    #: The session generation this token was minted for. Only the users service
+    #: can act on it — it is the one holding the column to compare against — but
+    #: it has to survive token verification to get there, so it is carried here
+    #: rather than re-decoded. Absent claim reads as 0, the default, so tokens
+    #: issued before the claim existed keep working until the first eviction.
+    generation: int = 0
 
 
 def _unauthorized(detail: str) -> HTTPException:
@@ -77,7 +83,20 @@ def identity_from_claims(claims: dict[str, Any]) -> Identity:
     except (TypeError, ValueError):
         raise _unauthorized("Invalid token")
 
-    return Identity(user_id=user_id, role=str(role), token_id=claims.get("jti"))
+    try:
+        generation = int(claims.get("gen") or 0)
+    except (TypeError, ValueError):
+        # A malformed claim is not a reason to reject the token — it reads as
+        # generation 0, which is the oldest possible and so the safest guess:
+        # any eviction that has happened will fail the comparison.
+        generation = 0
+
+    return Identity(
+        user_id=user_id,
+        role=str(role),
+        token_id=claims.get("jti"),
+        generation=generation,
+    )
 
 
 class JWTAuth:

@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     #: verified, so none is trusted.
     stripe_webhook_secret: Optional[str] = None
     stripe_webhook_tolerance_seconds: int = 300
+    #: ISO 4217 code the hosted checkout charges in. Settable rather than fixed
+    #: because it has to match the currency the Stripe account can settle — a
+    #: code the account does not support is rejected at session creation, so a
+    #: wrong value fails the checkout outright rather than mispricing it.
+    #:
+    #: Assumed to be a two-decimal currency: see the ×100 in providers.py.
+    stripe_currency: str = "inr"
     #: Where Stripe returns the customer after a hosted checkout.
     frontend_base_url: str = "http://localhost:5173"
 

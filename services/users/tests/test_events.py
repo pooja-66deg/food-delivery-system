@@ -7,7 +7,6 @@ what other services will and will not receive.
 
 import json
 
-import pytest
 from sqlalchemy import select
 
 from app.models import OutboxEvent
@@ -94,19 +93,14 @@ async def test_adding_an_address_publishes_where_not_who(client, session, regist
     assert "postal_code" not in event
 
 
-@pytest.mark.parametrize("path,body", [
-    ("/auth/forgot-password", {"email": "cara@example.com"}),
-    ("/auth/otp/request", {"phone": "+919876543210"}),
-])
-async def test_outbound_messages_are_queued_not_sent(client, session, register_payload, path, body):
-    """The monolith called SendGrid and Twilio inline, so a slow provider held up
-    a signup. Now it records an event and the notifications service sends."""
+async def test_no_outbound_messages_are_queued(client, session, register_payload):
+    """This service no longer sends anything to a person.
+
+    It used to queue three: an OTP by SMS, a reset link and a verification link
+    by email. All three flows are gone, so ``notification-events`` should stay
+    empty here — a row appearing again means something reintroduced a message
+    without the notifications service being told what it is for.
+    """
     await client.post("/auth/register", json=register_payload())
-    before = len(await _events(session, "notification-events"))
 
-    r = await client.post(path, json=body)
-    assert r.status_code == 200, r.text
-
-    events = await _events(session, "notification-events")
-    assert len(events) > before
-    assert events[-1]["to"] in ("cara@example.com", "+919876543210")
+    assert await _events(session, "notification-events") == []

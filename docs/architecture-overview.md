@@ -79,7 +79,7 @@ future physical split into database-per-service mechanical rather than a migrati
 
 | Domain | Responsibility | Primary store |
 |--------|----------------|---------------|
-| Users | Registration, login, OTP, JWT issuance, profiles, roles, addresses | PostgreSQL (`users` schema) + Redis (OTP) |
+| Users | Registration, login, JWT issuance, profiles, roles, addresses | PostgreSQL (`users` schema) + Redis (rate limits, token blocklist) |
 | Restaurants | Profile, opening hours, categories, menu items, availability | PostgreSQL (`restaurants` schema) |
 | Cart | Customer cart & transient checkout state | Redis |
 | Orders | Order creation, item snapshot, state machine, cancellation, history | PostgreSQL (`orders` schema) |
@@ -95,9 +95,9 @@ future physical split into database-per-service mechanical rather than a migrati
 |---------|--------|-------|
 | Backend | FastAPI (async) on Python 3.11–3.13 | Single deployable app |
 | Relational DB | PostgreSQL 15, async via `asyncpg` | Schema-per-domain |
-| Cache / ephemeral state | Redis 7 (async client from `redis-py`) | Cart, OTP, idempotency, driver GEO |
+| Cache / ephemeral state | Redis 7 (async client from `redis-py`) | Cart, idempotency, driver GEO |
 | Async events | Kafka (single broker locally) | Cross-domain events, outbox pattern |
-| Auth | JWT (HS256 for MVP), OTP over SMS | See §7 |
+| Auth | JWT (HS256 for MVP), email + password | See §7 |
 | Local orchestration | Docker Compose | Postgres + Redis + Kafka + API |
 | Tests | pytest, pytest-asyncio, Testcontainers | See §11 |
 
@@ -159,12 +159,17 @@ domain.
 
 ---
 
-## 7. Authentication & OTP
+## 7. Authentication
 
-- OTP request is rate-limited per phone number. The OTP is **never stored in plaintext**: a
-  salted SHA-256 hash is cached in Redis with a 120-second TTL and a max of 5 verification
-  attempts.
-- On successful verification the Users domain issues a JWT carrying identity + role.
+- Email and password, for every role. There is one way in and one way to sign up, so a
+  customer, a restaurant owner, a driver and an admin all authenticate identically.
+- Login is rate-limited per client IP and email. On success the Users domain issues a JWT
+  carrying identity + role.
+- **No one-time codes, and no self-service recovery.** An SMS OTP login, emailed password-reset
+  tokens and email-verification tokens all existed here and were removed. `POST
+  /users/me/change-password` requires the current password, so a forgotten password is an
+  operator task — reset the hash directly — until something replaces it. Redis no longer
+  holds any credential: only rate-limit counters and the revocation blocklist.
 - Clients send `Authorization: Bearer <JWT>`. In the monolith, a single auth dependency validates
   the token and injects the authenticated principal (`user_id`, `role`) into the request context;
   each module enforces its own RBAC against that principal. This is the same claims-propagation

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { errorMessage } from '../../api/client'
-import { restaurantsApi } from '../../api/restaurants'
-import type { Restaurant } from '../../api/restaurants'
+import { restaurantsApi, FOOD_TYPE_LABELS } from '../../api/restaurants'
+import type { FoodType, Restaurant } from '../../api/restaurants'
 import { Alert, Button, Field, PhoneField } from '../../components/ui'
 import { normalizePhone, PHONE_ERROR } from '../../lib/phone'
 import { AddressAutocomplete } from '../../components/AddressAutocomplete'
@@ -16,7 +16,13 @@ const EMPTY = {
   phone: '',
   min_order_amount: '0',
   delivery_radius_km: '',
+  // "Both" is the honest starting point for a kitchen nobody has asked yet.
+  // Defaulting to veg would assert a claim the owner never made, and the
+  // customer Vegetarian filter reads this field.
+  food_type: 'both' as FoodType,
 }
+
+const FOOD_TYPES = Object.keys(FOOD_TYPE_LABELS) as FoodType[]
 
 export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => void }) {
   const [form, setForm] = useState(EMPTY)
@@ -48,6 +54,7 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
         delivery_radius_km: form.delivery_radius_km
           ? Number(form.delivery_radius_km)
           : undefined,
+        food_type: form.food_type,
       })
       setForm(EMPTY)
       onCreated(r)
@@ -79,6 +86,29 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
         onChange={(phone) => setForm((f) => ({ ...f, phone }))}
         required
       />
+      {/* htmlFor/id rather than a wrapping label, matching Field: the helper
+          text below would otherwise be folded into the control's accessible
+          name, which is what a screen reader announces on focus. */}
+      <div className="field">
+        <label htmlFor="food_type">Food type</label>
+        <select
+          id="food_type"
+          className="input"
+          name="food_type"
+          value={form.food_type}
+          onChange={(e) => setForm((f) => ({ ...f, food_type: e.target.value as FoodType }))}
+        >
+          {FOOD_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {FOOD_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+        <small className="muted">
+          What your kitchen serves. Customers filtering for vegetarian see only
+          restaurants set to “Vegetarian”.
+        </small>
+      </div>
       <Field
         label="Minimum order amount"
         name="min_order_amount"
@@ -99,7 +129,11 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
         value={form.delivery_radius_km}
         onChange={set('delivery_radius_km')}
       />
-      <Button block loading={busy}>Create restaurant</Button>
+      <Button block loading={busy}>Register restaurant</Button>
+      <small className="muted">
+        An administrator reviews new restaurants. You can build your menu straight away;
+        customers see it once it is approved.
+      </small>
     </form>
   )
 }

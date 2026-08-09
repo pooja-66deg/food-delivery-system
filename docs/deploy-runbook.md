@@ -412,8 +412,15 @@ _TAG=bootstrap
 Takes roughly 8–12 minutes. It runs the tests, builds both images, pushes them, and
 deploys.
 
-**Checkpoint:** the last lines say `Service [food-api] revision ... has been deployed`
-and the same for `food-frontend`.
+**Checkpoint:** the last lines say `Service [...] revision ... has been deployed`
+for each of `users-service`, `restaurants-service`, `orders-service`,
+`payments-service`, `delivery-service`, `notifications-service`,
+`admin-service`, `api-gateway` and `food-frontend`.
+
+> There is no `food-api`. That was the monolith, and it is gone — the pipeline
+> deploys nine services. If you find a `food-api` still running in this project,
+> it is a leftover revision: it will keep failing on secrets it can no longer
+> read, and `gcloud run services delete food-api --region=$REGION` retires it.
 
 ---
 
@@ -429,7 +436,7 @@ breaks on whichever hostname was left out.
 ```bash
 export PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 
-export API_URL=$(gcloud run services describe food-api      --region=$REGION --format='value(status.url)')
+export API_URL=$(gcloud run services describe api-gateway   --region=$REGION --format='value(status.url)')
 export FE_URL=$(gcloud run services describe food-frontend  --region=$REGION --format='value(status.url)')
 
 # The other hostname for each service, derived rather than looked up.
@@ -516,12 +523,19 @@ slash. Fix the variable and re-run the deploy from the Actions tab
 
 Merge to `main` → deploys automatically. Nothing else to do.
 
-**To roll back**, redeploy an earlier image (they are tagged with the commit sha):
+**To roll back**, redeploy the earlier image of the service that regressed — they
+are tagged with the commit sha, and each service rolls back on its own, which is
+most of the point of the split:
 
 ```bash
-gcloud run deploy food-api --region=$REGION \
-  --image=$REGION-docker.pkg.dev/$PROJECT_ID/food-delivery/api:<older-sha>
+# One service. Repeat per service if a release has to be rolled back wholesale.
+gcloud run deploy users-service --region=$REGION \
+  --image=$REGION-docker.pkg.dev/$PROJECT_ID/food-delivery/users:<older-sha>
 ```
+
+A rollback does **not** undo a migration. If the older image predates a schema
+change, check `services/<name>/alembic/versions/` first — a column the old code
+does not know about is harmless, one it still requires is not.
 
 ---
 

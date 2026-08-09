@@ -47,9 +47,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="customer", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # Bumped to evict every existing session (password change or reset). Tokens
-    # carry the value they were minted with as a "gen" claim.
+    # Bumped to evict every existing session (an authenticated password change is
+    # now the only thing that does so). Tokens carry the value they were minted
+    # with as a "gen" claim.
     #
     # Worth knowing in the split: other services verify tokens locally and do
     # not see this column, so a bump reaches them only when the access token

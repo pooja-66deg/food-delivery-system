@@ -35,6 +35,17 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# The approval states a restaurant moves through, and the food types an owner
+# may declare. Defined here, beside the columns they constrain, so service.py
+# and discovery.py can each import them without importing each other.
+PENDING = "pending"
+APPROVED = "approved"
+REJECTED = "rejected"
+APPROVAL_STATUSES = (PENDING, APPROVED, REJECTED)
+
+FOOD_TYPES = ("veg", "non_veg", "both")
+
+
 class Restaurant(Base):
     __tablename__ = "restaurants"
 
@@ -50,6 +61,27 @@ class Restaurant(Base):
     address_line: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     is_open: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Whether an operator has let this venue onto the platform. Owners register
+    # themselves, so "exists" and "may trade" stopped being the same thing —
+    # everything customer-facing filters on this, and only an admin may change
+    # it. Indexed because browse now carries the predicate on every request.
+    #
+    # Deliberately a plain string, not a native PG enum: adding a state to an
+    # enum needs its own migration and a table rewrite, and this is exactly the
+    # kind of column that grows a "suspended" later.
+    approval_status: Mapped[str] = mapped_column(
+        String(20), default="pending", index=True, nullable=False
+    )
+    #: Why an admin rejected it. Shown to the owner — a rejection they cannot
+    #: see the reason for is one they cannot act on.
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the kitchen serves: "veg", "non_veg" or "both". The owner's own
+    # declaration about the venue, which is why the customer Vegetarian filter
+    # reads it rather than inferring from the menu — a restaurant with one
+    # vegetarian side dish is not a vegetarian restaurant.
+    food_type: Mapped[str] = mapped_column(
+        String(10), default="both", index=True, nullable=False
+    )
     min_order_amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), default=Decimal("0"), nullable=False
     )
@@ -161,6 +193,33 @@ class OrderSnapshot(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+class OwnerRow(Base):
+    """A restaurant owner's name, copied from ``user-events``.
+
+    Read-model, like ``OrderSnapshot`` beside it. The admin restaurant list has
+    to show who owns each venue, and owners are rows in another service's
+    database — so the choice is a synchronous call to users on every page load,
+    or a local copy. The same reasoning that produced the delivery service's
+    driver roster produces this.
+
+    A name only. This service has no reason to hold an owner's email or phone,
+    so it does not subscribe to ``user-contact-events`` where those travel — the
+    restaurant's *own* phone number is a column on Restaurant and is what a
+    listing shows anyway.
+
+    Missing rows are normal and must stay survivable: an owner who registered
+    before this table existed has no event to replay, and the list renders them
+    as an unknown name rather than failing.
+    """
+
+    __tablename__ = "owner_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class OutboxEvent(Base):

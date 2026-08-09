@@ -45,12 +45,13 @@ substitutions:
   # Public URL of the API gateway — what the frontend calls. Empty on the first
   # pass; set it on the second.
   _GATEWAY_URL: ""
-  # Public frontend URL. The users service needs it for two things, and a deploy
-  # without it is quietly broken rather than obviously broken:
+  # Public frontend URL. Three uses, and a deploy without it is quietly broken
+  # rather than obviously broken:
   #   - CORS_ORIGINS — the frontend is a separate Cloud Run service on its own
   #     origin, so without it every browser request is rejected.
-  #   - FRONTEND_BASE_URL — password-reset and email-verification links are built
-  #     from it, so an unset value mails the recipient a link to their own machine.
+  #   - FRONTEND_BASE_URL on users — password-reset links are built from it, so
+  #     an unset value mails the recipient a link to their own machine.
+  #   - FRONTEND_BASE_URL on payments — where Stripe returns the customer.
   _FE_URL: ""
 
   # Internal Cloud Run URLs the gateway routes to, and that orders calls for
@@ -196,7 +197,11 @@ steps:
           create_sub orders-service "$$t"; done
         for t in order-events payment-commands; do
           create_sub payments-service "$$t"; done
-        create_sub restaurants-service order-events
+        # user-events: the owner-name read-model behind the admin restaurant
+        # list. Names only — contact details travel on the restricted topic,
+        # which this service has no reason to subscribe to.
+        for t in order-events user-events; do
+          create_sub restaurants-service "$$t"; done
         for t in order-events user-events; do
           create_sub delivery-service "$$t"; done
         for t in order-events notification-events user-contact-events; do

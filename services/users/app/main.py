@@ -17,6 +17,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
@@ -70,6 +71,24 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Users Service", version="0.1.0", lifespan=lifespan)
+
+# CORS. The deploy has always set CORS_ORIGINS and the docs have always called it
+# required, but nothing read it and no middleware was installed — so in
+# production the browser was rejecting cross-origin auth calls and the setting
+# was doing nothing about it.
+#
+# Only this service needs it: every other service sits behind the gateway on the
+# gateway's own origin, and the browser never talks to them directly.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    # Credentialed requests, which is why the origin list is explicit and never
+    # "*" — the combination is what Starlette refuses and browsers reject.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 install_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(users_router)

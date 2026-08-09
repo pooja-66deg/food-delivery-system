@@ -359,7 +359,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://fooduser:foodpass@postgres-restaurants:5432/restaurants_db
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_GROUP_ID: restaurants-service
-      KAFKA_TOPICS: order-events
+      KAFKA_TOPICS: order-events,user-events
       # Only the signing secret — not another service's database. Tokens are
       # verified locally, so this service does not go down when users does.
       JWT_SECRET_KEY: dev-secret-change-me

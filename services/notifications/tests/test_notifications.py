@@ -109,14 +109,17 @@ async def test_a_contact_event_fills_the_read_model(session):
 
 
 async def test_a_direct_event_sends_and_records(session):
-    """Password resets and OTPs arrive this way. They were publishing into a
-    topic nobody consumed until this handler existed."""
+    """The escape hatch for a message with no event of its own.
+
+    ``type`` is whatever the caller says it is — this handler stores it rather
+    than interpreting it, which is why it outlived the account mails it was
+    originally built for."""
     await consumer._handle_direct(session, {
-        "user_id": 5, "type": "account.reset_password", "channel": "EMAIL",
-        "to": "a@b.com", "subject": "Reset your password", "message": "link",
+        "user_id": 5, "type": "review.reply", "channel": "EMAIL",
+        "to": "a@b.com", "subject": "The restaurant replied", "message": "thanks!",
     })
     rows = await _feed(session, 5)
-    assert [r.type for r in rows] == ["account.reset_password"]
+    assert [r.type for r in rows] == ["review.reply"]
     assert rows[0].channel == "EMAIL"
 
 

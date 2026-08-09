@@ -6,10 +6,11 @@ import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import { useAuth } from '../auth/AuthContext'
 import { Alert, Button, EmptyState } from '../components/ui'
+import { RestaurantsPanel } from './admin/RestaurantsPanel'
 import { statusLabel } from './orderStatus'
 
 const TERMINAL = new Set(['COMPLETED', 'CANCELLED', 'REJECTED'])
-type Section = 'overview' | 'orders' | 'users'
+type Section = 'overview' | 'restaurants' | 'orders' | 'users'
 
 export function AdminPage() {
   const { user } = useAuth()
@@ -78,6 +79,9 @@ export function AdminPage() {
 
   const SECTIONS: { key: Section; label: string; count?: number }[] = [
     { key: 'overview', label: 'Overview' },
+    // No count: the panel owns its own paging and filtering, and a stale
+    // number in the sidebar would contradict the tab it points at.
+    { key: 'restaurants', label: 'Manage restaurants' },
     { key: 'orders', label: 'Orders', count: orders.length },
     { key: 'users', label: 'Users', count: users.length },
   ]
@@ -111,6 +115,8 @@ export function AdminPage() {
       <div className="admin-content">
         {error && <Alert>{error}</Alert>}
         {notice && <Alert kind="ok">{notice}</Alert>}
+
+        {section === 'restaurants' && <RestaurantsPanel />}
 
         {section === 'overview' && (
           <>

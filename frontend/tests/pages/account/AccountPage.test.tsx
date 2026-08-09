@@ -21,7 +21,6 @@ vi.mock('../../../src/api/auth', () => ({
     updateAddress: () => Promise.resolve({}),
     deleteAddress: () => Promise.resolve(),
     changePassword: () => Promise.resolve({}),
-    requestEmailVerification: () => Promise.resolve({ message: 'sent' }),
   },
 }))
 
@@ -34,7 +33,6 @@ function signedInAs(role: string) {
     last_name: 'Rivera',
     role,
     is_active: true,
-    is_email_verified: true,
     created_at: '2026-01-01T00:00:00Z',
   }
 }

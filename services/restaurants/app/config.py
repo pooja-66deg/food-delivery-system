@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     messaging_transport: str = "kafka"
     google_cloud_project: Optional[str] = None
 
-    kafka_topics: str = "order-events"
+    #: order-events feeds review eligibility; user-events feeds the owner-name
+    #: read-model the admin restaurant list reads.
+    kafka_topics: str = "order-events,user-events"
 
     # Only the signing secret, not the users database — see shared/identity.py.
     jwt_secret_key: str = "dev-secret-change-me"

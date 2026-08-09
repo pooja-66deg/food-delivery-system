@@ -107,7 +107,16 @@ class StripeProvider:
                     line_items=[{
                         "quantity": 1,
                         "price_data": {
-                            "currency": "usd",
+                            # The rest of the platform prices in rupees — menu
+                            # items, cart totals, the owner dashboard. Left at
+                            # "usd" this was the one surface that disagreed, and
+                            # it was the checkout page: Stripe renders the symbol
+                            # from this field, so a ₹100 order asked for $100.
+                            "currency": settings.stripe_currency,
+                            # Stripe wants the minor unit — paise for INR, as
+                            # cents for USD. Both are 100 to 1, so the same
+                            # arithmetic holds; a zero-decimal currency (JPY,
+                            # KRW) would not, and would need the ×100 dropped.
                             "unit_amount": int(Decimal(amount) * 100),
                             "product_data": {"name": f"Order #{order_id}"},
                         },

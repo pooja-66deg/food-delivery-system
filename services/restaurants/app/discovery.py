@@ -17,6 +17,10 @@ place:
   a COALESCE to 0 would file them.
 - **Only available items count.** A filter is a promise about what can be ordered
   now; a sold-out dish keeping a restaurant in the vegetarian results breaks it.
+- **Only approved restaurants are discoverable.** Owners register themselves, so
+  this is the boundary between "a row exists" and "a customer may see it". It is
+  applied unconditionally rather than as another optional filter — an operator
+  forgetting to pass it must not be able to leak an unvetted venue.
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -25,7 +29,7 @@ from typing import Sequence
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MenuItem, Restaurant
+from app.models import APPROVED, MenuItem, Restaurant
 from app.models import Review
 
 # Price bands as upper bounds on a restaurant's average available-item price.
@@ -86,13 +90,10 @@ def _dish_match(term: str):
     )
 
 
-def _vegetarian_restaurants():
-    """Restaurant ids offering at least one available vegetarian item."""
-    return (
-        select(MenuItem.restaurant_id)
-        .where(MenuItem.is_available.is_(True), MenuItem.is_vegetarian.is_(True))
-        .distinct()
-    )
+#: What the Vegetarian filter accepts. A "both" kitchen is excluded on purpose:
+#: a customer filtering for vegetarian is asking for a vegetarian restaurant,
+#: not for one that has vegetarian options.
+VEGETARIAN_FOOD_TYPES = ("veg",)
 
 
 def band_range(band: int) -> tuple[Decimal, Decimal | None]:
@@ -170,7 +171,10 @@ async def search(
         .outerjoin(prices, prices.c.restaurant_id == Restaurant.id)
     )
 
-    conditions = []
+    # First and unconditional: browse is the customer-facing surface, and an
+    # unapproved venue must never reach it. Not a parameter, so no caller can
+    # omit it.
+    conditions = [Restaurant.approval_status == APPROVED]
     if city and city.strip():
         conditions.append(Restaurant.city.ilike(f"%{city.strip()}%"))
     if cuisine and cuisine.strip():
@@ -192,7 +196,7 @@ async def search(
     if price_band is not None:
         conditions.append(_price_band_clause(avg_price, price_band))
     if vegetarian_only:
-        conditions.append(Restaurant.id.in_(_vegetarian_restaurants()))
+        conditions.append(Restaurant.food_type.in_(VEGETARIAN_FOOD_TYPES))
     if open_only:
         conditions.append(Restaurant.is_open.is_(True))
 

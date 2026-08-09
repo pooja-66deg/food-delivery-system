@@ -1,8 +1,14 @@
-"""Kafka consumer: keeps the order read-model current.
+"""Kafka consumer: keeps this service's read-models current.
 
-One job, and a small one — this service is mostly a publisher. It needs to know
-which orders exist, who placed them, and whether they were delivered, so that
-review eligibility can be decided without asking the orders service.
+Two of them, and both small — this service is mostly a publisher.
+
+``OrderSnapshot`` answers review eligibility: which orders exist, who placed
+them, and whether they were delivered, so that "you may review an order you
+placed and that was delivered" can be decided without asking the orders service.
+
+``OwnerRow`` answers "who owns this restaurant" for the admin list. Owners are
+rows in the users service's database, and the alternative to a local copy is a
+synchronous call to users every time an operator opens the console.
 
 Runs in a worker thread: kafka-python is a blocking client, and its poll loop
 would otherwise stall the event loop serving HTTP.
@@ -14,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import async_session
-from app.models import OrderSnapshot
+from app.models import OrderSnapshot, OwnerRow
 
 from shared.messaging import EventConsumer
 
@@ -51,8 +57,38 @@ async def _apply_order_event(session: AsyncSession, payload: dict) -> None:
     await session.commit()
 
 
+async def _apply_user_event(session: AsyncSession, payload: dict) -> None:
+    """Keep the owner-name read-model current.
+
+    Every user event is consumed, not just owners': the role can change, and a
+    customer promoted to a restaurant owner would otherwise never get a row —
+    the event announcing the promotion would be the one we skipped. Storing a
+    handful of names for people who never open a restaurant is cheaper than
+    getting that case wrong.
+    """
+    user_id = payload.get("user_id")
+    if user_id is None:
+        return
+
+    row = await session.get(OwnerRow, user_id)
+    if row is None:
+        row = OwnerRow(id=user_id)
+        session.add(row)
+
+    # Only overwrite from fields the event carries, so a later, thinner event
+    # cannot blank a name an earlier one supplied.
+    if payload.get("first_name") is not None:
+        row.first_name = payload["first_name"]
+    if payload.get("last_name") is not None:
+        row.last_name = payload["last_name"]
+    if payload.get("is_active") is not None:
+        row.is_active = payload["is_active"]
+    await session.commit()
+
+
 _HANDLERS = {
     "order-events": _apply_order_event,
+    "user-events": _apply_user_event,
 }
 
 

@@ -42,7 +42,7 @@ relays, metrics) and the things that make a cloud deploy actually serve traffic.
 
 | Module | State | Notes |
 |--------|-------|-------|
-| **users** | Complete | Password + OTP login, JWT access/refresh with revocation and session generation, password reset, email verification, profile, addresses (geocoded), 4 rate-limited auth routes |
+| **users** | Complete | Email + password login, JWT access/refresh with revocation and session generation, profile, addresses (geocoded), rate-limited auth routes. No OTP, password reset or email verification — removed deliberately; a forgotten password is an operator task |
 | **restaurants** | Complete | Profile, open/close, delivery radius, categories, menu items, per-item stock and vegetarian flag, image upload, dish-aware search with rating/price/dietary filters, sorting and paging, typeahead, popular cuisines, ownership gates |
 | **cart** | Complete | Redis-backed cart, 5-gate checkout validation ([checkout.py](../src/modules/cart/checkout.py)) with stable machine-readable failure codes, reorder-from-past-order |
 | **orders** | Complete | Validated state machine, per-transition event log, customer/restaurant/admin visibility rules, cancellation + refund rules, stock reserve/restore, acceptance-timeout and unpaid-order sweeps, per-user checkout lock |

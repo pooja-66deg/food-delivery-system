@@ -12,6 +12,13 @@ export interface Restaurant {
   address_line: string
   phone: string
   is_open: boolean
+  /** Whether an operator has let this venue trade. Customers only ever see
+   *  'approved' — browse returns nothing else — but the owner dashboard renders
+   *  the same shape and needs the other two. */
+  approval_status: ApprovalStatus
+  /** Only set when rejected: what the owner has to fix. */
+  rejection_reason: string | null
+  food_type: FoodType
   min_order_amount: number
   /** How far the restaurant delivers, in km. null means the owner has not set
    *  one and the platform default applies — not that it delivers anywhere. */
@@ -27,6 +34,32 @@ export interface Restaurant {
 }
 
 export type RestaurantSort = 'name' | 'rating' | 'price_low' | 'price_high'
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+
+/** What a kitchen serves, as its owner declares it. The customer Vegetarian
+ *  filter reads this rather than inferring from which dishes are flagged. */
+export type FoodType = 'veg' | 'non_veg' | 'both'
+
+export const FOOD_TYPE_LABELS: Record<FoodType, string> = {
+  veg: 'Vegetarian',
+  non_veg: 'Non-vegetarian',
+  both: 'Veg & Non-veg',
+}
+
+/** One line of the admin restaurant list: a restaurant plus who owns it. */
+export interface AdminRestaurantRow extends Restaurant {
+  /** Empty when no user event has been seen for that owner yet — the list
+   *  still shows the venue, since an operator needs to see it either way. */
+  owner_name: string
+}
+
+export interface AdminRestaurantPage {
+  items: AdminRestaurantRow[]
+  total: number
+  limit: number
+  offset: number
+}
 
 /** Every browse filter. All optional — omitted means "do not narrow by this". */
 export interface BrowseParams {
@@ -106,6 +139,7 @@ export interface RestaurantCreateInput {
   min_order_amount: number
   /** Omit to accept the platform default. */
   delivery_radius_km?: number | null
+  food_type?: FoodType
 }
 
 export interface MenuItemCreateInput {
@@ -156,6 +190,28 @@ export const restaurantsApi = {
     request<Restaurant[]>(`/restaurants/lookup?ids=${ids.join(',')}`, { auth: true }),
 
   get: (id: number) => request<RestaurantDetail>(`/restaurants/${id}`, { auth: true }),
+
+  /** The signed-in owner's own restaurants, whatever their approval status.
+   *
+   *  Not browse-filtered-by-owner: browse returns approved venues only, so an
+   *  owner waiting on approval would see an empty dashboard and reasonably
+   *  conclude their registration was lost. */
+  mine: () => request<Restaurant[]>('/restaurants/mine', { auth: true }),
+
+  /** Every restaurant on the platform, for the operator console. Admin only. */
+  adminList: (approvalStatus?: ApprovalStatus) =>
+    request<AdminRestaurantPage>(
+      `/restaurants/admin/all?limit=100${approvalStatus ? `&approval_status=${approvalStatus}` : ''}`,
+      { auth: true },
+    ),
+
+  /** Approve or reject a venue. Admin only. */
+  decideApproval: (id: number, status: 'approved' | 'rejected', reason?: string) =>
+    request<AdminRestaurantRow>(`/restaurants/${id}/approval`, {
+      method: 'POST',
+      body: { status, reason: reason ?? null },
+      auth: true,
+    }),
 
   // Owner management
   create: (body: RestaurantCreateInput) =>

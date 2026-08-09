@@ -8,16 +8,16 @@ A food delivery platform built as a **modular monolith** (FastAPI) with a **Reac
 |-------|-----------|
 | Backend | FastAPI (async), Python 3.11–3.13 |
 | Database | PostgreSQL 15 (async via `asyncpg`), schema managed by **Alembic** |
-| Cache / ephemeral state | Redis 7 (cart, OTP, idempotency, rate limits, token blocklist) |
+| Cache / ephemeral state | Redis 7 (cart, idempotency, rate limits, token blocklist) |
 | Events | Kafka (transactional outbox); tolerates the broker being absent |
-| Auth | JWT (HS256) with refresh + revocation; OTP over SMS (stubbed in dev) |
+| Auth | JWT (HS256) with refresh + revocation. Email and password only — no one-time codes, and no self-service password reset |
 | Frontend | React 18, TypeScript, Vite, React Router, Framer Motion |
 | Tests | pytest, pytest-asyncio, aiosqlite + fakeredis (unit), Testcontainers (integration) |
 | Local orchestration | Docker Compose |
 
 ## Features
 
-- **Customer:** register/login (password or OTP), browse restaurants & menus, add to cart, checkout (Cash on Delivery), track orders on a live status timeline, cancel before preparation, view notifications.
+- **Customer:** register/login, browse restaurants & menus, add to cart, checkout (Cash on Delivery), track orders on a live status timeline, cancel before preparation, view notifications.
 - **Restaurant owner:** create a restaurant, manage menu (categories + items, availability), accept/reject and advance orders.
 - **Driver:** auto-assigned when an order is ready, pick up and deliver.
 - **Platform:** validated order state machine, cancellation/refund rules, COD payment lifecycle (authorize → settle on delivery → refund), transactional outbox for cross-domain events, rate limiting, and an explicit CORS allowlist.
@@ -29,67 +29,78 @@ A food delivery platform built as a **modular monolith** (FastAPI) with a **Reac
 Requires Docker Desktop. From the repository root:
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml up --build
+./run.sh --seed
 ```
 
-This starts PostgreSQL, Redis, the API (which runs `alembic upgrade head` before serving), and the frontend.
+That builds and starts the whole stack — seven services, each with its own
+PostgreSQL database, plus Redis, Kafka, the nginx gateway and the frontend — waits
+for the gateway to answer, and creates a set of dev accounts.
 
-| Service | URL |
-|---------|-----|
-| Frontend (customer/owner web app) | http://localhost:5173 |
-| API | http://localhost:8000 |
-| Interactive API docs (Swagger) | http://localhost:8000/docs |
-| Health check | http://localhost:8000/health |
+| | URL |
+|---|---|
+| Frontend | http://localhost:5173 |
+| API gateway | http://localhost:8080 |
+| A service's own docs (e.g. users) | http://localhost:8003/docs |
 
-Stop with `Ctrl+C`; remove containers/volumes with
-`docker compose -f infra/compose/docker-compose.yml down -v`.
+`--seed` gives you one account per role, all with password `devpassword1`:
 
-> The compose file lives under `infra/` (see **Project layout**), so it needs the `-f` flag.
-> `./run.sh --infra` passes it for you.
+| Email | Role |
+|-------|------|
+| `owner@example.com` | restaurant |
+| `customer@example.com` | customer |
+| `driver@example.com` | driver |
+| `admin@example.com` | admin |
 
-> Kafka is disabled by default in the compose file (`KAFKA_BROKERS=disabled`); the app runs fine without it. Event publishing is a no-op until a broker is configured.
+Seeding is separate from starting, and re-runnable, so you can do it any time:
+
+```bash
+./infra/compose/seed-dev.sh
+```
+
+Other things you will want:
+
+```bash
+./run.sh --logs     # follow the logs
+./run.sh --down     # stop; volumes and data survive
+./run.sh --reset    # stop and DELETE every volume (asks first)
+```
+
+> Each service is on its own port (`8001`–`8007`) for direct access and Swagger,
+> but the frontend only ever talks to the gateway on `8080`. There is no single
+> "the API" any more — that was the monolith.
 
 ---
 
-## Local development (without Docker for the app)
+## Local development (frontend on the host)
 
-Run the databases in Docker, and the backend + frontend on your machine for hot reload.
-
-### 1. Start infrastructure
-
-```bash
-docker compose -f infra/compose/docker-compose.yml up -d postgres redis
-```
-
-### 2. Backend
+The backend is seven services with seven databases; running that outside Docker
+is not worth the setup. The frontend is different — Vite's hot reload is the
+difference between a one-second and a one-minute edit loop — so run the backend
+in Docker and the frontend on your machine:
 
 ```bash
-# from the repo root
-python -m venv .venv
-# activate it:
-#   Windows PowerShell:  .venv\Scripts\Activate.ps1
-#   macOS/Linux:         source .venv/bin/activate
-pip install -e ".[dev]"
-
-# configuration (pydantic loads .env automatically)
-cp .env.example .env
-
-# create the schema, then run the API
-alembic upgrade head
-uvicorn src.main:app --reload
+./run.sh              # backend stack in Docker
+./run.sh --frontend   # Vite on the host, in a second terminal
 ```
 
-The API is now on http://localhost:8000 (docs at `/docs`).
+The dev server proxies `/api/*` to the gateway on `http://localhost:8080` (see
+`frontend/vite.config.ts`), so no CORS setup is needed in dev.
 
-### 3. Frontend
+### Working on a single service
+
+To iterate on backend code, rebuild just that service — the others keep running:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+docker compose -f infra/compose/docker-compose.yml up -d --build users-service
 ```
 
-The app is on http://localhost:5173 and proxies `/api/*` to the backend at `http://localhost:8000` (see `vite.config.ts`), so no CORS setup is needed in dev.
+Its tests need no infrastructure at all (SQLite and a fake Redis):
+
+```bash
+./services/test.sh users     # one service
+./services/test.sh           # all seven, one process each
+uv run pytest                # the shared package
+```
 
 ---
 
@@ -105,7 +116,8 @@ Copy `.env.example` to `.env` and adjust as needed. Key settings:
 | `CORS_ORIGINS` | Comma-separated allowlist (never `*` with credentials) | `http://localhost:5173` |
 | `AUTH_RATE_MAX` / `AUTH_RATE_WINDOW_SECONDS` | Login/register rate limit | `10` / `60` |
 | `RESTAURANT_ACCEPT_TIMEOUT_SECONDS` | Auto-cancel window for unaccepted orders | `300` |
-| `KAFKA_BROKERS` | Broker list, or `disabled` to turn events off | `disabled` |
+| `KAFKA_BROKERS` | Broker list for the compose stack | `kafka:9092` |
+| `MESSAGING_TRANSPORT` | `kafka` locally, `pubsub` on Cloud Run — see `shared/messaging.py` | `kafka` |
 
 The frontend reads `VITE_API_URL` (see `frontend/.env.example`); leave it unset in dev to use the Vite proxy.
 
@@ -173,7 +185,7 @@ src/
   core/            # jwt, security, exceptions, rate limiting
   adapters/        # database, redis, kafka clients — how the app reaches backing services
   modules/
-    users/         # auth, OTP, profiles, addresses, roles
+    users/         # auth, profiles, addresses, roles
     restaurants/   # profiles, categories, menu items
     cart/          # Redis cart + 5-gate checkout validation
     orders/        # persisted orders, state machine, cancellation/refund
