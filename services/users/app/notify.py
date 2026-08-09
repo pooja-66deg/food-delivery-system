@@ -1,17 +1,17 @@
 """Asking the notifications service to send something.
 
-The monolith called ``senders.dispatch`` directly and waited for SendGrid or
-Twilio to answer. Two things were wrong with that once the split exists: this
-service would own outbound delivery it no longer owns, and a slow provider would
-hold up a registration.
+One caller now: the password-reset email. The monolith called ``senders.dispatch``
+directly and waited for SendGrid to answer, which was wrong once the split
+exists — this service would own outbound delivery it no longer owns, and a slow
+provider would hold up the request.
 
-So it records an event instead. Registration commits, the relay publishes, the
+So it records an event instead. The request commits, the relay publishes, the
 notifications service sends. If that service is down the mail goes out when it
-returns, and nobody's signup failed in the meantime.
+returns, rather than the reset failing.
 
-The one thing to be honest about: delivery is now asynchronous, so a password
-reset link arrives shortly after the response rather than before it. That is
-already true of every email that goes through a provider queue.
+The one thing to be honest about: delivery is asynchronous, so the link arrives
+shortly after the response rather than before it. That is already true of every
+email that goes through a provider queue.
 """
 
 from typing import Optional

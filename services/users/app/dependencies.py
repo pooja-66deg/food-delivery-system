@@ -48,6 +48,15 @@ async def current_user(
     user = await session.get(User, identity.user_id)
     if user is None or not user.is_active:
         raise UnauthorizedException("User not found or inactive")
+
+    # The generation check, which is what makes a password reset actually evict
+    # anyone. Without it the bump only blocked *refresh*, so a stolen access
+    # token kept working here for the rest of its lifetime — up to half an hour
+    # of reading the profile and editing addresses after the owner had taken the
+    # account back. This is the one service holding the column, so it is the one
+    # place the eviction can be immediate.
+    if identity.generation != user.session_generation:
+        raise UnauthorizedException("Session expired")
     return user
 
 

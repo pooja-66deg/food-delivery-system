@@ -11,29 +11,30 @@ from shared.errors import ConflictException, UnauthorizedException
 from app.jwt_tokens import create_access_token, create_refresh_token, verify_token
 from app.security import hash_password, verify_password
 from app import outbox
-from app import otp as otp_module
 from app import tokens as token_store
 from app.models import User
 from app.schemas import TokenResponse, UserRegister
 
 __all__ = [
-    "register_user", "login", "login_with_otp", "refresh_tokens", "logout",
-    "request_password_reset", "reset_password", "verify_password",
-    "change_password", "request_email_verification", "verify_email",
+    "register_user", "login", "refresh_tokens", "logout",
+    "verify_password", "change_password",
+    "request_password_reset", "reset_password",
     "is_revoked", "generation_matches",
 ]
 
 _BLOCKLIST_KEY = "jwt:blocklist:{jti}"
 RESET_PREFIX = "pwd_reset"
-VERIFY_PREFIX = "email_verify"
 
 
 async def request_password_reset(session: AsyncSession, redis, email: str) -> str | None:
     """Issue a single-use reset token for ``email`` if an active account exists.
 
-    Returns the plaintext token (for the caller to deliver, e.g. email/SMS) or
-    None if there's no matching account. The token's SHA-256 hash is stored in
-    Redis with a TTL; the plaintext is never persisted.
+    Returns the plaintext token for the caller to deliver, or None when there is
+    no matching account. The token's SHA-256 hash is what Redis holds; the
+    plaintext is never persisted, so it exists only in the email.
+
+    Returning None rather than raising is what lets the route answer identically
+    either way — see the router for why that matters.
     """
     user = await session.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active:
@@ -44,9 +45,16 @@ async def request_password_reset(session: AsyncSession, redis, email: str) -> st
 
 
 async def reset_password(session: AsyncSession, redis, token: str, new_password: str) -> None:
-    """Consume a reset token and set a new password. Raises UnauthorizedException
-    if the token is missing/expired. Revokes the token after use, and evicts
-    every existing session — whoever locked the user out loses their access."""
+    """Consume a reset token and set a new password.
+
+    Raises UnauthorizedException if the token is unknown, expired, or already
+    spent — one message for all three, so the endpoint cannot be used to learn
+    which tokens exist.
+
+    Every existing session is evicted by the generation bump. That is the point
+    of a reset rather than a convenience: whoever locked the account's owner out
+    loses their access at the moment the owner takes it back.
+    """
     user_id = await token_store.consume_single_use(redis, RESET_PREFIX, token)
     if user_id is None:
         raise UnauthorizedException("Invalid or expired reset token")
@@ -73,26 +81,6 @@ async def change_password(
     await session.commit()
     await session.refresh(user)
     return _issue_tokens(user)
-
-
-async def request_email_verification(redis, user: User) -> str:
-    """Issue a single-use verification token for the user's email address."""
-    return await token_store.issue_single_use(
-        redis, VERIFY_PREFIX, user.id, settings.email_verification_ttl_seconds
-    )
-
-
-async def verify_email(session: AsyncSession, redis, token: str) -> None:
-    """Consume a verification token and mark the address verified. Raises
-    UnauthorizedException if the token is missing, expired, or already spent."""
-    user_id = await token_store.consume_single_use(redis, VERIFY_PREFIX, token)
-    if user_id is None:
-        raise UnauthorizedException("Invalid or expired verification token")
-    user = await session.get(User, user_id)
-    if user is None:
-        raise UnauthorizedException("Invalid or expired verification token")
-    user.is_email_verified = True
-    await session.commit()
 
 
 async def _blocklist(redis, jti: str, ttl_seconds: int) -> None:
@@ -255,17 +243,4 @@ async def login(session: AsyncSession, email: str, password: str) -> TokenRespon
     user = await session.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(password, user.hashed_password):
         raise UnauthorizedException("Invalid email or password")
-    return _issue_tokens(user)
-
-
-async def login_with_otp(session: AsyncSession, redis, phone: str, code: str) -> TokenResponse:
-    """Verify an OTP for a phone number and issue tokens for that account.
-
-    Raises UnauthorizedException if the OTP is invalid or no active account owns
-    the phone number.
-    """
-    await otp_module.verify_otp(redis, phone, code)
-    user = await session.scalar(select(User).where(User.phone == phone))
-    if user is None or not user.is_active:
-        raise UnauthorizedException("No active account for this phone")
     return _issue_tokens(user)

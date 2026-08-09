@@ -1,10 +1,16 @@
 """Request/response schemas for the restaurants domain."""
 
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from shared.phone import normalize_optional_phone
+
+#: What a kitchen serves, as its owner declares it. The customer Vegetarian
+#: filter reads this, so it is the owner's claim rather than something inferred
+#: from which dishes happen to be flagged vegetarian today.
+FoodType = Literal["veg", "non_veg", "both"]
 
 
 class RestaurantCreate(BaseModel):
@@ -19,8 +25,13 @@ class RestaurantCreate(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     # Omit to accept the platform default (DELIVERY_DEFAULT_RADIUS_KM).
     delivery_radius_km: float | None = Field(default=None, gt=0, le=100)
+    food_type: FoodType = "both"
 
     _check_phone = field_validator("phone")(normalize_optional_phone)
+
+    # Note what is absent: approval_status. A registering owner must not be able
+    # to post their own approval, so the field is not on the payload at all
+    # rather than being ignored — an ignored field reads to a client as accepted.
 
 
 class RestaurantUpdate(BaseModel):
@@ -37,6 +48,9 @@ class RestaurantUpdate(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     delivery_radius_km: float | None = Field(default=None, gt=0, le=100)
+    # The owner's own; editing it does not re-open approval, because what a
+    # kitchen serves is not what an operator vetted it for.
+    food_type: FoodType | None = None
 
 
 class RestaurantResponse(BaseModel):
@@ -51,6 +65,13 @@ class RestaurantResponse(BaseModel):
     address_line: str
     phone: str
     is_open: bool
+    # "pending" until an operator decides. Present on the public response
+    # because the owner dashboard renders from the same shape — a customer only
+    # ever sees "approved" here, since browse returns nothing else.
+    approval_status: str = "pending"
+    #: Populated only when rejected; what the owner has to fix.
+    rejection_reason: str | None = None
+    food_type: FoodType = "both"
     min_order_amount: Decimal
     # The owner's own setting, or null when they have not chosen one and the
     # platform default applies.
@@ -66,6 +87,45 @@ class RestaurantResponse(BaseModel):
     # Dish names that made this restaurant match the search term. Empty unless
     # the request carried one, so the UI can say why a result is here.
     matched_items: list[str] = []
+
+
+class AdminRestaurantRow(RestaurantResponse):
+    """One line of the admin restaurant list.
+
+    Everything the operator console shows about a venue, in the shape the
+    console renders. It extends the public response rather than redefining it so
+    the two cannot drift on a field they share — approval status in particular,
+    which is the whole point of the screen.
+
+    ``owner_name`` is the one addition, and it comes from a local read-model fed
+    by ``user-events``: owners live in another service's database, and joining
+    across that boundary is not available. Empty when no event has been seen for
+    that owner yet.
+    """
+
+    owner_name: str = ""
+
+
+class AdminRestaurantPage(BaseModel):
+    """The admin list, paged like browse and for the same reason."""
+
+    items: list[AdminRestaurantRow]
+    total: int
+    limit: int
+    offset: int
+
+
+class ApprovalDecision(BaseModel):
+    """An operator approving or rejecting a venue.
+
+    ``reason`` is free text and only meaningful on a rejection — it is what the
+    owner is shown, so a rejection without one leaves them nothing to act on.
+    Not enforced as required, because an operator rejecting obvious spam should
+    not have to justify it to the system.
+    """
+
+    status: Literal["approved", "rejected"]
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class RestaurantPage(BaseModel):

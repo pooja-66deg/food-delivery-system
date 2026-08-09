@@ -6,7 +6,7 @@ import type { Order } from '../../api/orders'
 import { restaurantsApi } from '../../api/restaurants'
 import type { Restaurant, RestaurantDetail } from '../../api/restaurants'
 import { useAuth } from '../../auth/AuthContext'
-import { Alert, Button, EmptyState, Loading, Modal } from '../../components/ui'
+import { Alert, EmptyState, Loading } from '../../components/ui'
 import { IncomingOrders } from './IncomingOrders'
 import { RestaurantForm } from './RestaurantForm'
 import { RestaurantWorkspace } from './RestaurantWorkspace'
@@ -35,7 +35,6 @@ export function OwnerPage() {
   const [error, setError] = useState<string | null>(null)
   // Which restaurant is opened for editing. null means the dashboard.
   const [openId, setOpenId] = useState<number | null>(null)
-  const [addOpen, setAddOpen] = useState(false)
   // Stamped once per load rather than read at render time, so every "3 min ago"
   // on the page is measured from the same instant.
   const [loadedAt, setLoadedAt] = useState(() => new Date())
@@ -45,10 +44,10 @@ export function OwnerPage() {
   const load = useCallback(async () => {
     if (!isOwner || !user) return
     try {
-      // Browse is paged; an owner's own restaurants are few, so one large page
-      // covers them. There is no "mine" endpoint to ask for directly.
-      const all = (await restaurantsApi.list({ limit: 100 })).items
-      const owned = all.filter((r) => r.owner_id === user.id || user.role === 'admin')
+      // /restaurants/mine, not browse. Browse returns approved venues only, so
+      // filtering it by owner would show an owner waiting on approval an empty
+      // dashboard — indistinguishable from a registration that was lost.
+      const owned = await restaurantsApi.mine()
       setMine(owned)
       setLoadedAt(new Date())
 
@@ -134,11 +133,10 @@ export function OwnerPage() {
             stock and pricing.
           </p>
         </div>
-        {user?.role === 'admin' && (
-          <Button onClick={() => setAddOpen(true)}>
-            <span aria-hidden="true">+</span> New restaurant
-          </Button>
-        )}
+        {/* No "new restaurant" control, for anyone. An owner registers below
+            when they have none, and one account manages one restaurant; an
+            admin cannot register at all, because a venue an operator created
+            would have nobody to run it. */}
       </header>
 
       {error && <Alert>{error}</Alert>}
@@ -157,67 +155,85 @@ export function OwnerPage() {
         />
       </div>
 
-      <Modal
-        open={addOpen}
-        title="Add a restaurant"
-        subtitle="You can upload a cover photo and build the menu once it exists."
-        onClose={() => setAddOpen(false)}
-      >
-        <RestaurantForm
-          onCreated={async (r) => {
-            setAddOpen(false)
-            await load()
-            // Straight into the new kitchen — the next job is its menu.
-            setOpenId(r.id)
-          }}
-        />
-      </Modal>
-
       <div className="owner-columns">
         <section>
           <div className="column-head">
-            <h2>Restaurants</h2>
-            <p className="muted">Open a venue to manage its menu and stock.</p>
+            <h2>Your restaurant</h2>
+            <p className="muted">
+              {mine && mine.length === 0
+                ? 'Register your restaurant to start building its menu.'
+                : 'Open it to manage its menu, stock and settings.'}
+            </p>
           </div>
 
           {mine === null ? (
             <Loading />
           ) : mine.length === 0 ? (
-            <EmptyState>
-              {user?.role === 'admin'
-                ? 'No restaurants yet. Use “New restaurant” to create your first one.'
-                : 'No restaurants assigned yet. Contact an administrator to add you to a restaurant.'}
-            </EmptyState>
+            // Registration, inline. One account manages one restaurant, so this
+            // is a one-time step and does not deserve a modal to hunt for. An
+            // admin landing here sees it too and gets a 403 on submit — the
+            // server is the thing that enforces it, not a hidden button.
+            user?.role === 'admin' ? (
+              <EmptyState>
+                Admin accounts do not own restaurants. Approve or reject registrations from
+                the console’s “Manage restaurants” tab.
+              </EmptyState>
+            ) : (
+              <RestaurantForm
+                onCreated={async (r) => {
+                  await load()
+                  // Straight into the new kitchen — the next job is its menu,
+                  // which it can be given while approval is still pending.
+                  setOpenId(r.id)
+                }}
+              />
+            )
           ) : (
             <div className="venue-list">
               {mine.map((r) => {
                 const stat = stats.get(r.id)
                 return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className="venue-row"
-                    onClick={() => setOpenId(r.id)}
-                  >
-                    <span className="venue-row-text">
-                      <span className="venue-row-name">{r.name}</span>
-                      <span className="muted venue-row-meta">
-                        {r.cuisine ? `${r.cuisine} · ` : ''}
-                        {/* Dashes until the per-restaurant menu fetch lands, rather
-                            than "0 categories", which reads as an empty menu. */}
-                        {stat
-                          ? `${plural(stat.categories, 'category', 'categories')} · ${plural(stat.dishes, 'dish', 'dishes')}`
-                          : r.city}
-                      </span>
-                    </span>
-                    {!r.is_open && <span className="badge badge-closed">Closed</span>}
-                    {stat && stat.lowStock > 0 && (
-                      <span className="pill-warn">{plural(stat.lowStock, 'low stock', 'low stock')}</span>
+                  <div key={r.id}>
+                    {/* Approval state, above the card and never hidden. An owner
+                        whose venue is not listed needs to know it is waiting on
+                        an operator rather than broken. */}
+                    {r.approval_status === 'pending' && (
+                      <Alert kind="ok">
+                        Waiting for approval. You can build your menu now — customers will
+                        see the restaurant once an administrator approves it.
+                      </Alert>
                     )}
-                    <span className="venue-row-go" aria-hidden="true">
-                      →
-                    </span>
-                  </button>
+                    {r.approval_status === 'rejected' && (
+                      <Alert>
+                        This restaurant was rejected and is not visible to customers.
+                        {r.rejection_reason ? ` Reason: ${r.rejection_reason}` : ''}
+                      </Alert>
+                    )}
+                    <button
+                      type="button"
+                      className="venue-row"
+                      onClick={() => setOpenId(r.id)}
+                    >
+                      <span className="venue-row-text">
+                        <span className="venue-row-name">{r.name}</span>
+                        <span className="muted venue-row-meta">
+                          {r.cuisine ? `${r.cuisine} · ` : ''}
+                          {/* Dashes until the per-restaurant menu fetch lands, rather
+                              than "0 categories", which reads as an empty menu. */}
+                          {stat
+                            ? `${plural(stat.categories, 'category', 'categories')} · ${plural(stat.dishes, 'dish', 'dishes')}`
+                            : r.city}
+                        </span>
+                      </span>
+                      {!r.is_open && <span className="badge badge-closed">Closed</span>}
+                      {stat && stat.lowStock > 0 && (
+                        <span className="pill-warn">{plural(stat.lowStock, 'low stock', 'low stock')}</span>
+                      )}
+                      <span className="venue-row-go" aria-hidden="true">
+                        →
+                      </span>
+                    </button>
+                  </div>
                 )
               })}
             </div>

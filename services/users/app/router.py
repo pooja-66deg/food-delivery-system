@@ -1,6 +1,14 @@
-"""HTTP routes for the users domain (auth + profile)."""
+"""HTTP routes for the users domain (auth + profile).
 
-import logging
+Authentication is email plus password. There was once an SMS one-time-code login
+here and an emailed address-verification flow; both were removed. Every role —
+customer, restaurant, driver, admin — signs up and signs in the same way.
+
+Password reset stays, because it is the only self-service way back into an
+account: ``/users/me/change-password`` needs the current password, so without
+this pair a forgotten password is an operator task.
+"""
+
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, status
@@ -12,13 +20,12 @@ from shared.ratelimit import enforce_rate_limit
 from app.db import get_db
 from app.redis_client import get_redis
 
-from app import notify
-from app import otp as otp_module
 from app import profile as profile_service
 from app import service
 from app.dependencies import current_user as require_user
 from app.dependencies import optional_bearer
 from app.models import User
+from app import notify
 from app.schemas import (
     AddressCreate,
     AddressResponse,
@@ -26,53 +33,17 @@ from app.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
-    OTPRequest,
-    OTPVerify,
     RefreshRequest,
     ResetPasswordRequest,
     TokenResponse,
     UserRegister,
     UserResponse,
     UserUpdate,
-    VerifyEmailRequest,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
-
-
-def _link(path: str, token: str) -> str:
-    """Build an absolute link into the SPA for an emailed token."""
-    return f"{settings.frontend_base_url.rstrip('/')}{path}?token={token}"
-
-
-async def _send_verification_email(session: AsyncSession, redis, user: User) -> str:
-    """Mint a verification token and queue the mail. Returns the token.
-
-    Queued, not sent: the notifications service owns outbound delivery now, so
-    this records an event and commits. A registration must not wait on — or fail
-    because of — an email provider.
-    """
-    token = await service.request_email_verification(redis, user)
-    link = _link("/verify-email", token)
-    notify.send(
-        session,
-        channel="EMAIL",
-        to=user.email,
-        subject="Verify your email address",
-        user_id=user.id,
-        type_="account.verify_email",
-        message=(
-            f"Confirm your email address: {link}\n\n"
-            f"The link expires in {settings.email_verification_ttl_seconds // 3600} hours."
-        ),
-    )
-    await session.commit()
-    return token
 
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -88,17 +59,7 @@ async def register(
         redis, f"rl:register:{_client_ip(request)}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
-    user = await service.register_user(session, data)
-    # Best-effort. The account is already committed, so a Redis blip or a mail
-    # provider timeout must not turn a successful signup into a 500 — the user
-    # can resend from the verification banner.
-    try:
-        await _send_verification_email(session, redis, user)
-    except Exception:
-        logger.warning(
-            "Verification email failed for user %s", user.id, exc_info=True
-        )
-    return user
+    return await service.register_user(session, data)
 
 
 @auth_router.post("/login", response_model=TokenResponse)
@@ -136,13 +97,24 @@ async def forgot_password(
     data: ForgotPasswordRequest, request: Request,
     session: AsyncSession = Depends(get_db), redis=Depends(get_redis),
 ):
+    """Start a password reset.
+
+    Answers identically whether or not the address is registered. That is not
+    politeness — an endpoint that says "no such account" is an oracle anyone can
+    use to test whether a person banks here, and it needs no credentials to ask.
+
+    Rate-limited per client IP for the same reason: without it, the identical
+    response is still enumerable by timing and volume.
+    """
     await enforce_rate_limit(
         redis, f"rl:forgot:{_client_ip(request)}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
     token = await service.request_password_reset(session, redis, data.email)
     if token:
-        link = _link("/reset-password", token)
+        link = (
+            f"{settings.frontend_base_url.rstrip('/')}/reset-password?token={token}"
+        )
         notify.send(
             session,
             channel="EMAIL",
@@ -156,74 +128,26 @@ async def forgot_password(
             ),
         )
         await session.commit()
-    # Always the same response so we don't reveal whether the email is registered.
+
     body = {"message": "If an account exists for that email, a reset link has been sent."}
-    # Convenience for local/dev and tests; never exposed in production.
+    # Dev and test convenience, never production: without it there is no way to
+    # exercise the flow locally, since nothing is actually delivering mail.
     if token and settings.environment != "production":
         body["debug_token"] = token
     return body
 
 
 @auth_router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
-async def reset_password(data: ResetPasswordRequest, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
-    await service.reset_password(session, redis, data.token, data.new_password)
-
-
-@auth_router.post("/verify-email/request", status_code=status.HTTP_202_ACCEPTED)
-async def request_email_verification(
-    current_user: User = Depends(require_user),
-    session: AsyncSession = Depends(get_db),
-    redis=Depends(get_redis),
-):
-    await enforce_rate_limit(
-        redis, f"rl:verify:{current_user.id}",
-        settings.auth_rate_max, settings.auth_rate_window_seconds,
-    )
-    token = await _send_verification_email(session, redis, current_user)
-    body = {"message": "Verification email sent."}
-    # Convenience for local/dev and tests; never exposed in production.
-    if settings.environment != "production":
-        body["debug_token"] = token
-    return body
-
-
-@auth_router.post("/verify-email/confirm", status_code=status.HTTP_204_NO_CONTENT)
-async def confirm_email_verification(
-    data: VerifyEmailRequest,
+async def reset_password(
+    data: ResetPasswordRequest,
     session: AsyncSession = Depends(get_db), redis=Depends(get_redis),
 ):
-    # Deliberately public: the link is opened from a mail client that may not
-    # be signed in. The token is the credential.
-    await service.verify_email(session, redis, data.token)
+    """Finish a password reset.
 
-
-@auth_router.post("/otp/request")
-async def request_otp(
-    data: OTPRequest,
-    session: AsyncSession = Depends(get_db),
-    redis=Depends(get_redis),
-):
-    code = await otp_module.request_otp(redis, data.phone)
-    # Queued for the notifications service rather than sent from here. The code
-    # is already valid in Redis, so the login works the moment the SMS lands.
-    notify.send(
-        session,
-        channel="SMS",
-        to=data.phone,
-        type_="account.otp",
-        message=f"Your verification code is {code}",
-    )
-    await session.commit()
-    body = {"message": "OTP sent"}
-    # Convenience for local/dev and tests; never exposed in production.
-    if settings.environment != "production":
-        body["debug_otp"] = code
-    return body
-
-
-@auth_router.post("/otp/verify", response_model=TokenResponse)
-async def verify_otp(data: OTPVerify, session: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
-    return await service.login_with_otp(session, redis, data.phone, data.otp)
+    Deliberately public: the link is opened from a mail client that may not be
+    signed in — the token *is* the credential.
+    """
+    await service.reset_password(session, redis, data.token, data.new_password)
 
 
 @users_router.get("/me", response_model=UserResponse)

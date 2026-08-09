@@ -2,7 +2,7 @@
 
 React + TypeScript (Vite) frontend for the Food Delivery Platform. This first
 slice covers the **auth + account** flow, matching the backend's users domain:
-register, password login, OTP login, profile editing, and delivery addresses.
+register, password login, profile editing, and delivery addresses.
 
 ## Stack
 

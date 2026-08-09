@@ -1,133 +1,117 @@
 #!/usr/bin/env bash
 # One-command dev launcher for the Food Delivery Platform.
 #
-# Runs the backend API (all domains - it is a modular monolith, so one process
-# = all services) and the customer frontend together, with prefixed logs and a
-# clean shutdown of both on Ctrl+C.
-#
 # Usage:
-#   ./run.sh              Start backend + frontend
-#   ./run.sh --infra      Also start Postgres/Redis/Kafka via docker compose
-#   ./run.sh --install    Install backend + frontend dependencies, then run
-#   ./run.sh --backend    Run only the backend
-#   ./run.sh --frontend   Run only the frontend
-#   ./run.sh --no-reload  Disable backend auto-reload
+#   ./run.sh                Start the whole stack in Docker (recommended)
+#   ./run.sh --seed         ...and create the dev accounts once it is up
+#   ./run.sh --frontend     Backend in Docker, frontend on the host for hot reload
+#   ./run.sh --logs         Follow the logs of the running stack
+#   ./run.sh --down         Stop everything (volumes, and your data, survive)
+#   ./run.sh --reset        Stop and DELETE every volume — all local data is lost
 #
-# The backend needs PostgreSQL and Redis reachable. Start them yourself, or pass
-# --infra to bring them up with Docker. Connection settings default to the
-# values in infra/compose/docker-compose.yml and can be overridden via environment variables.
-
+# ---------------------------------------------------------------------------
+# This used to run `uvicorn src.main:app` — one process serving every domain,
+# because the platform was a modular monolith. It is seven services now, `src/`
+# no longer exists, and there is no single process to start: a service needs its
+# own database, the gateway needs the services, and the frontend needs the
+# gateway. Docker Compose is what expresses that, so this script drives it
+# rather than trying to reproduce it.
+#
+# The one thing still worth running on the host is the frontend, because Vite's
+# hot reload is the difference between a one-second and a one-minute edit loop.
+# That is what --frontend is for; it points the dev server at the gateway in
+# Docker.
+# ---------------------------------------------------------------------------
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# ---------- parse flags ----------
-INFRA=0; INSTALL=0; ONLY=""; RELOAD="--reload"
-BACKEND_PORT="${BACKEND_PORT:-8000}"
+COMPOSE="docker compose -f infra/compose/docker-compose.yml"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
+
+MODE="stack"
+SEED=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --infra)         INFRA=1 ;;
-    --install)       INSTALL=1 ;;
-    --backend)       ONLY="backend" ;;
-    --frontend)      ONLY="frontend" ;;
-    --no-reload)     RELOAD="" ;;
-    --backend-port)  BACKEND_PORT="$2"; shift ;;
-    --frontend-port) FRONTEND_PORT="$2"; shift ;;
-    -h|--help)       awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next}{exit}' "$0"; exit 0 ;;
+    --seed)     SEED=1 ;;
+    --frontend) MODE="frontend" ;;
+    --logs)     MODE="logs" ;;
+    --down)     MODE="down" ;;
+    --reset)    MODE="reset" ;;
+    -h|--help)  awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next}{exit}' "$0"; exit 0 ;;
     *) echo "unknown option: $1 (try --help)"; exit 1 ;;
   esac
   shift
 done
 
-# ---------- pick interpreters ----------
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) IS_WIN=1; PYTHON="$ROOT/.venv/Scripts/python.exe" ;;
-  *)                    IS_WIN=0; PYTHON="$ROOT/.venv/bin/python" ;;
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is not running. Start Docker Desktop and try again." >&2
+  exit 1
+fi
+
+case "$MODE" in
+  logs)
+    exec $COMPOSE logs -f
+    ;;
+
+  down)
+    echo "[infra] stopping (volumes kept — your data survives)..."
+    exec $COMPOSE down
+    ;;
+
+  reset)
+    # -v is the destructive one, so it is its own flag and says so. Wiping the
+    # users database is how every account, address and favourite disappears
+    # while the other services keep rows pointing at ids that no longer exist.
+    echo "This deletes every local database volume: all accounts, restaurants,"
+    echo "orders and menus are lost. The stack comes back empty."
+    printf "Type 'reset' to confirm: "
+    read -r reply
+    [ "$reply" = "reset" ] || { echo "Cancelled."; exit 1; }
+    $COMPOSE down -v
+    echo "Gone. Bring it back with: ./run.sh --seed"
+    exit 0
+    ;;
+
+  frontend)
+    echo "[frontend] http://localhost:$FRONTEND_PORT  ->  API at $GATEWAY_URL"
+    echo "[frontend] the backend must already be up: ./run.sh"
+    [ -d "$ROOT/frontend/node_modules" ] || ( cd frontend && npm install )
+    cd frontend
+    exec npm run dev -- --port "$FRONTEND_PORT"
+    ;;
 esac
-[ -x "$PYTHON" ] || PYTHON="python"   # fall back to system python
 
-# ---------- backend env defaults (mirror infra/compose/docker-compose.yml) ----------
-export DATABASE_URL="${DATABASE_URL:-postgresql://fooduser:foodpass@localhost:5432/fooddelivery}"
-export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
-export KAFKA_BROKERS="${KAFKA_BROKERS:-localhost:9092}"
-export JWT_SECRET_KEY="${JWT_SECRET_KEY:-dev-secret-change-me}"
-export ENVIRONMENT="${ENVIRONMENT:-development}"
-export PYTHONUNBUFFERED=1 FORCE_COLOR=1
+# ---------- the whole stack ----------
+echo "[infra] building and starting the stack (first run pulls images — give it a few minutes)..."
+$COMPOSE up -d --build || { echo "[infra] compose failed." >&2; exit 1; }
 
-# ---------- optional: install deps ----------
-if [ "$INSTALL" = "1" ]; then
-  echo "[backend]  installing Python dependencies..."
-  if command -v uv >/dev/null 2>&1; then
-    uv sync --extra dev --no-install-project
-  else
-    echo "[backend]  uv not found - install it from https://docs.astral.sh/uv/ ."
-    echo "[backend]  falling back to pip (resolves fresh, ignores uv.lock)."
-    "$PYTHON" -m pip install -e ".[dev]"
+# Readiness, not a fixed sleep: image build time varies enormously between a
+# cold and a warm cache, and a sleep is either wrong or wasteful.
+echo -n "[infra] waiting for the gateway"
+for _ in $(seq 1 60); do
+  if curl -sS -o /dev/null --max-time 2 "$GATEWAY_URL/health" 2>/dev/null; then
+    echo " — up."
+    break
   fi
-  echo "[frontend] installing npm dependencies..."
-  ( cd frontend && npm install )
-fi
+  echo -n "."
+  sleep 2
+done
 
-# ---------- optional: infra via docker ----------
-if [ "$INFRA" = "1" ]; then
-  if docker info >/dev/null 2>&1; then
-    echo "[infra] bringing up Postgres/Redis/Kafka via docker compose..."
-    docker compose -f infra/compose/docker-compose.yml up -d redis kafka zookeeper || echo "[infra] docker compose failed; continuing."
-  else
-    echo "[infra] Docker not available - start Postgres/Redis yourself."
-  fi
-fi
-
-# ---------- warnings ----------
-if [ "$ONLY" != "frontend" ] && [ ! -e "$ROOT/.venv" ]; then
-  echo "[backend]  no .venv found - using system Python. If imports fail: ./run.sh --install"
-fi
-if [ "$ONLY" != "backend" ] && [ ! -d "$ROOT/frontend/node_modules" ]; then
-  echo "[frontend] frontend/node_modules missing. Run: ./run.sh --install"
-fi
-
-# ---------- shutdown ----------
-PIDS=()
-PORTS=()
-
-# Windows: kill whatever is LISTENING on a port (and its tree). More reliable
-# than tree-walking, because npm detaches node across the cmd/job boundary.
-kill_port_win() {
-  local port="$1" wp
-  for wp in $(netstat -ano 2>/dev/null | grep -i listening | grep -E "[:.]$port[[:space:]]" | awk '{print $NF}' | sort -u); do
-    [ -n "$wp" ] && MSYS_NO_PATHCONV=1 taskkill /F /T /PID "$wp" >/dev/null 2>&1 || true
-  done
-}
-
-cleanup() {
-  trap - INT TERM EXIT
+if [ "$SEED" = "1" ]; then
   echo
-  echo "[infra] stopping..."
-  if [ "$IS_WIN" = "1" ]; then
-    for port in "${PORTS[@]:-}"; do [ -n "$port" ] && kill_port_win "$port"; done
-    for pid in "${PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
-  else
-    kill 0 2>/dev/null || true
-  fi
-}
-trap cleanup INT TERM EXIT
-
-# ---------- launch (each in its own subshell so we can kill its tree) ----------
-if [ "$ONLY" != "frontend" ]; then
-  echo "[backend]  http://localhost:$BACKEND_PORT"
-  ( "$PYTHON" -m uvicorn src.main:app --host 0.0.0.0 --port "$BACKEND_PORT" $RELOAD 2>&1 \
-      | sed 's/^/[backend] /' ) &
-  PIDS+=($!); PORTS+=("$BACKEND_PORT")
+  ./infra/compose/seed-dev.sh "$GATEWAY_URL"
 fi
 
-if [ "$ONLY" != "backend" ]; then
-  echo "[frontend] http://localhost:$FRONTEND_PORT"
-  ( cd frontend && npm run dev -- --port "$FRONTEND_PORT" 2>&1 \
-      | sed 's/^/[frontend] /' ) &
-  PIDS+=($!); PORTS+=("$FRONTEND_PORT")
-fi
+cat <<EOF
 
-echo "[infra] press Ctrl+C to stop everything."
-wait
+  Frontend        http://localhost:$FRONTEND_PORT
+  API gateway     $GATEWAY_URL
+
+  Logs            ./run.sh --logs
+  Stop            ./run.sh --down
+  Dev accounts    ./infra/compose/seed-dev.sh
+
+EOF

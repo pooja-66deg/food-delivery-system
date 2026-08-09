@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/api/auth', () => ({ authApi: { me: mocks.me, logout: mocks.logout } }))
 
-const USER = { id: 1, email: 'alex@example.com', role: 'customer', is_email_verified: true }
+const USER = { id: 1, email: 'alex@example.com', role: 'customer' }
 
 function Consumer() {
   const { isAuthenticated, logout } = useAuth()

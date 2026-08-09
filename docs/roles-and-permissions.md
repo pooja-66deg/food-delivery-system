@@ -33,7 +33,7 @@ The **order state machine** adds a fifth layer: even with the right role, a stat
 
 | Capability | Customer | Restaurant | Driver | Admin |
 |------------|:--------:|:----------:|:------:|:-----:|
-| Register / login / OTP / refresh / logout | ✅ | ✅ | ✅ | ✅ |
+| Register / login / refresh / logout | ✅ | ✅ | ✅ | ✅ |
 | Manage own profile & addresses | ✅ | ✅ | ✅ | ✅ |
 | Browse restaurants & menus (public) | ✅ | ✅ | ✅ | ✅ |
 | Cart: add / update / remove / clear | ✅ | — | — | — |
@@ -43,7 +43,9 @@ The **order state machine** adds a fifth layer: even with the right role, a stat
 | Cancel own order (before preparing) | ✅ | — | — | — |
 | View order payment | ⚠️² | ⚠️² | — | ✅ (any) |
 | Own notifications | ✅ | ✅ | ✅ | ✅ |
-| Create a restaurant | — | ✅ | — | ✅ |
+| Register a restaurant (one per account) | — | ✅ | — | — |
+| Approve / reject a restaurant | — | — | — | ✅ |
+| Set restaurant food type (veg / non-veg / both) | — | ⚠️³ own | — | ✅ (any) |
 | Edit restaurant / open-close | — | ⚠️³ own | — | ✅ (any) |
 | Manage menu (categories, items, availability) | — | ⚠️³ own | — | ✅ (any) |
 | Accept / reject an order | — | ⚠️³ own | — | ✅ (any) |
@@ -67,7 +69,7 @@ The **order state machine** adds a fifth layer: even with the right role, a stat
 ## By role
 
 ### Customer
-- **Account:** register (default role), log in by password or OTP, refresh/logout, manage profile and delivery addresses.
+- **Account:** register (default role), log in by email and password, refresh/logout, manage profile and delivery addresses.
 - **Browse:** list/search restaurants and view menus.
 - **Cart & checkout:** add/update/remove items (one restaurant per cart), then `POST /orders/checkout` — runs the 5 validation gates (restaurant open, items available, price unchanged, address in the restaurant's city, minimum order met) and creates a **Cash-on-Delivery** order.
 - **Track:** `GET /orders` and `GET /orders/{id}` (own only) with a status timeline; `GET /payments/order/{id}`; `GET /notifications`.
@@ -76,10 +78,10 @@ The **order state machine** adds a fifth layer: even with the right role, a stat
 
 ### Restaurant
 - **Account:** register as "restaurant", same auth/profile features.
-- **Restaurants:** `POST /restaurants` (create); `PATCH /restaurants/{id}` to edit details and toggle **open/closed** — own only.
+- **Restaurants:** `POST /restaurants` registers **one** restaurant per account — a second returns `409`. It starts **pending** and is invisible to customers until an admin approves it; the owner sees it at `GET /restaurants/mine` meanwhile, with the rejection reason if there is one. `PATCH /restaurants/{id}` edits details, address, contact, food type and open/closed — own only, and none of it re-opens approval.
 - **Menu:** add categories, add/edit menu items, toggle item availability — own only.
 - **Orders:** `POST /orders/{id}/accept`, `/reject` (full refund), and `/status` to advance through `PREPARING → READY_FOR_PICKUP → …` — own restaurant's orders only. Illegal jumps are rejected (`409`).
-- **UI:** Restaurants, **Manage** (create + menu management), Account.
+- **UI:** Restaurants, **Manage** (registration when they have none, then menu, stock, address and settings), Account.
 
 ### Driver
 - **Account:** register as "driver" (the **Driver** tab on the sign-up screen).
@@ -89,10 +91,11 @@ The **order state machine** adds a fifth layer: even with the right role, a stat
 
 ### Admin
 - **Everything a restaurant can do, on any restaurant**, and **view/act on any order** (accept, reject, advance, force-cancel via `/orders/{id}/status → CANCELLED`).
+- **Restaurants:** `GET /restaurants/admin/all` lists every venue whatever its status — name, owner, city/address, contact, open/closed, approval status, rating, review count. `POST /restaurants/{id}/approval` approves or rejects one; a rejection carries a reason the owner is shown, and closes the venue.
 - **Dashboard:** `GET /admin/stats` (counts + GMV + orders-by-status), `GET /admin/users`, `GET /admin/orders`.
 - **Operations:** `POST /admin/expire-acceptances` — runs the restaurant-acceptance timeout sweep (auto-cancel + full refund of orders the restaurant never accepted in time).
-- **UI:** an **Admin** console (Overview / Orders / Users) with a force-cancel action and the timeout-sweep button.
-- **Cannot:** self-register (must be provisioned in the DB). Has no customer cart/orders UI.
+- **UI:** an **Admin** console (Overview / Manage restaurants / Orders / Users) with approve-reject, a force-cancel action and the timeout-sweep button.
+- **Cannot:** self-register (must be provisioned in the DB). Has no customer cart/orders UI. **Cannot register a restaurant** — owners do that for themselves, and a venue an operator created would have nobody to run it.
 
 ---
 
@@ -133,7 +136,7 @@ Refunds set `refund_status`/`refund_amount` and mark the payment `REFUNDED`; rea
 
 | Access | Endpoints |
 |--------|-----------|
-| **Public** | `GET /`, `/health`, `/docs`; `POST /auth/register`, `/auth/login`, `/auth/otp/request`, `/auth/otp/verify`, `/auth/refresh`, `/auth/logout`; `GET /restaurants`, `/restaurants/{id}`, `/restaurants/{id}/categories` |
+| **Public** | `GET /`, `/health`, `/docs`; `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`; `GET /restaurants`, `/restaurants/{id}`, `/restaurants/{id}/categories` |
 | **Any authenticated user** | `GET/PATCH /users/me`; `GET/POST/DELETE /users/me/addresses…`; `GET /notifications`; `GET /orders/{id}` and `GET /payments/order/{id}` (subject to order visibility) |
 | **Customer only** | all `/cart…`; `POST /orders/checkout`; `GET /orders`; `POST /orders/{id}/cancel` |
 | **Restaurant / admin** | `POST /restaurants`; `PATCH /restaurants/{id}`; `POST /restaurants/{id}/categories`; `POST/PATCH/DELETE /restaurants/{id}/items…`; `POST /orders/{id}/accept`, `/reject`, `/status` |

@@ -22,22 +22,32 @@ interface ModalProps {
 export function Modal({ open, title, subtitle, onClose, children }: ModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null)
 
+  // The latest onClose, without it being a dependency below. Callers almost
+  // always pass an inline arrow, which is a new identity on every render — and
+  // with onClose in the dependency list this effect re-ran on every keystroke
+  // and called panelRef.focus(), pulling focus out of whatever input the user
+  // was typing into. A form inside a Modal accepted exactly one character.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    // Only on open, which is the whole point: moving focus into the panel is a
+    // one-time courtesy, not something to redo while someone is typing.
     panelRef.current?.focus()
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

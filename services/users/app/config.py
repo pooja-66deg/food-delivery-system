@@ -45,24 +45,37 @@ class Settings(BaseSettings):
     auth_rate_max: int = 10
     auth_rate_window_seconds: int = 60
 
+    #: Browser origins allowed to call this service, comma-separated.
+    #:
+    #: The frontend is a separate Cloud Run service on its own origin, so
+    #: without this every browser request to a public auth route is rejected by
+    #: the browser. Cloud Run serves each service on two hostnames, hence a list.
+    #:
+    #: Deliberately never "*": these routes are called with credentials, and the
+    #: two together are what allow any site to make authenticated requests on a
+    #: signed-in visitor's behalf.
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # This service mints tokens as well as verifying them, so unlike the others
     # it needs the lifetimes too.
     jwt_expiration_minutes: int = 30
     jwt_refresh_expiration_days: int = 7
 
-    # Redis holds the OTP challenges, the single-use reset/verification tokens,
-    # and the revocation blocklist every other service reads. Shared
+    # Redis holds the auth rate-limit counters, the single-use password-reset
+    # tokens, and the revocation blocklist every other service reads. Shared
     # infrastructure, not another team's service.
     redis_url: str = "redis://redis:6379/0"
 
-    otp_length: int = 6
-    otp_expiration_seconds: int = 120
-    otp_max_attempts: int = 5
-    otp_request_max: int = 3
-    otp_request_window_seconds: int = 300
+    #: How long an emailed reset link stays usable. Short on purpose: it is a
+    #: bearer credential sitting in an inbox, and the person who asked for it is
+    #: almost always looking at their mail right now.
     password_reset_ttl_seconds: int = 900
-    email_verification_ttl_seconds: int = 86400
-    #: Where the reset / verification links point (the SPA, not this API).
+    #: Where the reset link points — the SPA, not this API. Unset in production
+    #: and every reset email sends the recipient to their own machine.
     frontend_base_url: str = "http://localhost:5173"
 
     # Geocoding turns a new address into coordinates. Unset: addresses stay

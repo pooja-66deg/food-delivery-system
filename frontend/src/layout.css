@@ -164,15 +164,6 @@ section:first-of-type { margin-top: 0; }
 .link-btn:hover {
   text-decoration: underline;
 }
-.otp-hint {
-  font-size: 0.85rem;
-  background: rgba(231, 163, 36, 0.16);
-  color: #8a5e0f;
-  border-radius: var(--r-sm);
-  padding: 0.6rem 0.75rem;
-  font-weight: 500;
-}
-
 /* ---------- App shell (authenticated) ---------- */
 .app-shell {
   min-height: 100%;
@@ -2118,3 +2109,68 @@ textarea.input { resize: vertical; font-family: var(--font-body); }
 }
 
 .track-body { display: grid; gap: 0.25rem; }
+
+/* ---------- Admin data table ---------- */
+/* Wide content scrolls inside its own container. Without this the whole admin
+   page scrolls sideways on a laptop, which moves the sidebar off screen. */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 12px);
+  background: #fff;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+  /* Ten columns do not fit a narrow viewport; this keeps them legible and lets
+     .table-scroll do the scrolling rather than squashing every cell. */
+  min-width: 62rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(120, 82, 54, 0.035);
+}
+
+/* Buttons that sit together in a table cell or under a form. */
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chip-danger {
+  background: rgba(189, 54, 32, 0.14);
+  color: var(--tomato-deep);
+}
+
+/* A setting whose control is a form rather than a single input — the address
+   block. Full width in the column, so the fields are not squeezed into the
+   narrow gutter the other controls sit in. */
+.setting-control-wide {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 28rem;
+}

@@ -10,7 +10,6 @@ export interface User {
   last_name: string
   role: string
   is_active: boolean
-  is_email_verified: boolean
   created_at: string
 }
 
@@ -63,15 +62,6 @@ export const authApi = {
   login: (email: string, password: string) =>
     request<Tokens>('/auth/login', { method: 'POST', body: { email, password } }),
 
-  requestOtp: (phone: string) =>
-    request<{ message: string; debug_otp?: string }>('/auth/otp/request', {
-      method: 'POST',
-      body: { phone },
-    }),
-
-  verifyOtp: (phone: string, otp: string) =>
-    request<Tokens>('/auth/otp/verify', { method: 'POST', body: { phone, otp } }),
-
   forgotPassword: (email: string) =>
     request<{ message: string; debug_token?: string }>('/auth/forgot-password', {
       method: 'POST',
@@ -92,15 +82,6 @@ export const authApi = {
       body: { current_password, new_password },
       auth: true,
     }),
-
-  requestEmailVerification: () =>
-    request<{ message: string; debug_token?: string }>('/auth/verify-email/request', {
-      method: 'POST',
-      auth: true,
-    }),
-
-  confirmEmailVerification: (token: string) =>
-    request<void>('/auth/verify-email/confirm', { method: 'POST', body: { token } }),
 
   me: () => request<User>('/users/me', { auth: true }),
 

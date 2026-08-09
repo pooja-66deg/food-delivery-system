@@ -5,7 +5,6 @@ import { AddressPanel } from './AddressPanel'
 import { NotificationPanel } from './NotificationPanel'
 import { ProfilePanel } from './ProfilePanel'
 import { SecurityPanel } from './SecurityPanel'
-import { VerificationNotice } from './VerificationNotice'
 
 const ROLE_LABELS: Record<string, string> = {
   customer: 'Customer account',
@@ -37,8 +36,6 @@ export function AccountPage() {
           {isCustomer ? 'Manage your profile details and delivery addresses.' : 'Manage your profile details.'}
         </p>
       </motion.div>
-
-      <VerificationNotice />
 
       <div className="account-grid">
         <ProfilePanel />

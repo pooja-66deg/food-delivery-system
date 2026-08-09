@@ -1,9 +1,13 @@
 """Single-use tokens backed by Redis.
 
-Password reset and email verification both hand the user an opaque token that
-must be redeemable exactly once. Only the SHA-256 hash is stored, so a Redis
-dump never yields a usable token, and the key is deleted as it is read so two
-concurrent redemptions cannot both succeed.
+Password reset hands the user an opaque token that must be redeemable exactly
+once. Only the SHA-256 hash is stored, so a Redis dump never yields a usable
+token, and the key is deleted as it is read — ``GETDEL`` is atomic, so two
+concurrent redemptions of the same token cannot both succeed.
+
+Kept generic (a ``prefix`` rather than a hard-coded key) because this is the
+shape any "emailed link that works once" needs, and email verification used the
+same store before it was removed.
 """
 
 import hashlib

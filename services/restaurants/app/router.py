@@ -1,7 +1,14 @@
 """HTTP routes for the restaurants domain.
 
-Public: browse restaurants and view menus.
-Owner (role restaurant/admin): create/update restaurants and manage menus.
+Public: browse restaurants and view menus. Browse shows approved venues only.
+Owner (role restaurant): register and manage their own restaurant and its menu.
+Admin: list every venue whatever its status, and approve or reject one.
+
+The split between the last two is the point. An admin may *not* register a
+restaurant — owners do that for themselves, and an operator who could create one
+would be creating a venue with no one to run it. What an admin can do is decide
+whether a registered venue trades, which is what ``owner_or_admin`` versus
+``owner_only`` versus ``admin_only`` below encode.
 """
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
@@ -15,6 +22,9 @@ from app import service
 from app.models import MenuItem
 from app.storage import save_image
 from app.schemas import (
+    AdminRestaurantPage,
+    AdminRestaurantRow,
+    ApprovalDecision,
     CategoryCreate,
     CategoryResponse,
     CategoryUpdate,
@@ -34,8 +44,18 @@ from shared.identity import Identity
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
-# Only restaurant owners (or admins) may manage restaurants and menus.
-owner_only = auth.require_role("restaurant", "admin")
+# Managing an existing restaurant and its menu. Admin is included because an
+# operator sometimes has to correct a listing; service.owned_restaurant() is
+# what still stops one owner touching another's.
+owner_or_admin = auth.require_role("restaurant", "admin")
+
+# Registering a new restaurant. Deliberately narrower than owner_or_admin:
+# admins are excluded, because a venue an operator created would have no owner
+# to run it and no one to hold the one-restaurant-per-account rule against.
+owner_only = auth.require_role("restaurant")
+
+# Deciding whether a venue trades. Only ever an operator.
+admin_only = auth.require_role("admin")
 
 
 # ---------- Public browsing ----------
@@ -111,6 +131,80 @@ async def get_cities(session: AsyncSession = Depends(get_db)) -> dict[str, list[
     return {"cities": cities}
 
 
+# ---------- Owner: my own restaurant ----------
+# Also above `/{restaurant_id}`, for the reason given under Discovery.
+@router.get("/mine", response_model=list[RestaurantResponse])
+async def my_restaurants(
+    user: Identity = Depends(owner_or_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    """The signed-in owner's own restaurants, whatever their approval status.
+
+    The dashboard cannot be built from browse. Browse returns approved venues
+    only, so an owner waiting on approval — or rejected — would open their
+    dashboard to nothing at all and conclude the registration was lost. This is
+    the endpoint that shows them their venue and why it is not yet listed.
+
+    A list, though the platform allows one each: the shape survives the rule
+    being relaxed, and the dashboard already renders a collection.
+    """
+    restaurants = await service.owned_by(session, user.user_id)
+    await service.attach_ratings(session, restaurants)
+    return restaurants
+
+
+# ---------- Admin: the operator console ----------
+@router.get("/admin/all", response_model=AdminRestaurantPage)
+async def admin_list_restaurants(
+    approval_status: str | None = Query(
+        default=None, description="Filter to one status; omit for every venue"
+    ),
+    limit: int = Query(default=discovery.DEFAULT_LIMIT, ge=1, le=discovery.MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+    _: Identity = Depends(admin_only),
+    session: AsyncSession = Depends(get_db),
+):
+    """Every restaurant on the platform, for the operator console.
+
+    Separate from browse rather than a flag on it, because the two answer
+    different questions and must not share a code path: browse answers "what may
+    a customer order from", and a bug that let an unapproved venue leak into it
+    is exactly what the separation prevents.
+    """
+    result = await service.admin_list(
+        session, approval_status=approval_status, limit=limit, offset=offset
+    )
+    await service.attach_ratings(session, result.items)
+    await service.attach_owner_names(session, result.items)
+    return AdminRestaurantPage(
+        items=[AdminRestaurantRow.model_validate(r) for r in result.items],
+        total=result.total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/{restaurant_id}/approval", response_model=AdminRestaurantRow)
+async def decide_approval(
+    restaurant_id: int,
+    decision: ApprovalDecision,
+    _: Identity = Depends(admin_only),
+    session: AsyncSession = Depends(get_db),
+):
+    """Approve or reject a registered venue.
+
+    One endpoint for both directions rather than /approve and /reject: the
+    rejection reason belongs to the same decision, and a reject-then-approve
+    sequence has to clear it — which is easier to get right in one place.
+    """
+    restaurant = await service.set_approval(
+        session, restaurant_id, decision.status, decision.reason
+    )
+    await service.attach_ratings(session, [restaurant])
+    await service.attach_owner_names(session, [restaurant])
+    return AdminRestaurantRow.model_validate(restaurant)
+
+
 @router.get("/{restaurant_id}", response_model=RestaurantDetail)
 async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get_db)):
     restaurant = await service.get_restaurant(session, restaurant_id)
@@ -135,7 +229,7 @@ async def create_restaurant(
 async def update_restaurant(
     restaurant_id: int,
     data: RestaurantUpdate,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     return await service.update_restaurant(session, restaurant_id, user, data)
@@ -145,7 +239,7 @@ async def update_restaurant(
 async def upload_restaurant_image(
     restaurant_id: int,
     file: UploadFile = File(...),
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     restaurant = await service.owned_restaurant(session, user, restaurant_id)
@@ -167,7 +261,7 @@ async def list_categories(restaurant_id: int, session: AsyncSession = Depends(ge
 async def add_category(
     restaurant_id: int,
     data: CategoryCreate,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     return await menu_service.add_category(session, user, restaurant_id, data)
@@ -178,7 +272,7 @@ async def update_category(
     restaurant_id: int,
     category_id: int,
     data: CategoryUpdate,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     return await menu_service.update_category(session, user, restaurant_id, category_id, data)
@@ -190,7 +284,7 @@ async def update_category(
 async def delete_category(
     restaurant_id: int,
     category_id: int,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     # 409 when the category still holds items — see menu_service.delete_category.
@@ -204,7 +298,7 @@ async def delete_category(
 async def add_item(
     restaurant_id: int,
     data: MenuItemCreate,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     return await menu_service.add_item(session, user, restaurant_id, data)
@@ -215,7 +309,7 @@ async def update_item(
     restaurant_id: int,
     item_id: int,
     data: MenuItemUpdate,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     return await menu_service.update_item(session, user, restaurant_id, item_id, data)
@@ -225,7 +319,7 @@ async def update_item(
 async def delete_item(
     restaurant_id: int,
     item_id: int,
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     await menu_service.delete_item(session, user, restaurant_id, item_id)
@@ -236,7 +330,7 @@ async def upload_item_image(
     restaurant_id: int,
     item_id: int,
     file: UploadFile = File(...),
-    user: Identity = Depends(owner_only),
+    user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
     await service.owned_restaurant(session, user, restaurant_id)  # authz
