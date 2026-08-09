@@ -25,7 +25,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
@@ -35,6 +34,7 @@ from app.models import OutboxEvent
 from app.redis_client import close_redis, init_redis
 from app.favorites import router as favorites_router
 from app.router import auth_router, users_router
+from shared.cors import install_cors
 from shared.errors import install_error_handlers
 from shared.messaging import publisher_for
 from shared.outbox import OutboxRelay, relay_for
@@ -93,17 +93,14 @@ app = FastAPI(title="Users Service", version="0.1.0", lifespan=lifespan)
 # production the browser was rejecting cross-origin auth calls and the setting
 # was doing nothing about it.
 #
-# Only this service needs it: every other service sits behind the gateway on the
-# gateway's own origin, and the browser never talks to them directly.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    # Credentialed requests, which is why the origin list is explicit and never
-    # "*" — the combination is what Starlette refuses and browsers reject.
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# This used to say that only this service needed it, because the others sit
+# behind the gateway and the browser never talks to them directly. The second
+# half is true and the conclusion did not follow: nginx forwards a response
+# untouched, so the browser checks the restaurants service's own headers against
+# the SPA's origin exactly as it checks these. It just never saw any, and every
+# call in the app apart from sign-in failed its preflight. All seven services
+# install it now, from one place — see shared/cors.py.
+install_cors(app, settings.cors_origin_list)
 
 install_error_handlers(app)
 app.include_router(auth_router)

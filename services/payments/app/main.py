@@ -20,6 +20,7 @@ from app.consumer import start_consumer, stop_consumer
 from app.models import OutboxEvent
 from app.redis_client import close_redis, init_redis
 from app.router import router
+from shared.cors import install_cors
 from shared.errors import install_error_handlers
 from shared.messaging import publisher_for
 from shared.outbox import OutboxRelay, relay_for
@@ -64,6 +65,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Payments Service", version="0.1.0", lifespan=lifespan)
+
+# The browser checks every response this service returns through the gateway
+# against the SPA's origin, which is a different hostname. nginx forwards what
+# we send and adds nothing, so the header has to originate here.
+install_cors(app, settings.cors_origin_list)
 install_error_handlers(app)
 app.include_router(router)
 
