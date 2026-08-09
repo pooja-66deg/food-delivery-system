@@ -328,15 +328,21 @@ steps:
       - |
         set -e
 
-        # Shared by every service. ^@^ switches gcloud's key/value separator to
-        # "@" so a value may itself contain a comma — _FE_URL has to, because
-        # Cloud Run serves each service on two hostnames and CORS matches Origin
-        # by exact string.
+        # Shared by every service. ^;^ switches gcloud's separator between env
+        # vars to ";" so a value may itself contain a comma — CORS_ORIGINS has
+        # to, because Cloud Run serves each service on two hostnames and Origin
+        # matching is byte-exact.
+        #
+        # ";" and not "@": the separator was "@" until ADMIN_ALERT_EMAIL arrived
+        # and split on the "@" in the address itself. Nothing that belongs here
+        # can contain a semicolon — not a URL, an address, an API key or a
+        # bucket name — which is more than could ever be said for "@".
+        #
         # CORS_ORIGINS is in the shared set, not on users alone. nginx forwards a
         # response untouched, so the browser checks each service's own headers
         # against the SPA's origin — a service without it fails every preflight,
         # which is what happened to everything except sign-in.
-        common="ENVIRONMENT=production@MESSAGING_TRANSPORT=pubsub@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}@CORS_ORIGINS=${_FE_URL}"
+        common="ENVIRONMENT=production;MESSAGING_TRANSPORT=pubsub;GOOGLE_CLOUD_PROJECT=${PROJECT_ID};CORS_ORIGINS=${_FE_URL}"
 
         # CORS_ORIGINS wants every hostname the browser might send as Origin, so
         # it takes _FE_URL whole. FRONTEND_BASE_URL is the opposite: it is
@@ -405,19 +411,19 @@ steps:
         }
 
         deploy users \
-          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=$$fe_primary" \
+          --set-env-vars="^;^$$common;FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         deploy restaurants \
-          --set-env-vars="^@^$$common@GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}@ADMIN_ALERT_EMAIL=${_ADMIN_ALERT_EMAIL}" \
+          --set-env-vars="^;^$$common;GCS_BUCKET_NAME=${_GCS_BUCKET_NAME};ADMIN_ALERT_EMAIL=${_ADMIN_ALERT_EMAIL}" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=RESTAURANTS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
 
         deploy orders \
-          --set-env-vars="^@^$$common@RESTAURANTS_SERVICE_URL=${_RESTAURANTS_URL}" \
+          --set-env-vars="^;^$$common;RESTAURANTS_SERVICE_URL=${_RESTAURANTS_URL}" \
           --set-secrets="DATABASE_URL=ORDERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
 
         # Stripe keys go to payments and nowhere else. In the monolith every
@@ -429,14 +435,14 @@ steps:
         # be verified, so none is trusted and card orders never settle from
         # Stripe's callback.
         deploy payments \
-          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=$$fe_primary" \
+          --set-env-vars="^;^$$common;FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=PAYMENTS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             STRIPE_SECRET_KEY=STRIPE_SECRET_KEY \
             STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET)"
 
         deploy delivery \
-          --set-env-vars="^@^$$common" \
+          --set-env-vars="^;^$$common" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=DELIVERY_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
@@ -447,7 +453,7 @@ steps:
         # transport and nobody notices until a customer asks where their receipt
         # is.
         deploy notifications \
-          --set-env-vars="^@^$$common" \
+          --set-env-vars="^;^$$common" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=NOTIFICATIONS_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             SENDGRID_API_KEY=SENDGRID_API_KEY \
@@ -457,7 +463,7 @@ steps:
             TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER)"
 
         deploy admin \
-          --set-env-vars="^@^$$common@ORDERS_SERVICE_URL=${_ORDERS_URL}" \
+          --set-env-vars="^;^$$common;ORDERS_SERVICE_URL=${_ORDERS_URL}" \
           --set-secrets="DATABASE_URL=ADMIN_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
 
   # -----------------------------------------------------------------------
@@ -485,7 +491,7 @@ steps:
       - --allow-unauthenticated
       - --vpc-connector=${_VPC_CONNECTOR}
       - --vpc-egress=all-traffic
-      - --set-env-vars=^@^USERS_URL=${_USERS_URL}@RESTAURANTS_URL=${_RESTAURANTS_URL}@ORDERS_URL=${_ORDERS_URL}@PAYMENTS_URL=${_PAYMENTS_URL}@DELIVERY_URL=${_DELIVERY_URL}@NOTIFICATIONS_URL=${_NOTIFICATIONS_URL}@ADMIN_URL=${_ADMIN_URL}
+      - --set-env-vars=^;^USERS_URL=${_USERS_URL};RESTAURANTS_URL=${_RESTAURANTS_URL};ORDERS_URL=${_ORDERS_URL};PAYMENTS_URL=${_PAYMENTS_URL};DELIVERY_URL=${_DELIVERY_URL};NOTIFICATIONS_URL=${_NOTIFICATIONS_URL};ADMIN_URL=${_ADMIN_URL}
       - --quiet
 
   # -----------------------------------------------------------------------

@@ -211,30 +211,36 @@ jobs:
           # calls for checkout. Empty on the very first deploy — see
           # infra/gcp/README.md, "The first deploy takes two passes".
           #
-          # ^@^ switches gcloud's separator between substitutions from "," to
-          # "@", the same escape cloudbuild.yaml uses for --set-env-vars. It is
+          # ^;^ switches gcloud's separator between substitutions from "," to
+          # ";", the same escape cloudbuild.yaml uses for --set-env-vars. It is
           # required, not stylistic: _FE_URL is a comma-separated pair, and with
           # the default separator gcloud reads that comma as the end of the
           # substitution and rejects the second URL as a malformed key=value.
-          # Nothing here may contain an "@".
-          SUBS="^@^_REGION=${{ vars.GCP_REGION || 'us-central1' }}"
-          SUBS="$SUBS@_AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }}"
-          SUBS="$SUBS@_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }}"
-          SUBS="$SUBS@_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }}"
-          SUBS="$SUBS@_GCS_BUCKET_NAME=${{ vars.GCP_GCS_BUCKET_NAME }}"
-          SUBS="$SUBS@_ADMIN_ALERT_EMAIL=${{ vars.GCP_ADMIN_ALERT_EMAIL }}"
-          SUBS="$SUBS@_GATEWAY_URL=${{ vars.GCP_GATEWAY_URL }}"
-          SUBS="$SUBS@_FE_URL=${{ vars.GCP_FE_URL }}"
-          SUBS="$SUBS@_USERS_URL=${{ vars.GCP_USERS_URL }}"
-          SUBS="$SUBS@_RESTAURANTS_URL=${{ vars.GCP_RESTAURANTS_URL }}"
-          SUBS="$SUBS@_ORDERS_URL=${{ vars.GCP_ORDERS_URL }}"
-          SUBS="$SUBS@_PAYMENTS_URL=${{ vars.GCP_PAYMENTS_URL }}"
-          SUBS="$SUBS@_DELIVERY_URL=${{ vars.GCP_DELIVERY_URL }}"
-          SUBS="$SUBS@_NOTIFICATIONS_URL=${{ vars.GCP_NOTIFICATIONS_URL }}"
-          SUBS="$SUBS@_ADMIN_URL=${{ vars.GCP_ADMIN_URL }}"
-          SUBS="$SUBS@_MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }}"
-          SUBS="$SUBS@_STRIPE_PUBLISHABLE_KEY=${{ vars.GCP_STRIPE_PUBLISHABLE_KEY }}"
-          SUBS="$SUBS@_TAG=${{ github.sha }}"
+          #
+          # The separator was "@" until _ADMIN_ALERT_EMAIL was added and every
+          # deploy failed on "Bad syntax for dict arg: [66degrees.com]" — an
+          # email address contains the one character the list was not allowed to
+          # contain. ";" is chosen because nothing that can appear here has one:
+          # not a URL, not a project:region:instance, not an API key, not a git
+          # SHA, and not an address. Before adding a substitution, check that.
+          SUBS="^;^_REGION=${{ vars.GCP_REGION || 'us-central1' }}"
+          SUBS="$SUBS;_AR_REPO=${{ vars.GCP_AR_REPO || 'food-delivery' }}"
+          SUBS="$SUBS;_CLOUDSQL_INSTANCE=${{ vars.GCP_CLOUDSQL_INSTANCE }}"
+          SUBS="$SUBS;_VPC_CONNECTOR=${{ vars.GCP_VPC_CONNECTOR }}"
+          SUBS="$SUBS;_GCS_BUCKET_NAME=${{ vars.GCP_GCS_BUCKET_NAME }}"
+          SUBS="$SUBS;_ADMIN_ALERT_EMAIL=${{ vars.GCP_ADMIN_ALERT_EMAIL }}"
+          SUBS="$SUBS;_GATEWAY_URL=${{ vars.GCP_GATEWAY_URL }}"
+          SUBS="$SUBS;_FE_URL=${{ vars.GCP_FE_URL }}"
+          SUBS="$SUBS;_USERS_URL=${{ vars.GCP_USERS_URL }}"
+          SUBS="$SUBS;_RESTAURANTS_URL=${{ vars.GCP_RESTAURANTS_URL }}"
+          SUBS="$SUBS;_ORDERS_URL=${{ vars.GCP_ORDERS_URL }}"
+          SUBS="$SUBS;_PAYMENTS_URL=${{ vars.GCP_PAYMENTS_URL }}"
+          SUBS="$SUBS;_DELIVERY_URL=${{ vars.GCP_DELIVERY_URL }}"
+          SUBS="$SUBS;_NOTIFICATIONS_URL=${{ vars.GCP_NOTIFICATIONS_URL }}"
+          SUBS="$SUBS;_ADMIN_URL=${{ vars.GCP_ADMIN_URL }}"
+          SUBS="$SUBS;_MAPS_BROWSER_KEY=${{ vars.GCP_MAPS_BROWSER_KEY }}"
+          SUBS="$SUBS;_STRIPE_PUBLISHABLE_KEY=${{ vars.GCP_STRIPE_PUBLISHABLE_KEY }}"
+          SUBS="$SUBS;_TAG=${{ github.sha }}"
           gcloud builds submit \
             --config infra/gcp/cloudbuild.yaml \
             --substitutions="$SUBS"
