@@ -42,16 +42,24 @@ substitutions:
   # account needs objectCreator on it).
   _GCS_BUCKET_NAME: ""
 
-  # Public URL of the API gateway — what the frontend calls. Empty on the first
-  # pass; set it on the second.
+  # Public URL of the API gateway — what the frontend calls. The plain origin,
+  # with no /api suffix and no trailing slash: build-frontend appends /api when
+  # it bakes VITE_API_URL into the bundle. Empty on the first pass; set it on
+  # the second.
   _GATEWAY_URL: ""
-  # Public frontend URL. Three uses, and a deploy without it is quietly broken
-  # rather than obviously broken:
+  # Public frontend URL, and legitimately a comma-separated list — Cloud Run
+  # serves each service on both a hash and a project-number hostname, and CORS
+  # matches Origin byte-exactly, so a single entry locks out whichever one the
+  # user actually landed on. Three uses, and a deploy without it is quietly
+  # broken rather than obviously broken:
   #   - CORS_ORIGINS — the frontend is a separate Cloud Run service on its own
-  #     origin, so without it every browser request is rejected.
+  #     origin, so without it every browser request is rejected. Takes the whole
+  #     list.
   #   - FRONTEND_BASE_URL on users — password-reset links are built from it, so
   #     an unset value mails the recipient a link to their own machine.
   #   - FRONTEND_BASE_URL on payments — where Stripe returns the customer.
+  # Both FRONTEND_BASE_URL uses concatenate it into one link and so take the
+  # first element only; see fe_primary in deploy-services.
   _FE_URL: ""
 
   # Internal Cloud Run URLs the gateway routes to, and that orders calls for
@@ -145,6 +153,14 @@ steps:
           -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gateway:${_TAG}" .
         docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gateway:${_TAG}"
 
+  # VITE_API_URL is the API *base*, not the gateway origin: every route in
+  # infra/nginx/nginx.conf.template lives under /api/, and the SPA's default when
+  # the variable is unset is the bare string "/api" (frontend/src/api/client.ts).
+  # Passing _GATEWAY_URL alone dropped the prefix, so the SPA called
+  # https://api-gateway.../auth/login, nginx's catch-all `location /` returned
+  # 404 with no CORS headers, and the browser reported a CORS failure rather than
+  # the routing mistake it was. _GATEWAY_URL stays the plain origin so it is one
+  # copy-paste from `gcloud run services describe`, and the /api is appended here.
   - id: build-frontend
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -153,7 +169,7 @@ steps:
       - |
         set -e
         docker build -f infra/gcp/frontend.Dockerfile \
-          --build-arg "VITE_API_URL=${_GATEWAY_URL}" \
+          --build-arg "VITE_API_URL=${_GATEWAY_URL}/api" \
           --build-arg "VITE_GOOGLE_MAPS_API_KEY=${_MAPS_BROWSER_KEY}" \
           --build-arg "VITE_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_KEY}" \
           -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}" .
@@ -298,6 +314,17 @@ steps:
         # by exact string.
         common="ENVIRONMENT=production@MESSAGING_TRANSPORT=pubsub@GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
 
+        # CORS_ORIGINS wants every hostname the browser might send as Origin, so
+        # it takes _FE_URL whole. FRONTEND_BASE_URL is the opposite: it is
+        # concatenated into a single link — the password-reset URL in users, the
+        # Stripe return URL in payments — and a comma-joined pair there produces
+        # "https://a,https://b/reset-password?token=…", which is not a URL at all.
+        # So it gets the first element only. The assignment is split in two
+        # because ${_FE_URL} is a Cloud Build substitution and %%,* is bash: the
+        # substitution has to land in a shell variable before bash can trim it.
+        fe_all="${_FE_URL}"
+        fe_primary="$${fe_all%%,*}"
+
         deploy() {
           local svc="$$1"; shift
           gcloud run deploy "$$svc-service" \
@@ -354,7 +381,7 @@ steps:
         }
 
         deploy users \
-          --set-env-vars="^@^$$common@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=${_FE_URL}" \
+          --set-env-vars="^@^$$common@CORS_ORIGINS=${_FE_URL}@FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
@@ -378,7 +405,7 @@ steps:
         # be verified, so none is trusted and card orders never settle from
         # Stripe's callback.
         deploy payments \
-          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=${_FE_URL}" \
+          --set-env-vars="^@^$$common@FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
             "DATABASE_URL=PAYMENTS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
             STRIPE_SECRET_KEY=STRIPE_SECRET_KEY \

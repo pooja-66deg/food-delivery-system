@@ -1,7 +1,10 @@
 // Thin fetch wrapper around the backend API.
 //
 // In dev, requests go to "/api/*" which Vite proxies to the FastAPI server
-// (see vite.config.ts). In production, set VITE_API_URL to the API origin.
+// (see vite.config.ts). In production, set VITE_API_URL to the API base
+// *including* the /api prefix — e.g. https://api-gateway.example.run.app/api,
+// not the bare origin. Every gateway route is mounted under /api/, and the
+// fallback below is a path for the same reason.
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 
