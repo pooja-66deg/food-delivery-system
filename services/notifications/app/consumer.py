@@ -119,18 +119,12 @@ async def _handle_restaurant(session, payload: dict) -> None:
         return  # a status with no decision to announce — see RESTAURANT_DECISION
     subject, body = wording
 
-    # Create in-app notification for the feed
-    service.add_notification(
-        session, owner_id, f"restaurant.{status}", body
-    )
-
     contact = await session.get(Contact, owner_id)
     if contact is None or not contact.email:
         # The address arrives on its own topic and may simply not have landed
         # yet. Nothing is retried: an approval whose mail was missed is visible
         # the moment the owner tries to sign in, which now works.
         logger.warning("[notify] no email on file for owner %s", owner_id)
-        await session.commit()
         return
 
     from app import senders
