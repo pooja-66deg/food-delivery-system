@@ -361,6 +361,7 @@ REJECTED_MESSAGE = (
 async def bootstrap_admin(session: AsyncSession, email: str, password: str) -> User:
     """Create the first admin user. Only works if no admin exists.
 
+    Sets password_reset_required=True so admin must reset password on first login.
     Raises ConflictException if an admin already exists or the email is taken.
     """
     admin_exists = await session.scalar(select(User).where(User.role == "admin"))
@@ -381,6 +382,7 @@ async def bootstrap_admin(session: AsyncSession, email: str, password: str) -> U
         hashed_password=hash_password(password),
         role="admin",
         is_active=True,
+        password_reset_required=True,
     )
     session.add(user)
     try:
