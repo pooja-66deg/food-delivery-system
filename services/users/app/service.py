@@ -21,7 +21,7 @@ __all__ = [
     "request_password_reset", "reset_password",
     "is_revoked", "generation_matches",
     "apply_restaurant_decision", "publish_restaurant_registration",
-    "PENDING_APPROVAL_MESSAGE", "REJECTED_MESSAGE",
+    "bootstrap_admin", "PENDING_APPROVAL_MESSAGE", "REJECTED_MESSAGE",
 ]
 
 _BLOCKLIST_KEY = "jwt:blocklist:{jti}"
@@ -356,6 +356,42 @@ REJECTED_MESSAGE = (
     "Your restaurant registration was not approved. "
     "Please contact support if you think this is a mistake."
 )
+
+
+async def bootstrap_admin(session: AsyncSession, email: str, password: str) -> User:
+    """Create the first admin user. Only works if no admin exists.
+
+    Raises ConflictException if an admin already exists or the email is taken.
+    """
+    admin_exists = await session.scalar(select(User).where(User.role == "admin"))
+    if admin_exists is not None:
+        raise ConflictException("Admin account already exists")
+
+    existing = await session.scalar(
+        select(User).where(or_(User.email == email, User.phone == email))
+    )
+    if existing is not None:
+        raise ConflictException("Email already registered")
+
+    user = User(
+        email=email,
+        phone=email,
+        first_name="Admin",
+        last_name="User",
+        hashed_password=hash_password(password),
+        role="admin",
+        is_active=True,
+    )
+    session.add(user)
+    try:
+        await session.flush()
+        publish_user(session, user)
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise ConflictException("Email already registered")
+    await session.refresh(user)
+    return user
 
 
 def _inactive_reason(user: User) -> str:

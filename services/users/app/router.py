@@ -62,6 +62,17 @@ async def register(
     return await service.register_user(session, data)
 
 
+@auth_router.post("/internal/bootstrap-admin", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def bootstrap_admin(
+    data: LoginRequest, session: AsyncSession = Depends(get_db),
+):
+    """Create the first admin user. Only works if no admin exists.
+
+    Internal endpoint — not for public use.
+    """
+    return await service.bootstrap_admin(session, data.email, data.password)
+
+
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(
     data: LoginRequest, request: Request,
