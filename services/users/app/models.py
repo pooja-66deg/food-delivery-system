@@ -47,6 +47,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="customer", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    password_reset_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: Where a restaurant applicant stands with the operator, mirrored from the
     #: restaurants service by the consumer. NULL for every other role — a
     #: customer has no application, and "approved" there would describe a

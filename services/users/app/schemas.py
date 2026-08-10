@@ -232,3 +232,32 @@ class AddressResponse(BaseModel):
     # placed on a map or routed to, rather than an error.
     latitude: float | None = None
     longitude: float | None = None
+
+
+class AdminPasswordResetRequest(BaseModel):
+    """Request to reset admin password after forced reset."""
+
+    email: EmailStr
+    old_password: str = Field(..., min_length=8, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _within_bcrypt_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes")
+        return v
+
+
+class AdminPasswordResetResponse(BaseModel):
+    """Response after admin resets password."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
+    first_name: str
+    last_name: str
+    role: str
+    is_active: bool
+    created_at: datetime

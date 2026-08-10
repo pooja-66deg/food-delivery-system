@@ -12,16 +12,20 @@ this pair a forgotten password is an operator task.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from shared.ratelimit import enforce_rate_limit
+from shared.errors import UnauthorizedException
 from app.db import get_db
 from app.redis_client import get_redis
 
 from app import profile as profile_service
 from app import service
+from app.security import verify_password
 from app.dependencies import current_user as require_user
 from app.dependencies import optional_bearer
 from app.models import User
@@ -30,6 +34,8 @@ from app.schemas import (
     AddressCreate,
     AddressResponse,
     AddressUpdate,
+    AdminPasswordResetRequest,
+    AdminPasswordResetResponse,
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
@@ -82,6 +88,41 @@ async def login(
         redis, f"rl:login:{_client_ip(request)}:{data.email}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
+    return await service.login(session, data.email, data.password)
+
+
+@auth_router.post("/admin/login")
+async def admin_login(
+    data: LoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+):
+    """Admin login endpoint that enforces password reset on first login."""
+    await enforce_rate_limit(
+        redis, f"rl:login:{_client_ip(request)}:{data.email}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
+
+    # Validate password and get user
+    stmt = select(User).where(User.email == data.email)
+    user = (await session.scalars(stmt)).first()
+
+    if not user or not verify_password(data.password, user.password_hash):
+        raise UnauthorizedException("Invalid email or password")
+
+    # Check if admin with password_reset_required
+    if user.role == "admin" and user.password_reset_required:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Password reset required",
+                "password_reset_required": True,
+                "email": user.email,
+            }
+        )
+
+    # Normal login for non-admin or admin with password already reset
     return await service.login(session, data.email, data.password)
 
 
@@ -159,6 +200,24 @@ async def reset_password(
     signed in — the token *is* the credential.
     """
     await service.reset_password(session, redis, data.token, data.new_password)
+
+
+@auth_router.post(
+    "/admin/reset-password",
+    response_model=AdminPasswordResetResponse,
+    status_code=status.HTTP_200_OK
+)
+async def admin_reset_password(
+    data: AdminPasswordResetRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Reset admin password after forced reset flow.
+
+    Validates old password, sets new password, and clears password_reset_required flag.
+    """
+    return await service.reset_admin_password(
+        session, data.email, data.old_password, data.new_password
+    )
 
 
 @users_router.get("/me", response_model=UserResponse)
