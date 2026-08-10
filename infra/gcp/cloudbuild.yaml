@@ -463,7 +463,7 @@ steps:
             TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER)"
 
         deploy admin \
-          --set-env-vars="^;^$$common;ORDERS_SERVICE_URL=${_ORDERS_URL}" \
+          --set-env-vars="^;^$$common;ORDERS_SERVICE_URL=${_ORDERS_URL};USERS_SERVICE_URL=${_USERS_URL}" \
           --set-secrets="DATABASE_URL=ADMIN_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
 
   # -----------------------------------------------------------------------

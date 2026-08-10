@@ -32,10 +32,16 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong.'): 
 }
 
 let tokenGetter: () => string | null = () => null
+let logoutHandler: (() => void) | null = null
 
 /** Register how the client obtains the current access token. */
 export function setTokenGetter(fn: () => string | null): void {
   tokenGetter = fn
+}
+
+/** Register a handler to call when the API returns 401 (invalid/expired token). */
+export function setLogoutHandler(fn: () => void): void {
+  logoutHandler = fn
 }
 
 interface RequestOptions {
@@ -69,6 +75,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   const data = await res.json().catch(() => null)
   if (!res.ok) {
+    if (res.status === 401 && logoutHandler) {
+      logoutHandler()
+    }
     throw new ApiError(extractMessage(data) ?? `Request failed (${res.status})`, res.status, data)
   }
   return data as T
@@ -90,6 +99,9 @@ export async function upload<T>(path: string, file: File): Promise<T> {
   }
   const data = await res.json().catch(() => null)
   if (!res.ok) {
+    if (res.status === 401 && logoutHandler) {
+      logoutHandler()
+    }
     throw new ApiError(extractMessage(data) ?? `Request failed (${res.status})`, res.status, data)
   }
   return data as T

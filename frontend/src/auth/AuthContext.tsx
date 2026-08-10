@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 
 import { authApi } from '../api/auth'
 import type { Tokens, User } from '../api/auth'
-import { setTokenGetter } from '../api/client'
+import { setTokenGetter, setLogoutHandler } from '../api/client'
 
 const TOKEN_KEY = 'fd_access_token'
 const REFRESH_KEY = 'fd_refresh_token'
@@ -79,6 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(REFRESH_KEY)
       setUser(null)
     }
+  }, [])
+
+  useEffect(() => {
+    setLogoutHandler(() => {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_KEY)
+      setUser(null)
+    })
   }, [])
 
   const value: AuthState = {
