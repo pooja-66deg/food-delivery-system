@@ -36,6 +36,12 @@ async def session(engine) -> AsyncSession:
 
 
 @pytest_asyncio.fixture
+async def db_session(session) -> AsyncSession:
+    """Alias for session fixture to support test templates."""
+    return session
+
+
+@pytest_asyncio.fixture
 async def client(engine):
     """The service's own app, with its database and Redis swapped for fakes."""
     import fakeredis.aioredis
