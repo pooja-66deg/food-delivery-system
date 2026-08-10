@@ -94,6 +94,6 @@ export const ordersApi = {
   reject: (id: number, reason?: string) =>
     request<Order>(`/orders/${id}/reject`, { method: 'POST', body: { reason }, auth: true }),
 
-  setStatus: (id: number, to: string) =>
-    request<Order>(`/orders/${id}/status`, { method: 'POST', body: { to }, auth: true }),
+  setStatus: (id: number, status: string) =>
+    request<Order>(`/orders/${id}/status`, { method: 'POST', body: { status }, auth: true }),
 }

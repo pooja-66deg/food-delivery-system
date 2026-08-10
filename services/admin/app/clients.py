@@ -16,6 +16,7 @@ from app.config import settings
 from shared.http_client import CircuitBreaker, ServiceClient
 
 _orders: Optional[ServiceClient] = None
+_users: Optional[ServiceClient] = None
 
 
 def orders() -> ServiceClient:
@@ -33,8 +34,26 @@ def orders() -> ServiceClient:
     return _orders
 
 
+def users() -> ServiceClient:
+    global _users
+    if _users is None:
+        _users = ServiceClient(
+            settings.users_service_url,
+            name="users-service",
+            timeout_seconds=settings.orders_timeout_seconds,
+            breaker=CircuitBreaker(
+                threshold=settings.breaker_threshold,
+                cooldown_seconds=settings.breaker_cooldown_seconds,
+            ),
+        )
+    return _users
+
+
 async def close_clients() -> None:
-    global _orders
+    global _orders, _users
     if _orders is not None:
         await _orders.aclose()
         _orders = None
+    if _users is not None:
+        await _users.aclose()
+        _users = None

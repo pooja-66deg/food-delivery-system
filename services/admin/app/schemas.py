@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class AdminStats(BaseModel):
@@ -33,4 +33,22 @@ class AdminOrderRow(BaseModel):
     status: str
     payment_status: str
     total: Decimal
+    created_at: datetime
+
+
+class BootstrapAdminRequest(BaseModel):
+    """Payload to bootstrap the first admin."""
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class BootstrapAdminResponse(BaseModel):
+    """Response after creating the first admin."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: EmailStr
+    first_name: str
+    last_name: str
+    role: str
+    is_active: bool
     created_at: datetime

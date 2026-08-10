@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # The one action the console takes rather than reports: running the
     # acceptance-timeout sweep, which belongs to the orders service.
     orders_service_url: str = "http://orders-service:8000"
+    # The users service, for bootstrapping the first admin.
+    users_service_url: str = "http://users-service:8000"
     orders_timeout_seconds: float = 10.0
     breaker_threshold: int = 5
     breaker_cooldown_seconds: float = 10.0

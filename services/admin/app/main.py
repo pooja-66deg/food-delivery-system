@@ -18,7 +18,7 @@ from app.clients import close_clients
 from app.config import settings
 from app.consumer import start_consumer, stop_consumer
 from app.db import engine
-from app.router import router
+from app.router import router, bootstrap_router
 from shared.cors import install_cors
 from shared.errors import install_error_handlers
 
@@ -47,6 +47,7 @@ app = FastAPI(title="Admin Service", version="0.1.0", lifespan=lifespan)
 # we send and adds nothing, so the header has to originate here.
 install_cors(app, settings.cors_origin_list)
 install_error_handlers(app)
+app.include_router(bootstrap_router)
 app.include_router(router)
 
 
