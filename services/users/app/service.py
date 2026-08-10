@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from shared.errors import ConflictException, UnauthorizedException
+from shared.errors import ConflictException, NotFoundException, UnauthorizedException
 from app.jwt_tokens import create_access_token, create_refresh_token, verify_token
 from app.security import hash_password, verify_password
 from app import outbox
@@ -18,7 +18,7 @@ from app.schemas import RestaurantSignup, TokenResponse, UserRegister
 __all__ = [
     "register_user", "login", "refresh_tokens", "logout",
     "verify_password", "change_password",
-    "request_password_reset", "reset_password",
+    "request_password_reset", "reset_password", "reset_admin_password",
     "is_revoked", "generation_matches",
     "apply_restaurant_decision", "publish_restaurant_registration",
     "bootstrap_admin", "PENDING_APPROVAL_MESSAGE", "REJECTED_MESSAGE",
@@ -390,6 +390,28 @@ async def bootstrap_admin(session: AsyncSession, email: str, password: str) -> U
     except IntegrityError:
         await session.rollback()
         raise ConflictException("Email already registered")
+    await session.refresh(user)
+    return user
+
+
+async def reset_admin_password(
+    session: AsyncSession, email: str, old_password: str, new_password: str
+) -> User:
+    """Reset admin password after forced reset on first login.
+
+    Validates old password and sets password_reset_required to False.
+    Raises NotFoundException if user not found or UnauthorizedException if old password is wrong.
+    """
+    user = await session.scalar(select(User).where(User.email == email))
+    if user is None:
+        raise NotFoundException("User", email)
+
+    if not verify_password(old_password, user.hashed_password):
+        raise UnauthorizedException("Invalid email or password")
+
+    user.hashed_password = hash_password(new_password)
+    user.password_reset_required = False
+    await session.commit()
     await session.refresh(user)
     return user
 
