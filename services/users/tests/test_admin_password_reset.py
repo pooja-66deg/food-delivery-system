@@ -1,9 +1,7 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
 from app.service import bootstrap_admin, reset_admin_password
-from app.schemas import AdminPasswordResetRequest
 from shared.errors import NotFoundException, UnauthorizedException
 
 
