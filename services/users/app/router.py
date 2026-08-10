@@ -34,6 +34,8 @@ from app.schemas import (
     AddressCreate,
     AddressResponse,
     AddressUpdate,
+    AdminPasswordResetRequest,
+    AdminPasswordResetResponse,
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
@@ -198,6 +200,24 @@ async def reset_password(
     signed in — the token *is* the credential.
     """
     await service.reset_password(session, redis, data.token, data.new_password)
+
+
+@auth_router.post(
+    "/admin/reset-password",
+    response_model=AdminPasswordResetResponse,
+    status_code=status.HTTP_200_OK
+)
+async def admin_reset_password(
+    data: AdminPasswordResetRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Reset admin password after forced reset flow.
+
+    Validates old password, sets new password, and clears password_reset_required flag.
+    """
+    return await service.reset_admin_password(
+        session, data.email, data.old_password, data.new_password
+    )
 
 
 @users_router.get("/me", response_model=UserResponse)
