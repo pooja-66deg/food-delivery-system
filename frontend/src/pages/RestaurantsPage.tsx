@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { favoritesApi } from '../api/favorites'
 import { restaurantsApi } from '../api/restaurants'
-import type { CuisineCount, Restaurant, RestaurantSuggestion } from '../api/restaurants'
+import type { BrowseParams, Restaurant, RestaurantSuggestion } from '../api/restaurants'
 import { errorMessage } from '../api/client'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { BrowseFilters, NO_FACETS } from '../components/BrowseFilters'
@@ -16,6 +16,8 @@ import { PopularCuisines } from '../components/PopularCuisines'
 import { SearchSuggest } from '../components/SearchSuggest'
 import { RatingStars } from '../reviews/RatingStars'
 import { reviewCountLabel } from '../reviews/RatingSummary'
+import { useRestaurantsList, usePopularCuisines } from '../hooks/queries/useRestaurantQueries'
+import { useFavoriteIds } from '../hooks/queries/useFavoritesQuery'
 
 const PAGE_SIZE = 12
 
@@ -23,20 +25,32 @@ const BAND_LABELS: Record<number, string> = { 1: '₹', 2: '₹₹', 3: '₹₹�
 
 export function RestaurantsPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState<Restaurant[] | null>(null)
-  const [total, setTotal] = useState(0)
-  const [cuisines, setCuisines] = useState<CuisineCount[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
   const [search, setSearch] = useState('')
   const [city, setCity] = useState('')
   const [facets, setFacets] = useState<Facets>(NO_FACETS)
-  // The term the shown results were actually fetched for, so "matched dishes"
-  // and the empty-state copy describe the results rather than what is currently
-  // typed in the box.
+  // The term/filters the shown results were actually fetched for, so "matched
+  // dishes" and the empty-state copy describe the results rather than what is
+  // currently typed in the box.
   const [appliedSearch, setAppliedSearch] = useState('')
-  // Saved restaurant ids. Held here rather than on each card so one fetch covers
-  // the whole grid and a toggle updates a single source of truth.
-  const [favorites, setFavorites] = useState<Set<number>>(new Set())
+
+  // What actually drives the React Query fetch. Only updated when a search is
+  // explicitly (re-)triggered — submit, a cuisine chip, or a filter change —
+  // mirroring the old imperative `load()` calls rather than fetching on every
+  // keystroke.
+  const [queryParams, setQueryParams] = useState<BrowseParams>({
+    ...NO_FACETS,
+    limit: PAGE_SIZE,
+    offset: 0,
+  })
+
+  // React Query owns page one (via queryParams above). Pages fetched by
+  // "load more" accumulate here on top of it, and are reset whenever a new
+  // search replaces queryParams.
+  const [extraItems, setExtraItems] = useState<Restaurant[]>([])
+  const [total, setTotal] = useState(0)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   // Next-page fetches are driven by scrolling, so they can be triggered far more
   // often than they complete. The state drives the footer copy; the ref is what
   // actually guards against firing a second request for the same offset, since
@@ -45,31 +59,48 @@ export function RestaurantsPage() {
   const loadingMoreRef = useRef(false)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  // Overrides let a cuisine chip or a filter search immediately with its own
-  // value instead of racing the corresponding state update.
-  const load = async (overrides?: { search?: string; city?: string; facets?: Facets }) => {
+  const {
+    data: page,
+    isLoading,
+    isError: isListError,
+    error: listError,
+  } = useRestaurantsList(queryParams)
+
+  const { data: cuisines = [] } = usePopularCuisines()
+  // Hearts are a nice-to-have too, and only customers have favourites — a 403
+  // for any other role is swallowed inside the hook via initialData.
+  const { data: favoriteIds = new Set<number>() } = useFavoriteIds()
+
+  useEffect(() => {
+    if (page) setTotal(page.total)
+  }, [page])
+
+  useEffect(() => {
+    if (isListError) setTotal(0)
+  }, [isListError])
+
+  // A failed fetch clears the grid (same as the old catch block setting
+  // `items([])`) rather than leaving stale results under the error banner.
+  const items = isListError ? [] : page ? [...page.items, ...extraItems] : null
+
+  // Overrides let a cuisine chip or a filter change search immediately with
+  // its own value instead of racing the corresponding state update.
+  const runSearch = (overrides?: { search?: string; city?: string; facets?: Facets }) => {
     const term = overrides?.search ?? search
     const place = overrides?.city ?? city
     const active = overrides?.facets ?? facets
-    setError(null)
-    try {
-      const page = await restaurantsApi.list({
-        ...active,
-        search: term || undefined,
-        city: place || undefined,
-        // Paging is "load more" rather than numbered pages, so a fetch always
-        // starts at the top and the list below is the whole loaded run.
-        limit: PAGE_SIZE,
-        offset: 0,
-      })
-      setItems(page.items)
-      setTotal(page.total)
-      setAppliedSearch(term)
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to load restaurants.'))
-      setItems([])
-      setTotal(0)
-    }
+    setAppliedSearch(term)
+    setExtraItems([])
+    setLoadMoreError(null)
+    setQueryParams({
+      ...active,
+      search: term || undefined,
+      city: place || undefined,
+      // Paging is "load more" rather than numbered pages, so a fetch always
+      // starts at the top and the list below is the whole loaded run.
+      limit: PAGE_SIZE,
+      offset: 0,
+    })
   }
 
   const loadMore = async () => {
@@ -77,39 +108,22 @@ export function RestaurantsPage() {
     loadingMoreRef.current = true
     setLoadingMore(true)
     try {
-      const page = await restaurantsApi.list({
+      const nextPage = await restaurantsApi.list({
         ...facets,
         search: appliedSearch || undefined,
         city: city || undefined,
         limit: PAGE_SIZE,
         offset: items.length,
       })
-      setItems((current) => [...(current ?? []), ...page.items])
-      setTotal(page.total)
+      setExtraItems((current) => [...current, ...nextPage.items])
+      setTotal(nextPage.total)
     } catch (e) {
-      setError(errorMessage(e, 'Failed to load more restaurants.'))
+      setLoadMoreError(errorMessage(e, 'Failed to load more restaurants.'))
     } finally {
       loadingMoreRef.current = false
       setLoadingMore(false)
     }
   }
-
-  useEffect(() => {
-    void load()
-    // Discovery chips are a nice-to-have: a failure here must not take the
-    // page down with it.
-    void restaurantsApi
-      .popularCuisines()
-      .then(setCuisines)
-      .catch(() => setCuisines([]))
-    // Hearts are a nice-to-have too, and only customers have favourites — a 403
-    // for any other role must not surface as a page error.
-    void favoritesApi
-      .ids()
-      .then((ids) => setFavorites(new Set(ids)))
-      .catch(() => setFavorites(new Set()))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Scroll pagination: the next page is fetched when a sentinel below the grid
   // comes into view, with a rootMargin so the fetch starts before the user
@@ -137,7 +151,7 @@ export function RestaurantsPage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    void load()
+    runSearch()
   }
 
   // Picking a named restaurant means "take me there", not "filter by this text".
@@ -145,12 +159,16 @@ export function RestaurantsPage() {
 
   const onCuisinePicked = (cuisine: string) => {
     setSearch(cuisine)
-    void load({ search: cuisine })
+    runSearch({ search: cuisine })
   }
 
+  // FavoriteButton performs its own optimistic add/remove call (and reverts on
+  // failure) — it only reports the outcome here. Writing straight into the
+  // `useFavoriteIds` cache keeps every page sharing that query in sync
+  // immediately, without a second, redundant toggle call to the API.
   const onFavoriteToggled = (restaurantId: number, saved: boolean) =>
-    setFavorites((current) => {
-      const next = new Set(current)
+    queryClient.setQueryData<Set<number>>(['favorites', 'ids'], (current) => {
+      const next = new Set(current ?? [])
       if (saved) next.add(restaurantId)
       else next.delete(restaurantId)
       return next
@@ -158,8 +176,11 @@ export function RestaurantsPage() {
 
   const onFacetsChanged = (next: Facets) => {
     setFacets(next)
-    void load({ facets: next })
+    runSearch({ facets: next })
   }
+
+  const error =
+    loadMoreError ?? (isListError ? errorMessage(listError, 'Failed to load restaurants.') : null)
 
   return (
     <main className="app-main">
@@ -194,7 +215,7 @@ export function RestaurantsPage() {
 
       {error && <Alert>{error}</Alert>}
 
-      {items === null ? (
+      {items === null || isLoading ? (
         <Loading />
       ) : items.length === 0 ? (
         <EmptyState>
@@ -225,7 +246,7 @@ export function RestaurantsPage() {
                   {r.cuisine && <span className="chip">{r.cuisine}</span>}
                   <FavoriteButton
                     restaurantId={r.id}
-                    saved={favorites.has(r.id)}
+                    saved={favoriteIds.has(r.id)}
                     onToggled={onFavoriteToggled}
                   />
                 </div>

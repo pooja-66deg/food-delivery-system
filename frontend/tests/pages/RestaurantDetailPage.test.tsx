@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,12 +64,19 @@ function withMenu(items: Record<string, unknown>[], restaurant: Record<string, u
 }
 
 function renderPage() {
+  // A fresh client per render avoids cross-test cache bleed, and disabling
+  // retries keeps a failing fetch from hanging a test past its default timeout.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return render(
-    <MemoryRouter initialEntries={['/restaurants/1']}>
-      <Routes>
-        <Route path="/restaurants/:id" element={<RestaurantDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/restaurants/1']}>
+        <Routes>
+          <Route path="/restaurants/:id" element={<RestaurantDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 

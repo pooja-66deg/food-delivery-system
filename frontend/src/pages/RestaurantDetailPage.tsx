@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
-import { restaurantsApi } from '../api/restaurants'
-import type { RestaurantDetail } from '../api/restaurants'
 import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
+import { useRestaurantDetail } from '../hooks/queries/useRestaurantQueries'
 import { RatingStars } from '../reviews/RatingStars'
 import { RatingSummary } from '../reviews/RatingSummary'
 import { ReviewsSection } from '../reviews/ReviewsSection'
@@ -19,7 +18,11 @@ export function RestaurantDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const { add } = useCart()
-  const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null)
+  const {
+    data: restaurant,
+    isLoading,
+    error: loadError,
+  } = useRestaurantDetail(id ? Number(id) : undefined)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [adding, setAdding] = useState<number | null>(null)
@@ -40,25 +43,16 @@ export function RestaurantDetailPage() {
     }
   }
 
-  useEffect(() => {
-    if (!id) return
-    setError(null)
-    restaurantsApi
-      .get(Number(id))
-      .then(setRestaurant)
-      .catch((e) => setError(errorMessage(e, 'Failed to load restaurant.')))
-  }, [id])
-
-  if (error) {
+  if (loadError) {
     return (
       <main className="app-main">
         <Link to="/restaurants" className="back-link">← Back to restaurants</Link>
-        <Alert>{error}</Alert>
+        <Alert>{errorMessage(loadError, 'Failed to load restaurant.')}</Alert>
       </main>
     )
   }
 
-  if (!restaurant) {
+  if (isLoading || !restaurant) {
     return (
       <main className="app-main">
         <Loading />

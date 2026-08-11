@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { QueryProvider } from './providers/QueryProvider'
 import { AppShell } from './components/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AccountPage } from './pages/account/AccountPage'
@@ -33,8 +34,9 @@ function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
 
 export function App() {
   return (
-    <AdminAuthProvider>
-      <Routes>
+    <QueryProvider>
+      <AdminAuthProvider>
+        <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       {/* Both public: a reset link is opened from a mail client that is not
@@ -85,6 +87,7 @@ export function App() {
       <Route path="/" element={<Navigate to="/restaurants" replace />} />
       <Route path="*" element={<Navigate to="/restaurants" replace />} />
     </Routes>
-    </AdminAuthProvider>
+      </AdminAuthProvider>
+    </QueryProvider>
   )
 }
