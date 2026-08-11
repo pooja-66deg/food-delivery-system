@@ -4,6 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { OrdersPage } from '../../src/pages/OrdersPage'
+import { QueryProvider } from '../../src/providers/QueryProvider'
+import { queryClient } from '../../src/lib/queryClient'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -36,13 +38,16 @@ function order(overrides: Record<string, unknown> = {}) {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
-      <OrdersPage />
-    </MemoryRouter>,
+    <QueryProvider>
+      <MemoryRouter>
+        <OrdersPage />
+      </MemoryRouter>
+    </QueryProvider>,
   )
 }
 
 beforeEach(() => {
+  queryClient.clear()
   mocks.list.mockReset().mockResolvedValue([order()])
   mocks.resumePayment.mockReset().mockResolvedValue({ checkout_url: CHECKOUT_URL })
 })
