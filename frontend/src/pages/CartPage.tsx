@@ -7,7 +7,8 @@ import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
 import { paymentsApi } from '../api/payments'
 import type { PaymentMethod } from '../api/orders'
-import { useCart } from '../cart/CartContext'
+import { useCart } from '../hooks/queries/useCartQuery'
+import { useRemoveFromCart, useUpdateCartItem } from '../hooks/mutations/useCartMutations'
 import { Alert, Button, EmptyState } from '../components/ui'
 
 /** How long to wait for the payments service to catch up, and how often to ask. */
@@ -28,7 +29,9 @@ async function hostedCheckoutUrl(orderId: number): Promise<string | null> {
 }
 
 export function CartPage() {
-  const { cart, refresh, update, remove } = useCart()
+  const { data: cart, refetch } = useCart()
+  const { mutate: updateItem } = useUpdateCartItem()
+  const { mutate: removeItem } = useRemoveFromCart()
   const navigate = useNavigate()
   const [addresses, setAddresses] = useState<Address[]>([])
   const [addressId, setAddressId] = useState<number | null>(null)
@@ -37,7 +40,6 @@ export function CartPage() {
   const [placing, setPlacing] = useState(false)
 
   useEffect(() => {
-    void refresh()
     authApi
       .listAddresses()
       .then((rows) => {
@@ -46,7 +48,6 @@ export function CartPage() {
         if (preferred) setAddressId(preferred.id)
       })
       .catch(() => setAddresses([]))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function checkout() {
@@ -55,7 +56,7 @@ export function CartPage() {
     setPlacing(true)
     try {
       const order = await ordersApi.checkout(addressId, cart.price_hash, payMethod)
-      await refresh()
+      await refetch()
 
       if (payMethod === 'CARD') {
         const url = await hostedCheckoutUrl(order.id)
@@ -97,7 +98,7 @@ export function CartPage() {
                   <button
                     className="qty-btn"
                     aria-label="Decrease quantity"
-                    onClick={() => update(item.menu_item_id, item.quantity - 1)}
+                    onClick={() => updateItem({ menuItemId: item.menu_item_id, quantity: item.quantity - 1 })}
                   >
                     −
                   </button>
@@ -105,7 +106,7 @@ export function CartPage() {
                   <button
                     className="qty-btn"
                     aria-label="Increase quantity"
-                    onClick={() => update(item.menu_item_id, item.quantity + 1)}
+                    onClick={() => updateItem({ menuItemId: item.menu_item_id, quantity: item.quantity + 1 })}
                   >
                     +
                   </button>
@@ -113,7 +114,7 @@ export function CartPage() {
                 <div className="price">₹{Number(item.line_total).toFixed(2)}</div>
                 <button
                   className="link-danger"
-                  onClick={() => remove(item.menu_item_id)}
+                  onClick={() => removeItem(item.menu_item_id)}
                   aria-label={`Remove ${item.name}`}
                 >
                   Remove

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { cartApi } from '../api/cart'
 import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
-import type { OrderScope, OrderSummary } from '../api/orders'
+import type { OrderScope } from '../api/orders'
 import { Alert, Button, EmptyState, Loading } from '../components/ui'
+import { useOrderList } from '../hooks/queries/useOrderQueries'
 import { statusLabel } from './orderStatus'
 
 const TABS: { scope: Exclude<OrderScope, 'all'>; label: string; empty: string }[] = [
@@ -16,7 +17,7 @@ const TABS: { scope: Exclude<OrderScope, 'all'>; label: string; empty: string }[
 export function OrdersPage() {
   const navigate = useNavigate()
   const [scope, setScope] = useState<Exclude<OrderScope, 'all'>>('active')
-  const [orders, setOrders] = useState<OrderSummary[] | null>(null)
+  const { data: orders, isLoading, error: loadError } = useOrderList(scope)
   const [error, setError] = useState<string | null>(null)
   // The order a hosted checkout is being opened for, so its button can show
   // that something is happening while the redirect is arranged.
@@ -26,20 +27,7 @@ export function OrdersPage() {
   const [reorderNotice, setReorderNotice] = useState<string[] | null>(null)
   const [reordering, setReordering] = useState<number | null>(null)
 
-  const load = useCallback(async (which: Exclude<OrderScope, 'all'>) => {
-    setOrders(null)
-    setError(null)
-    try {
-      setOrders(await ordersApi.list(which))
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to load orders.'))
-      setOrders([])
-    }
-  }, [])
-
-  useEffect(() => {
-    void load(scope)
-  }, [load, scope])
+  const displayError = error ?? (loadError ? errorMessage(loadError, 'Failed to load orders.') : null)
 
   async function startPayment(orderId: number) {
     setError(null)
@@ -101,7 +89,7 @@ export function OrdersPage() {
         ))}
       </div>
 
-      {error && <Alert>{error}</Alert>}
+      {displayError && <Alert>{displayError}</Alert>}
 
       {reorderNotice && (
         <Alert kind="ok">
@@ -110,9 +98,9 @@ export function OrdersPage() {
         </Alert>
       )}
 
-      {orders === null ? (
+      {isLoading ? (
         <Loading />
-      ) : orders.length === 0 ? (
+      ) : !orders || orders.length === 0 ? (
         <EmptyState>
           {active?.empty}{' '}
           <Link to="/restaurants" className="back-link">Order something →</Link>

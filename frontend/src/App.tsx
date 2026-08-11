@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { QueryProvider } from './providers/QueryProvider'
 import { AppShell } from './components/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AccountPage } from './pages/account/AccountPage'
@@ -25,43 +26,45 @@ import { RestaurantDetailPage } from './pages/RestaurantDetailPage'
 
 export function App() {
   return (
-    <AdminAuthProvider>
-      <Routes>
-        {/* Public routes - no authentication required */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <QueryProvider>
+      <AdminAuthProvider>
+        <Routes>
+          {/* Public routes - no authentication required */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Admin protected routes - must come BEFORE public routes so wildcard doesn't catch them */}
-        <Route path="/admin/dashboard" element={<AdminPage />} />
+          {/* Admin protected routes - must come BEFORE public routes so wildcard doesn't catch them */}
+          <Route path="/admin/dashboard" element={<AdminPage />} />
 
-        {/* Admin public routes - no authentication required */}
-        <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="/admin/reset-password" element={<AdminPasswordReset />} />
+          {/* Admin public routes - no authentication required */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin/reset-password" element={<AdminPasswordReset />} />
 
-        {/* User protected routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppShell />}>
-            <Route path="/restaurants" element={<RestaurantsPage />} />
-            <Route path="/restaurants/:id" element={<RestaurantDetailPage />} />
-            <Route path="/cart" element={<CartPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/payments" element={<PaymentsPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/deliveries" element={<DriverPage />} />
-            <Route path="/manage" element={<OwnerPage />} />
-            <Route path="/restaurant/orders" element={<RestaurantOrdersPage />} />
-            <Route path="/account" element={<AccountPage />} />
+          {/* User protected routes */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppShell />}>
+              <Route path="/restaurants" element={<RestaurantsPage />} />
+              <Route path="/restaurants/:id" element={<RestaurantDetailPage />} />
+              <Route path="/cart" element={<CartPage />} />
+              <Route path="/favorites" element={<FavoritesPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/orders/:id" element={<OrderDetailPage />} />
+              <Route path="/payments" element={<PaymentsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/deliveries" element={<DriverPage />} />
+              <Route path="/manage" element={<OwnerPage />} />
+              <Route path="/restaurant/orders" element={<RestaurantOrdersPage />} />
+              <Route path="/account" element={<AccountPage />} />
+            </Route>
           </Route>
-        </Route>
 
-        {/* Fallback routes */}
-        <Route path="/" element={<Navigate to="/restaurants" replace />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-    </AdminAuthProvider>
+          {/* Fallback routes */}
+          <Route path="/" element={<Navigate to="/restaurants" replace />} />
+          <Route path="*" element={<Navigate to="/restaurants" replace />} />
+        </Routes>
+      </AdminAuthProvider>
+    </QueryProvider>
   )
 }
