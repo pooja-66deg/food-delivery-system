@@ -32,11 +32,17 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong.'): 
 }
 
 let tokenGetter: () => string | null = () => null
+let adminTokenGetter: () => string | null = () => localStorage.getItem('fd_admin_token')
 let logoutHandler: (() => void) | null = null
 
 /** Register how the client obtains the current access token. */
 export function setTokenGetter(fn: () => string | null): void {
   tokenGetter = fn
+}
+
+/** Register how to get the admin token. */
+export function setAdminTokenGetter(fn: () => string | null): void {
+  adminTokenGetter = fn
 }
 
 /** Register a handler to call when the API returns 401 (invalid/expired token). */
@@ -56,7 +62,10 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {
-    const token = tokenGetter()
+    // Use admin token for admin API calls (paths containing /admin/)
+    // Otherwise use user token
+    const isAdminPath = path.includes('/admin/')
+    const token = isAdminPath ? adminTokenGetter() : tokenGetter()
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
 

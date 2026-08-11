@@ -8,7 +8,7 @@ interface AdminStats {
   restaurants: number
   orders_total: number
   orders_by_status: Record<string, number>
-  gross_merchandise_value: number
+  gross_merchandise_value: string | number
 }
 
 export function AdminPanel() {
@@ -85,7 +85,7 @@ export function AdminPanel() {
             <div className="bg-white overflow-hidden shadow rounded-lg p-6">
               <h3 className="text-gray-500 text-sm font-medium">GMV</h3>
               <p className="mt-2 text-3xl font-extrabold text-gray-900">
-                ${stats.gross_merchandise_value.toFixed(2)}
+                ${typeof stats.gross_merchandise_value === 'string' ? stats.gross_merchandise_value : stats.gross_merchandise_value.toFixed(2)}
               </p>
             </div>
           </div>
