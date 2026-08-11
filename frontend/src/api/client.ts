@@ -62,9 +62,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (auth) {
-    // Use admin token for admin API calls (paths containing /admin/)
+    // Use admin token for admin API calls (paths containing /admin/ or restaurant approval)
     // Otherwise use user token
-    const isAdminPath = path.includes('/admin/')
+    const isAdminPath = path.includes('/admin/') || path.match(/\/restaurants\/\d+\/approval/)
     const token = isAdminPath ? adminTokenGetter() : tokenGetter()
     if (token) headers['Authorization'] = `Bearer ${token}`
   }
