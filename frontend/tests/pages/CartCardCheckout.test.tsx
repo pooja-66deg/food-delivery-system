@@ -15,6 +15,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CartPage } from '../../src/pages/CartPage'
+import { QueryProvider } from '../../src/providers/QueryProvider'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async () => {
@@ -24,8 +25,10 @@ vi.mock('react-router-dom', async () => {
 
 const checkout = vi.fn()
 const resume = vi.fn()
+const getCart = vi.fn()
 vi.mock('../../src/api/orders', () => ({ ordersApi: { checkout: (...a: unknown[]) => checkout(...a) } }))
 vi.mock('../../src/api/payments', () => ({ paymentsApi: { resume: (...a: unknown[]) => resume(...a) } }))
+vi.mock('../../src/api/cart', () => ({ cartApi: { get: (...a: unknown[]) => getCart(...a) } }))
 vi.mock('../../src/api/auth', () => ({
   authApi: {
     listAddresses: () =>
@@ -34,21 +37,6 @@ vi.mock('../../src/api/auth', () => ({
           postal_code: '12345', is_default: true },
       ]),
   },
-}))
-
-const refresh = vi.fn()
-vi.mock('../../src/cart/CartContext', () => ({
-  useCart: () => ({
-    cart: {
-      restaurant_id: 10,
-      items: [{ menu_item_id: 1, name: 'Pizza', unit_price: 12, quantity: 1, line_total: 12 }],
-      subtotal: 12,
-      price_hash: 'hash',
-    },
-    refresh,
-    update: vi.fn(),
-    remove: vi.fn(),
-  }),
 }))
 
 /** Where the browser was sent, without actually navigating in jsdom. */
@@ -69,6 +57,12 @@ beforeEach(() => {
     },
   })
   checkout.mockResolvedValue({ id: 77, status: 'PAYMENT_PENDING', payment_checkout_url: null })
+  getCart.mockResolvedValue({
+    restaurant_id: 10,
+    items: [{ menu_item_id: 1, name: 'Pizza', unit_price: 12, quantity: 1, line_total: 12 }],
+    subtotal: 12,
+    price_hash: 'hash',
+  })
 })
 
 afterEach(() => {
@@ -78,9 +72,11 @@ afterEach(() => {
 async function placeCardOrder() {
   const user = userEvent.setup()
   render(
-    <MemoryRouter>
-      <CartPage />
-    </MemoryRouter>,
+    <QueryProvider>
+      <MemoryRouter>
+        <CartPage />
+      </MemoryRouter>
+    </QueryProvider>,
   )
   await screen.findByText(/Pizza/)
   await user.click(screen.getByRole('button', { name: /card \(online\)/i }))
@@ -126,9 +122,11 @@ describe('placing a card order', () => {
   it('does not poll at all for a cash order', async () => {
     const user = userEvent.setup()
     render(
-      <MemoryRouter>
-        <CartPage />
-      </MemoryRouter>,
+      <QueryProvider>
+        <MemoryRouter>
+          <CartPage />
+        </MemoryRouter>
+      </QueryProvider>,
     )
     await screen.findByText(/Pizza/)
     // COD is the default, so no tab click — straight to placing it.
