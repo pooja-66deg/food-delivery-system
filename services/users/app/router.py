@@ -108,7 +108,7 @@ async def admin_login(
     stmt = select(User).where(User.email == data.email)
     user = (await session.scalars(stmt)).first()
 
-    if not user or not verify_password(data.password, user.password_hash):
+    if not user or not verify_password(data.password, user.hashed_password):
         raise UnauthorizedException("Invalid email or password")
 
     # Check if admin with password_reset_required

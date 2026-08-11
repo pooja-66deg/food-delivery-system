@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { adminApi } from '../api/admin'
 import type { AdminOrder, AdminStats, AdminUser } from '../api/admin'
 import { errorMessage } from '../api/client'
 import { ordersApi } from '../api/orders'
-import { useAuth } from '../auth/AuthContext'
+import { useAdminAuth } from '../auth/AdminAuthContext'
 import { Alert, Button, EmptyState } from '../components/ui'
 import { RestaurantsPanel } from './admin/RestaurantsPanel'
 import { statusLabel } from './orderStatus'
@@ -13,7 +14,8 @@ const TERMINAL = new Set(['COMPLETED', 'CANCELLED', 'REJECTED'])
 type Section = 'overview' | 'restaurants' | 'orders' | 'users'
 
 export function AdminPage() {
-  const { user } = useAuth()
+  const { adminToken, clearAdminToken } = useAdminAuth()
+  const navigate = useNavigate()
   const [section, setSection] = useState<Section>('overview')
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -22,7 +24,14 @@ export function AdminPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = !!adminToken
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate('/admin/login', { replace: true })
+    }
+  }, [isAdmin, navigate])
 
   const load = useCallback(async () => {
     if (!isAdmin) return
@@ -107,8 +116,18 @@ export function AdminPage() {
           ))}
         </nav>
         <div className="admin-foot">
-          <div className="admin-foot-name">{user?.first_name} {user?.last_name}</div>
+          <div className="admin-foot-name">Admin</div>
           <div className="muted">Administrator</div>
+          <button
+            onClick={() => {
+              clearAdminToken()
+              navigate('/admin/login', { replace: true })
+            }}
+            className="link-danger"
+            style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
+          >
+            Logout
+          </button>
         </div>
       </aside>
 

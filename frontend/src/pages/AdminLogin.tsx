@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { request } from "../api/client"
 import { useAdminAuth } from "../auth/AdminAuthContext"
@@ -11,13 +11,41 @@ interface LoginResponse {
   email?: string
 }
 
+const ADMIN_GATE_PASSWORD = "admin@123"
+const GATE_SESSION_KEY = "admin_gate_unlocked"
+
 export function AdminLogin() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [gatePassword, setGatePassword] = useState("")
   const [error, setError] = useState("")
+  const [gateError, setGateError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [gateUnlocked, setGateUnlocked] = useState(false)
   const navigate = useNavigate()
   const { setAdminToken } = useAdminAuth()
+
+  // Check if gate is already unlocked in this session
+  useEffect(() => {
+    const isUnlocked = sessionStorage.getItem(GATE_SESSION_KEY)
+    if (isUnlocked === "true") {
+      setGateUnlocked(true)
+    }
+  }, [])
+
+  const handleGateSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setGateError("")
+
+    if (gatePassword === ADMIN_GATE_PASSWORD) {
+      sessionStorage.setItem(GATE_SESSION_KEY, "true")
+      setGateUnlocked(true)
+      setGatePassword("")
+    } else {
+      setGateError("Incorrect password")
+      setGatePassword("")
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,61 +73,162 @@ export function AdminLogin() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Admin Login
-          </h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="email" className="sr-only">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-              />
-            </div>
+  // Show password gate first
+  if (!gateUnlocked) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
+        <div style={{ width: '100%', maxWidth: '380px' }}>
+          {/* Gate Header */}
+          <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔒</div>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--ink)' }}>
+              Access Restricted
+            </h1>
+            <p style={{ fontSize: '0.9rem', color: 'var(--ink-soft)' }}>
+              Enter password to access admin panel
+            </p>
           </div>
 
+          {/* Gate Error */}
+          {gateError && (
+            <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0 }}>
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p>{gateError}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Gate Form */}
+          <form onSubmit={handleGateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <div className="field">
+              <label htmlFor="gatePassword">Gate Password</label>
+              <input
+                id="gatePassword"
+                type="password"
+                required
+                className="input"
+                value={gatePassword}
+                onChange={(e) => setGatePassword(e.target.value)}
+                placeholder="Enter access password"
+                autoFocus
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+            >
+              Unlock Access
+            </button>
+          </form>
+
+          {/* Footer */}
+          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--line)', textAlign: 'center' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)' }}>
+              Protected admin area
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show login form after gate is unlocked
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
+      <div style={{ width: '100%', maxWidth: '420px' }}>
+        {/* Header */}
+        <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--ink)' }}>
+            Admin Login
+          </h1>
+          <p style={{ fontSize: '0.95rem', color: 'var(--ink-soft)' }}>
+            Manage your food delivery platform
+          </p>
+        </div>
+
+        {/* Error Alert */}
+        {error && (
+          <div className="alert alert-error" style={{ marginBottom: '1.5rem' }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0 }}>
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p>{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          {/* Email Field */}
+          <div className="field">
+            <label htmlFor="email">Email Address</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+              placeholder="admin@example.com"
+              style={{ cursor: loading ? 'not-allowed' : 'text', opacity: loading ? 0.7 : 1 }}
+            />
+          </div>
+
+          {/* Password Field */}
+          <div className="field">
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              placeholder="••••••••"
+              style={{ cursor: loading ? 'not-allowed' : 'text', opacity: loading ? 0.7 : 1 }}
+            />
+          </div>
+
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            className="btn btn-primary btn-block"
+            style={{ marginTop: '0.5rem', opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
           >
-            {loading ? "Logging in..." : "Sign in"}
+            {loading ? (
+              <>
+                <span className="spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
           </button>
+
+          {/* Forgot Password Link */}
+          <div style={{ textAlign: 'center', marginTop: '0.5rem' }}>
+            <a href="/admin/reset-password" style={{ fontSize: '0.9rem', fontWeight: 500 }}>
+              Forgot your password?
+            </a>
+          </div>
         </form>
+
+        {/* Footer */}
+        <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--line)', textAlign: 'center' }}>
+          <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)' }}>
+            Protected admin area. Authorized access only.
+          </p>
+        </div>
       </div>
     </div>
   )
