@@ -4,7 +4,7 @@ import { AppShell } from './components/AppShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AccountPage } from './pages/account/AccountPage'
 import { AdminLogin } from './pages/AdminLogin'
-import { AdminPage } from './pages/AdminPage'
+import { AdminPanel } from './pages/AdminPanel'
 import { AdminPasswordReset } from './pages/AdminPasswordReset'
 import { CartPage } from './pages/CartPage'
 import { DriverPage } from './pages/DriverPage'
@@ -51,7 +51,7 @@ export function App() {
         path="/admin/dashboard"
         element={
           <ProtectedAdminRoute>
-            <AdminPage />
+            <AdminPanel />
           </ProtectedAdminRoute>
         }
       />
@@ -59,7 +59,7 @@ export function App() {
         path="/admin/*"
         element={
           <ProtectedAdminRoute>
-            <AdminPage />
+            <AdminPanel />
           </ProtectedAdminRoute>
         }
       />
@@ -77,7 +77,7 @@ export function App() {
           <Route path="/deliveries" element={<DriverPage />} />
           <Route path="/manage" element={<OwnerPage />} />
           <Route path="/restaurant/orders" element={<RestaurantOrdersPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<AdminPanel />} />
           <Route path="/account" element={<AccountPage />} />
         </Route>
       </Route>
