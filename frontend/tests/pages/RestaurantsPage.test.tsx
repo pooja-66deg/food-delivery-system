@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RestaurantsPage } from '../../src/pages/RestaurantsPage'
+import { queryClient } from '../../src/lib/queryClient'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -46,6 +47,7 @@ const page = (items: unknown[], total = items.length) => ({
 })
 
 beforeEach(() => {
+  queryClient.clear()
   mocks.list.mockReset().mockResolvedValue(page([PIZZA]))
   mocks.suggest.mockReset().mockResolvedValue([])
   mocks.popularCuisines.mockReset().mockResolvedValue([])
