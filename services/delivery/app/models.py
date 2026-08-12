@@ -58,6 +58,7 @@ class Delivery(Base):
     status: Mapped[str] = mapped_column(
         String(20), default=DeliveryStatus.UNASSIGNED.value, nullable=False
     )
+    restaurant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

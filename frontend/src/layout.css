@@ -1052,8 +1052,14 @@ section:first-of-type { margin-top: 0; }
 
 /* ratings + reviews */
 .rating-stars { display: inline-flex; gap: 0.05rem; letter-spacing: 0.02em; }
-.rating-stars [data-filled='true'] { color: var(--saffron); }
 .rating-stars [data-filled='false'] { color: var(--line-strong); }
+
+/* Color-code ratings: 1★=red, 2★=orange-red, 3★=yellow, 4-5★=green */
+.rating-stars[data-rating='1'] [data-filled='true'] { color: #dc2626; }
+.rating-stars[data-rating='2'] [data-filled='true'] { color: #ea580c; }
+.rating-stars[data-rating='3'] [data-filled='true'] { color: #eab308; }
+.rating-stars[data-rating='4'] [data-filled='true'] { color: #16a34a; }
+.rating-stars[data-rating='5'] [data-filled='true'] { color: #15803d; }
 
 .rest-card-rating { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.55rem; font-size: 0.8rem; }
 /* The cuisine chip truncates rather than wrapping the badge row onto a second

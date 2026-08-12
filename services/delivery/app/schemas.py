@@ -16,6 +16,7 @@ class DeliveryRead(BaseModel):
     order_id: int
     driver_id: int | None
     status: str
+    restaurant_name: str | None = None
     assigned_at: datetime | None
     accepted_at: datetime | None
     picked_up_at: datetime | None

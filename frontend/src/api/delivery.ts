@@ -12,6 +12,7 @@ export interface Delivery {
   order_id: number
   driver_id: number | null
   status: string
+  restaurant_name: string | null
   assigned_at: string | null
   picked_up_at: string | null
   delivered_at: string | null

@@ -189,6 +189,8 @@ async def assign_for_order(session: AsyncSession, order_id: int, redis=None) -> 
     driver = await _pick_driver(session, snapshot, redis)
 
     delivery = Delivery(order_id=order_id)
+    if snapshot:
+        delivery.restaurant_name = snapshot.restaurant_name
     if driver is not None:
         delivery.driver_id = driver.id
         delivery.status = DeliveryStatus.ASSIGNED.value
@@ -325,6 +327,8 @@ async def reassign_delivery_for_order(
         raise _not_found("Driver not found")
 
     snapshot = await session.get(OrderSnapshot, order_id)
+    if snapshot:
+        delivery.restaurant_name = snapshot.restaurant_name
     delivery.driver_id = new_driver_id
     delivery.status = DeliveryStatus.ASSIGNED.value
     delivery.assigned_at = _now()

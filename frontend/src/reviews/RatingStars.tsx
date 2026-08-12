@@ -7,6 +7,8 @@ const STARS = [1, 2, 3, 4, 5]
  * without knowing where the rating came from. An unrated restaurant renders
  * nothing at all: five empty stars would read as a one-star rating rather than
  * as "not rated yet".
+ *
+ * Color is determined by the rating level: 1★=red, 2★=orange, 3★=yellow, 4-5★=green.
  */
 export function RatingStars({ value }: { value: number | null }) {
   if (value === null || value === undefined) return null
@@ -14,7 +16,7 @@ export function RatingStars({ value }: { value: number | null }) {
   const filled = Math.round(value)
 
   return (
-    <span className="rating-stars" role="img" aria-label={`${value} out of 5`}>
+    <span className="rating-stars" role="img" aria-label={`${value} out of 5`} data-rating={filled}>
       {STARS.map((star) => (
         <span key={star} data-star={star} data-filled={star <= filled} aria-hidden>
           ★
