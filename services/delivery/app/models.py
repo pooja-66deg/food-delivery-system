@@ -81,6 +81,7 @@ class OrderSnapshot(Base):
     customer_id: Mapped[int] = mapped_column(Integer, nullable=False)
     #: Which kitchen, so an owner action can be checked against the roster above.
     restaurant_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    restaurant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     restaurant_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     restaurant_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -82,13 +82,18 @@ def _announce_status(session: AsyncSession, delivery: Delivery) -> None:
     )
 
 
-def _offer_notification(session: AsyncSession, driver_id: int, order_id: int) -> None:
+def _offer_notification(session: AsyncSession, driver_id: int, order_id: int, restaurant_name: str | None = None) -> None:
     """The driver's "you have a new offer" message.
 
     An event rather than a direct write: the notifications service owns that
     table now, and reaching into it would put this service back in the business
     of caring whether that one is up.
     """
+    if restaurant_name:
+        message = f"New delivery offer from {restaurant_name} — order #{order_id}. Accept to take it."
+    else:
+        message = f"New delivery offer — order #{order_id}. Accept to take it."
+
     _publish(
         session,
         "notification-events",
@@ -96,7 +101,7 @@ def _offer_notification(session: AsyncSession, driver_id: int, order_id: int) ->
         {
             "user_id": driver_id,
             "type": "delivery.assigned",
-            "message": f"New delivery offer — order #{order_id}. Accept to take it.",
+            "message": message,
             "order_id": order_id,
         },
     )
@@ -186,7 +191,7 @@ async def assign_for_order(session: AsyncSession, order_id: int, redis=None) -> 
         delivery.driver_id = driver.id
         delivery.status = DeliveryStatus.ASSIGNED.value
         delivery.assigned_at = _now()
-        _offer_notification(session, driver.id, order_id)
+        _offer_notification(session, driver.id, order_id, snapshot.restaurant_name if snapshot else None)
     session.add(delivery)
     _announce_status(session, delivery)
     await session.commit()
@@ -257,7 +262,7 @@ async def reject_assignment(
         delivery.driver_id = next_driver.id
         delivery.status = DeliveryStatus.ASSIGNED.value
         delivery.assigned_at = _now()
-        _offer_notification(session, next_driver.id, order_id)
+        _offer_notification(session, next_driver.id, order_id, snapshot.restaurant_name if snapshot else None)
     _announce_status(session, delivery)
     await session.commit()
     await session.refresh(delivery)
@@ -317,10 +322,11 @@ async def reassign_delivery_for_order(
     if driver is None or not driver.is_active:
         raise _not_found("Driver not found")
 
+    snapshot = await session.get(OrderSnapshot, order_id)
     delivery.driver_id = new_driver_id
     delivery.status = DeliveryStatus.ASSIGNED.value
     delivery.assigned_at = _now()
-    _offer_notification(session, new_driver_id, order_id)
+    _offer_notification(session, new_driver_id, order_id, snapshot.restaurant_name if snapshot else None)
     _announce_status(session, delivery)
     await session.commit()
     await session.refresh(delivery)

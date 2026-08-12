@@ -51,6 +51,8 @@ async def _apply_order_event(session: AsyncSession, payload: dict) -> None:
         snapshot.customer_id = payload["customer_id"]
     if payload.get("restaurant_id") is not None:
         snapshot.restaurant_id = payload["restaurant_id"]
+    if payload.get("restaurant_name") is not None:
+        snapshot.restaurant_name = payload["restaurant_name"]
     # Coordinates only overwrite when the event actually carries them, so a
     # later event with a thinner payload cannot erase what an earlier one knew.
     for field in (
