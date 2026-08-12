@@ -135,6 +135,7 @@ export function DriverPage() {
             <div key={d.id} className="delivery-card">
               <div>
                 <div className="menu-item-name">Order #{d.order_id}</div>
+                {d.restaurant_name && <div className="muted">{d.restaurant_name}</div>}
                 <div className="muted">{DESCRIPTIONS[d.status] ?? d.status}</div>
               </div>
               <span className="badge">{d.status}</span>
