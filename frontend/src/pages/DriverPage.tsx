@@ -40,7 +40,7 @@ export function DriverPage() {
   const [assignments, setAssignments] = useState<Delivery[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [actingOn, setActingOn] = useState<number | null>(null)
+  const [actingOn, setActingOn] = useState<{ orderId: number; action: string } | null>(null)
 
   const isDriver = user?.role === 'driver' || user?.role === 'admin'
 
@@ -69,7 +69,7 @@ export function DriverPage() {
   async function act(orderId: number, action: 'accept' | 'reject' | 'pickup' | 'deliver') {
     setError(null)
     setNotice(null)
-    setActingOn(orderId)
+    setActingOn({ orderId, action })
     try {
       await deliveryApi[action](orderId)
       setNotice(`${MESSAGES[action]} #${orderId}.`)
@@ -151,21 +151,21 @@ export function DriverPage() {
                 )}
                 {d.status === 'ASSIGNED' && (
                   <>
-                    <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'accept')}>
+                    <Button loading={actingOn?.orderId === d.order_id && actingOn?.action === 'accept'} onClick={() => act(d.order_id, 'accept')}>
                       Accept
                     </Button>
-                    <Button variant="ghost" loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'reject')}>
+                    <Button variant="ghost" loading={actingOn?.orderId === d.order_id && actingOn?.action === 'reject'} onClick={() => act(d.order_id, 'reject')}>
                       Reject
                     </Button>
                   </>
                 )}
                 {d.status === 'ACCEPTED' && (
-                  <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'pickup')}>
+                  <Button loading={actingOn?.orderId === d.order_id && actingOn?.action === 'pickup'} onClick={() => act(d.order_id, 'pickup')}>
                     Pick up
                   </Button>
                 )}
                 {d.status === 'PICKED_UP' && (
-                  <Button loading={actingOn === d.order_id} onClick={() => act(d.order_id, 'deliver')}>
+                  <Button loading={actingOn?.orderId === d.order_id && actingOn?.action === 'deliver'} onClick={() => act(d.order_id, 'deliver')}>
                     Mark delivered
                   </Button>
                 )}
