@@ -99,11 +99,20 @@ def _display_name(user) -> str:
 
 
 async def _emit_status(session: AsyncSession, order: Order) -> None:
-    """Queue a customer notification and an outbox event for the order's current
-    status, in the caller's transaction (outbox pattern — same tx as the state
-    change). Caller commits."""
-    _notify(session, order.customer_id, f"order.{order.status}",
-            templates_copy(order.status), order.id)
+    """Queue an outbox event for the order's current status, in the caller's
+    transaction (outbox pattern — same tx as the state change). Caller commits.
+
+    Publishes on ``order-events`` only. It used to *also* send the customer's feed
+    row directly on ``notification-events``, but the notifications service already
+    writes one from ``order-events`` — its ``handle_order_status`` says the in-app
+    feed gets every status — so each status change produced two identical rows,
+    milliseconds apart, in every customer's feed. The notifications service owns
+    that copy (it holds the templates and the channel preferences); duplicating it
+    here made this service the second author of a string it does not own.
+
+    The owner-facing "you have a new order" notification is different and stays:
+    nothing on ``order-events`` addresses the restaurant's owner.
+    """
     customer = await session.get(CustomerSnapshot, order.customer_id)
     # The two ends of the journey, for the delivery service's local snapshot. It
     # cannot resolve a restaurant or an address itself — both live in other
@@ -186,10 +195,21 @@ async def mark_paid(session: AsyncSession, order_id: int) -> Order:
 
 
 async def _load_full(session: AsyncSession, order_id: int) -> Order:
+    """The order with its items and audit trail, read fresh.
+
+    ``populate_existing`` because the session is configured
+    ``expire_on_commit=False``, so the Order this just committed is still in the
+    identity map with the collections it was loaded with. Without it a
+    selectinload silently reuses those, and the response to a cancellation showed
+    ``status: CANCELLED`` alongside an ``events`` list that stopped at the
+    previous transition — the row was in the database, and only the reply was
+    stale. A subsequent GET disagreed with the POST that caused it.
+    """
     stmt = (
         select(Order)
         .where(Order.id == order_id)
         .options(selectinload(Order.items), selectinload(Order.events))
+        .execution_options(populate_existing=True)
     )
     return (await session.scalars(stmt)).one()
 

@@ -9,7 +9,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import outbox
 from app.models import OrderSnapshot, Payment, PaymentTxStatus
-from app.providers import PaymentProvider, provider_for
+from app.providers import PaymentProvider, ProviderResult, provider_for
+from shared.errors import AppException
+
+
+class PaymentGatewayError(AppException):
+    """The payment provider could not be reached or refused the call.
+
+    502, because the fault is upstream of this service and the caller did nothing
+    wrong — distinct from a 4xx, which would say the request was bad, and from a
+    200, which is what this used to be.
+
+    That mattered more than it sounds. ``providers.py`` deliberately degrades a
+    provider exception to ``ok=False`` so a failing PSP cannot crash checkout —
+    sound in itself, but the routes then returned **HTTP 200** carrying
+    ``status: "FAILED"``. With the Stripe key malformed, every retry and resume
+    answered 200 for twenty hours while no card payment could be taken, and the
+    SPA had no signal to show anyone. A failure the client cannot detect is worse
+    than one that is loud.
+    """
+
+    def __init__(self, message: str = "The payment provider is unavailable. Please try again."):
+        super().__init__(message, status_code=502)
+
+
+def _raise_if_provider_failed(result: ProviderResult) -> None:
+    """Turn a provider-level failure into a 502.
+
+    Only ``status == "error"`` qualifies, which is what ``providers.py`` sets in
+    its ``except`` branch. A provider that answers cleanly with "not paid" is not
+    an error — an abandoned checkout is an ordinary outcome, and the payment row
+    already records it.
+    """
+    if not result.ok and result.status == "error":
+        raise PaymentGatewayError()
 
 
 async def get_payment(session: AsyncSession, order_id: int) -> Payment | None:
@@ -88,6 +121,7 @@ async def retry_payment(session: AsyncSession, order, provider: PaymentProvider 
     payment.provider_ref = result.reference
     await session.commit()
     await session.refresh(payment)
+    _raise_if_provider_failed(result)
     return payment
 
 
@@ -119,6 +153,7 @@ async def resume_card_payment(
     payment.provider_ref = result.reference
     await session.commit()
     await session.refresh(payment)
+    _raise_if_provider_failed(result)
     payment.checkout_url = result.checkout_url
     return payment
 

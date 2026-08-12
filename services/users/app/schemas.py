@@ -32,6 +32,24 @@ def _validate_name(v: str | None) -> str | None:
 _validate_phone = normalize_optional_phone
 
 
+def _normalize_email(v: str) -> str:
+    """Lower-case an address so one mailbox has one spelling here.
+
+    ``EmailStr`` lower-cases the *domain* only, because the local part is
+    case-sensitive per RFC 5321. In practice no mail provider this platform
+    serves treats it that way, and every lookup in the users service compares
+    raw — so ``User@x.com`` could not log in after registering as
+    ``user@x.com``, and forgot-password answered its deliberately identical
+    "a reset link has been sent" while minting no token at all. The user waits
+    for mail that was never sent, which is the worst of both.
+
+    It also closes a duplicate-account hole: without this, ``A@x.com`` and
+    ``a@x.com`` both satisfy the unique constraint and both deliver to the same
+    person.
+    """
+    return v.strip().lower()
+
+
 #: What a venue declares it serves. Kept in step with FOOD_TYPES in the
 #: restaurants service — the value is carried there verbatim, so a spelling that
 #: disagreed would be rejected only after registration had already succeeded.
@@ -66,6 +84,7 @@ class UserRegister(BaseModel):
     """Payload for email/password registration."""
 
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
     phone: str
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
@@ -115,6 +134,7 @@ class LoginRequest(BaseModel):
     """Payload for email/password login."""
 
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
     password: str
 
 
@@ -128,6 +148,7 @@ class ForgotPasswordRequest(BaseModel):
     """Request a password-reset link for an email."""
 
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
 
 
 class ResetPasswordRequest(BaseModel):
@@ -174,6 +195,7 @@ class UserResponse(BaseModel):
 
     id: int
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
     phone: str
     first_name: str
     last_name: str
@@ -238,6 +260,7 @@ class AdminPasswordResetRequest(BaseModel):
     """Request to reset admin password after forced reset."""
 
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
     old_password: str = Field(..., min_length=8, max_length=128)
     new_password: str = Field(..., min_length=8, max_length=128)
 
@@ -256,6 +279,7 @@ class AdminPasswordResetResponse(BaseModel):
 
     id: int
     email: EmailStr
+    _lower_email = field_validator("email")(_normalize_email)
     first_name: str
     last_name: str
     role: str

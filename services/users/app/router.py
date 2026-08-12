@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from shared.ratelimit import enforce_rate_limit
 from shared.errors import UnauthorizedException
+from shared.ids import EntityId
 from app.db import get_db
 from app.redis_client import get_redis
 
@@ -298,7 +299,7 @@ async def add_address(
 
 @users_router.patch("/me/addresses/{address_id}", response_model=AddressResponse)
 async def update_address(
-    address_id: int,
+    address_id: EntityId,
     data: AddressUpdate,
     current_user: User = Depends(require_user),
     session: AsyncSession = Depends(get_db),
@@ -308,7 +309,7 @@ async def update_address(
 
 @users_router.delete("/me/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_address(
-    address_id: int,
+    address_id: EntityId,
     current_user: User = Depends(require_user),
     session: AsyncSession = Depends(get_db),
 ):

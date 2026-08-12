@@ -5,7 +5,7 @@ The reads are answered from this service's own copies; the one write is
 forwarded to the service that owns the data.
 """
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import service
@@ -14,6 +14,7 @@ from app.clients import orders, users
 from app.db import get_db
 from app.schemas import AdminOrderRow, AdminStats, AdminUserRow, BootstrapAdminRequest, BootstrapAdminResponse
 from shared.errors import ConflictException
+from shared.ids import INT64_MAX
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(auth.require_role("admin"))]
@@ -28,15 +29,19 @@ async def stats(session: AsyncSession = Depends(get_db)):
 
 
 @router.get("/users", response_model=list[AdminUserRow])
-async def list_admin_users(limit: int = 100, offset: int = 0, session: AsyncSession = Depends(get_db)):
+async def list_admin_users(
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
+    session: AsyncSession = Depends(get_db),
+):
     return await service.list_users(session, limit, offset)
 
 
 @router.get("/orders", response_model=list[AdminOrderRow])
 async def all_orders(
     status: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     session: AsyncSession = Depends(get_db),
 ):
     return await service.list_all_orders(session, status, limit, offset)

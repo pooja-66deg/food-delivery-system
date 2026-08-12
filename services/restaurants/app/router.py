@@ -19,7 +19,7 @@ from app.db import get_db
 from app import discovery
 from app import menu as menu_service
 from app import service
-from app.models import MenuItem
+from app.models import APPROVED, MenuItem
 from app.storage import save_image
 from app.schemas import (
     AdminRestaurantPage,
@@ -41,6 +41,7 @@ from app.schemas import (
 )
 from app.auth import auth
 from shared.identity import Identity
+from shared.ids import EntityId, INT64_MAX
 
 router = APIRouter(prefix="/restaurants", tags=["restaurants"])
 
@@ -56,6 +57,11 @@ owner_only = auth.require_role("restaurant")
 
 # Deciding whether a venue trades. Only ever an operator.
 admin_only = auth.require_role("admin")
+
+# The public detail route answers for anyone, but shows an unapproved venue only
+# to its owner or an operator — so the caller is resolved when present and simply
+# absent when not, rather than demanded.
+maybe_caller = auth.maybe_identity()
 
 
 # ---------- Public browsing ----------
@@ -76,7 +82,7 @@ async def list_restaurants(
         default=discovery.DEFAULT_SORT, pattern=f"^({'|'.join(discovery.SORTS)})$"
     ),
     limit: int = Query(default=discovery.DEFAULT_LIMIT, ge=1, le=discovery.MAX_LIMIT),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     session: AsyncSession = Depends(get_db),
 ):
     """Browse and search restaurants.
@@ -160,7 +166,7 @@ async def admin_list_restaurants(
         default=None, description="Filter to one status; omit for every venue"
     ),
     limit: int = Query(default=discovery.DEFAULT_LIMIT, ge=1, le=discovery.MAX_LIMIT),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     _: Identity = Depends(admin_only),
     session: AsyncSession = Depends(get_db),
 ):
@@ -186,7 +192,7 @@ async def admin_list_restaurants(
 
 @router.post("/{restaurant_id}/approval", response_model=AdminRestaurantRow)
 async def decide_approval(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     decision: ApprovalDecision,
     _: Identity = Depends(admin_only),
     session: AsyncSession = Depends(get_db),
@@ -206,8 +212,33 @@ async def decide_approval(
 
 
 @router.get("/{restaurant_id}", response_model=RestaurantDetail)
-async def get_restaurant(restaurant_id: int, session: AsyncSession = Depends(get_db)):
+async def get_restaurant(
+    restaurant_id: EntityId,
+    caller: Identity | None = Depends(maybe_caller),
+    session: AsyncSession = Depends(get_db),
+):
+    """A restaurant's public page.
+
+    Approval-gated, which every *other* public read here already was — browse,
+    search, suggest, cities and popular cuisines all filter on it (discovery.py
+    calls that filter "the boundary between 'a row exists' and 'a customer may
+    see it'"). This route did not, and ids are sequential, so walking them
+    returned every pending applicant's venue name, street address and phone
+    number to an anonymous caller.
+
+    Two callers do have a reason to see an unapproved venue: its own owner, who
+    must be able to review what they submitted, and an admin, who has to decide
+    on it. Both are established from the token, so an anonymous request cannot
+    claim either.
+    """
     restaurant = await service.get_restaurant(session, restaurant_id)
+    if restaurant.approval_status != APPROVED and not (
+        caller is not None
+        and (caller.role == "admin" or caller.user_id == restaurant.owner_id)
+    ):
+        # The same answer an absent row gets. "There is a venue here you may not
+        # see" is itself the fact being withheld.
+        raise NotFoundException("Restaurant", str(restaurant_id))
     await service.attach_ratings(session, [restaurant])
     menu = await menu_service.get_menu(session, restaurant_id, available_only=True)
     detail = RestaurantDetail.model_validate(restaurant)
@@ -227,7 +258,7 @@ async def create_restaurant(
 
 @router.patch("/{restaurant_id}", response_model=RestaurantResponse)
 async def update_restaurant(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     data: RestaurantUpdate,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -237,7 +268,7 @@ async def update_restaurant(
 
 @router.post("/{restaurant_id}/image", response_model=RestaurantResponse)
 async def upload_restaurant_image(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     file: UploadFile = File(...),
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -251,7 +282,7 @@ async def upload_restaurant_image(
 
 # ---------- Menu: categories ----------
 @router.get("/{restaurant_id}/categories", response_model=list[CategoryResponse])
-async def list_categories(restaurant_id: int, session: AsyncSession = Depends(get_db)):
+async def list_categories(restaurant_id: EntityId, session: AsyncSession = Depends(get_db)):
     return await menu_service.list_categories(session, restaurant_id)
 
 
@@ -259,7 +290,7 @@ async def list_categories(restaurant_id: int, session: AsyncSession = Depends(ge
     "/{restaurant_id}/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED
 )
 async def add_category(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     data: CategoryCreate,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -269,8 +300,8 @@ async def add_category(
 
 @router.patch("/{restaurant_id}/categories/{category_id}", response_model=CategoryResponse)
 async def update_category(
-    restaurant_id: int,
-    category_id: int,
+    restaurant_id: EntityId,
+    category_id: EntityId,
     data: CategoryUpdate,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -282,8 +313,8 @@ async def update_category(
     "/{restaurant_id}/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_category(
-    restaurant_id: int,
-    category_id: int,
+    restaurant_id: EntityId,
+    category_id: EntityId,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -296,7 +327,7 @@ async def delete_category(
     "/{restaurant_id}/items", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED
 )
 async def add_item(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     data: MenuItemCreate,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -306,8 +337,8 @@ async def add_item(
 
 @router.patch("/{restaurant_id}/items/{item_id}", response_model=MenuItemResponse)
 async def update_item(
-    restaurant_id: int,
-    item_id: int,
+    restaurant_id: EntityId,
+    item_id: EntityId,
     data: MenuItemUpdate,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
@@ -317,8 +348,8 @@ async def update_item(
 
 @router.delete("/{restaurant_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
-    restaurant_id: int,
-    item_id: int,
+    restaurant_id: EntityId,
+    item_id: EntityId,
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
@@ -327,8 +358,8 @@ async def delete_item(
 
 @router.post("/{restaurant_id}/items/{item_id}/image", response_model=MenuItemResponse)
 async def upload_item_image(
-    restaurant_id: int,
-    item_id: int,
+    restaurant_id: EntityId,
+    item_id: EntityId,
     file: UploadFile = File(...),
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),

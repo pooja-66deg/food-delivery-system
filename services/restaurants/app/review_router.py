@@ -12,6 +12,7 @@ from app.review_schemas import (
 )
 from app.auth import auth
 from shared.identity import Identity
+from shared.ids import EntityId, INT64_MAX
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -27,9 +28,9 @@ async def create_review(
 
 @router.get("/restaurant/{restaurant_id}", response_model=list[ReviewRead])
 async def list_restaurant_reviews(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     session: AsyncSession = Depends(get_db),
 ):
     # Public: a rating is part of choosing a restaurant, so it must not need a login.
@@ -38,7 +39,7 @@ async def list_restaurant_reviews(
 
 @router.patch("/{review_id}", response_model=ReviewRead)
 async def update_review(
-    review_id: int,
+    review_id: EntityId,
     data: ReviewUpdate,
     user: Identity = Depends(auth.require_role("customer")),
     session: AsyncSession = Depends(get_db),
@@ -53,7 +54,7 @@ async def update_review(
 
 @router.delete("/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_review(
-    review_id: int,
+    review_id: EntityId,
     # Any authenticated role reaches the handler; the service allows the author
     # or an admin and rejects everyone else.
     user: Identity = Depends(auth.identity()),
@@ -64,7 +65,7 @@ async def delete_review(
 
 @router.post("/{review_id}/reply", response_model=ReviewRead)
 async def reply_to_review(
-    review_id: int,
+    review_id: EntityId,
     data: ReviewReply,
     user: Identity = Depends(auth.require_role("restaurant", "admin")),
     session: AsyncSession = Depends(get_db),

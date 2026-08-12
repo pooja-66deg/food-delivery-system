@@ -31,10 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import inventory, zones
 from app.auth import auth
 from app.db import get_db
-from app.models import MenuItem, Restaurant
+from app.models import APPROVED, MenuItem, Restaurant
 from app.schemas import RestaurantResponse
 from shared.errors import NotFoundException
 from shared.identity import Identity
+from shared.ids import EntityId, clamp_id
 
 router = APIRouter(prefix="/restaurants", tags=["internal"])
 
@@ -100,7 +101,7 @@ def _reject(code: str, message: str) -> ValidateOrderResponse:
 
 @router.post("/{restaurant_id}/validate-order", response_model=ValidateOrderResponse)
 async def validate_order(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     body: ValidateOrderRequest,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
@@ -183,7 +184,7 @@ class ReleaseStockRequest(BaseModel):
 
 @router.post("/{restaurant_id}/release-stock", status_code=204)
 async def release_stock(
-    restaurant_id: int,
+    restaurant_id: EntityId,
     body: ReleaseStockRequest,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
@@ -207,17 +208,34 @@ class MenuItemLookup(BaseModel):
     stock_quantity: int | None
 
 
+def _wanted_ids(ids: str) -> list[int]:
+    """The usable ids in a comma-separated list.
+
+    ``clamp_id`` drops anything outside int32 rather than letting it reach the
+    query, where asyncpg raised while binding an int4 and turned the whole batch
+    into a 500. One unusable id should cost the caller that id, not the results
+    for the others.
+    """
+    parsed = (int(i) for i in ids.split(",") if i.strip().lstrip("-").isdigit())
+    return [i for i in (clamp_id(v) for v in parsed) if i is not None]
+
+
 @router.get("/items/lookup", response_model=list[MenuItemLookup])
 async def lookup_items(
     ids: str = Query(..., description="Comma-separated menu item ids"),
+    caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
     """Name and price for a set of menu items.
 
     What the cart uses when an item is added, so the cart can then render
     entirely from its own store instead of asking again on every read.
+
+    Guarded like the rest of this file. It was not, and the module docstring's
+    claim that these endpoints are "guarded by the caller's own token" was
+    therefore false for exactly the two routes that read data out.
     """
-    wanted = [int(i) for i in ids.split(",") if i.strip().isdigit()]
+    wanted = _wanted_ids(ids)
     if not wanted:
         return []
     return list(await session.scalars(select(MenuItem).where(MenuItem.id.in_(wanted))))
@@ -226,19 +244,32 @@ async def lookup_items(
 @router.get("/lookup", response_model=list[RestaurantResponse])
 async def lookup_restaurants(
     ids: str = Query(..., description="Comma-separated restaurant ids"),
+    caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
     """The cards behind a set of restaurant ids.
 
     Hydrates a favourites list, which lives in the users service and can only
     store ids. Was a join; is now one call to the service that owns the answer.
+
+    Approved venues only, and authenticated. Unguarded and unfiltered, this
+    answered for *any* id to *anyone*: an anonymous caller could walk
+    ``?ids=1,2,3`` and read every pending applicant's venue name, street address
+    and phone number — the owner's contact details, before an operator had even
+    reviewed the application. A favourites list only ever holds venues the
+    customer could see in the first place, so the filter costs it nothing.
     """
-    wanted = [int(i) for i in ids.split(",") if i.strip().isdigit()]
+    wanted = _wanted_ids(ids)
     if not wanted:
         return []
     from app import service as restaurant_service
 
-    found = list(await session.scalars(select(Restaurant).where(Restaurant.id.in_(wanted))))
+    found = list(await session.scalars(
+        select(Restaurant).where(
+            Restaurant.id.in_(wanted),
+            Restaurant.approval_status == APPROVED,
+        )
+    ))
     # Same rating detail the browse cards carry, so the list renders identically.
     await restaurant_service.attach_ratings(session, found)
     return found

@@ -232,7 +232,13 @@ steps:
         # display name should receive.
         for t in order-events user-events restaurant-registrations; do
           create_sub restaurants-service "$$t"; done
-        for t in order-events user-events; do
+        # restaurant-events belongs here and was missing. delivery's config
+        # defaults KAFKA_TOPICS to all three, so the service logged that it was
+        # consuming restaurant-events at every startup while no such subscription
+        # existed — and shared/messaging.py never checks the subscribe future, so
+        # the NotFound was swallowed and the RestaurantSnapshot read-model simply
+        # stayed empty. Exactly the silent drift the comment above warns about.
+        for t in order-events user-events restaurant-events; do
           create_sub delivery-service "$$t"; done
         # restaurant-events: approval decisions, which reach the applicant by
         # email — this is the only service holding an address to send to, and
@@ -394,7 +400,7 @@ steps:
             --allow-unauthenticated \
             --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
             --vpc-connector="${_VPC_CONNECTOR}" --vpc-egress="$$(egress "$$svc")" \
-            --min-instances=1 \
+            --min-instances=1 --no-cpu-throttling \
             "$$@" --quiet
         }
 
@@ -402,6 +408,14 @@ steps:
         # Pub/Sub subscriber in a background thread, and Cloud Run stops
         # background work on an idle instance. Scaled to zero, a service stops
         # consuming and its read-models silently stop updating.
+        #
+        # --no-cpu-throttling is the other half of the same requirement, and
+        # min-instances alone does not give it. An instance kept alive but
+        # throttled between requests has no CPU for that subscriber thread, so
+        # the handler cannot finish inside its 30s future timeout: admin-service
+        # alone failed 1,285 Pub/Sub messages that way, and notifications took
+        # 43 seconds after boot to subscribe at all. The instance was up the
+        # whole time — it just was not allowed to run.
 
         # Mount a secret only if it exists.
         #

@@ -15,6 +15,7 @@ from app.db import get_db
 from app.redis_client import get_redis
 from app.schemas import AvailableDriver, DeliveryRead, TrackingRead
 from shared.identity import Identity
+from shared.ids import EntityId
 
 router = APIRouter(prefix="/delivery", tags=["delivery"])
 
@@ -76,7 +77,7 @@ async def nearby(
 
 @router.post("/orders/{order_id}/accept", response_model=DeliveryRead)
 async def accept(
-    order_id: int,
+    order_id: EntityId,
     driver: Identity = Depends(_driver),
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
@@ -86,7 +87,7 @@ async def accept(
 
 @router.post("/orders/{order_id}/reject", response_model=DeliveryRead)
 async def reject(
-    order_id: int,
+    order_id: EntityId,
     driver: Identity = Depends(_driver),
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
@@ -96,7 +97,7 @@ async def reject(
 
 @router.post("/orders/{order_id}/pickup", response_model=DeliveryRead)
 async def pickup(
-    order_id: int,
+    order_id: EntityId,
     driver: Identity = Depends(_driver),
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
@@ -106,7 +107,7 @@ async def pickup(
 
 @router.post("/orders/{order_id}/deliver", response_model=DeliveryRead)
 async def deliver(
-    order_id: int,
+    order_id: EntityId,
     driver: Identity = Depends(_driver),
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
@@ -116,7 +117,7 @@ async def deliver(
 
 @router.get("/orders/{order_id}/tracking", response_model=TrackingRead)
 async def tracking(
-    order_id: int,
+    order_id: EntityId,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
@@ -136,7 +137,7 @@ async def available_drivers(
 
 @router.post("/orders/{order_id}/reassign", response_model=DeliveryRead)
 async def reassign(
-    order_id: int,
+    order_id: EntityId,
     body: ReassignBody,
     restaurant: Identity = Depends(_restaurant),
     session: AsyncSession = Depends(get_db),

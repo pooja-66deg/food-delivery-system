@@ -56,8 +56,13 @@ class SmsSender:
             except Exception as exc:  # noqa: BLE001 — never let SMS break the flow
                 logger.error("[notify:SMS] Twilio send failed: %s", exc)
                 return False
-        logger.info("[notify:SMS] (no Twilio config) to=%s :: %s", to, message)
-        return True
+        # Unconfigured is not delivered. This returned True, and _send_one
+        # records the return value as ``delivered``, so every SMS row in the
+        # audit trail claimed a message had gone out while no provider existed
+        # to send one — the log line below was the only trace, and nothing
+        # reading the delivery history could tell.
+        logger.warning("[notify:SMS] no Twilio config; not sent. to=%s :: %s", to, message)
+        return False
 
 
 class EmailSender:
@@ -82,8 +87,8 @@ class EmailSender:
             except Exception as exc:  # noqa: BLE001
                 logger.error("[notify:EMAIL] SendGrid send failed: %s", exc)
                 return False
-        logger.info("[notify:EMAIL] (no provider) to=%s :: %s", to, message)
-        return True
+        logger.warning("[notify:EMAIL] no provider configured; not sent. to=%s :: %s", to, message)
+        return False
 
 
 class PushSender:
@@ -109,8 +114,8 @@ class PushSender:
             except Exception as exc:  # noqa: BLE001
                 logger.error("[notify:PUSH] FCM send failed: %s", exc)
                 return False
-        logger.info("[notify:PUSH] (no provider) to=%s :: %s", to, message)
-        return True
+        logger.warning("[notify:PUSH] no FCM key configured; not sent. to=%s :: %s", to, message)
+        return False
 
 
 _SENDERS = {s.channel: s for s in (LogSender(), SmsSender(), EmailSender(), PushSender())}

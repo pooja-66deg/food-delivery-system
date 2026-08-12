@@ -16,8 +16,18 @@ _LOCATION_FIELDS = ("line1", "city", "postal_code")
 
 
 async def update_profile(session: AsyncSession, user: User, data: UserUpdate) -> User:
-    """Apply profile edits. Phone changes are checked for uniqueness."""
-    updates = data.model_dump(exclude_unset=True)
+    """Apply profile edits. Phone changes are checked for uniqueness.
+
+    Nulls are dropped, the same reading ``update_address`` applies: nothing on a
+    user is nullable, so an explicit null means "leave this alone" rather than
+    "clear it". ``exclude_unset`` kept it, and the write then failed the NOT NULL
+    constraint — which the handler below reported as ``Phone already registered``
+    whatever the column had actually been. ``{"first_name": null}`` answered 409
+    telling the caller to pick a different phone number.
+    """
+    updates = {
+        k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+    }
 
     new_phone = updates.get("phone")
     if new_phone is not None and new_phone != user.phone:
@@ -32,6 +42,10 @@ async def update_profile(session: AsyncSession, user: User, data: UserUpdate) ->
         await session.commit()
     except IntegrityError:
         await session.rollback()
+        # Narrow, because this handler used to claim a phone conflict for every
+        # constraint in the table. Phone is the only unique column here, so
+        # anything else reaching this point is not a conflict and should not be
+        # described as one.
         raise ConflictException("Phone already registered")
     await session.refresh(user)
     return user
