@@ -54,7 +54,7 @@ export function AdminPage() {
     setError(null)
     setNotice(null)
     try {
-      await ordersApi.setStatus(id, 'CANCELLED')
+      await ordersApi.setStatus(id, 'CANCELLED', 'admin')
       setNotice(`Order #${id} cancelled.`)
       await load()
     } catch (e) {

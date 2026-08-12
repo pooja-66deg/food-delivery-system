@@ -21,7 +21,7 @@ export function AdminPanel() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await request<AdminStats>("/admin/stats", { auth: true })
+        const data = await request<AdminStats>("/admin/stats", { auth: 'admin' })
         setStats(data)
       } catch (err: any) {
         setError(err.message || "Failed to load stats")

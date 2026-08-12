@@ -1,6 +1,7 @@
 // Typed bindings for the orders + payments domains.
 
 import { request } from './client'
+import type { AuthAs } from './client'
 
 export interface OrderItem {
   menu_item_id: number
@@ -94,6 +95,9 @@ export const ordersApi = {
   reject: (id: number, reason?: string) =>
     request<Order>(`/orders/${id}/reject`, { method: 'POST', body: { reason }, auth: true }),
 
-  setStatus: (id: number, status: string) =>
-    request<Order>(`/orders/${id}/status`, { method: 'POST', body: { status }, auth: true }),
+  /** Advance an order. The owner's ticket and the operator console both call
+   *  this, and the endpoint accepts either role — so the caller says which
+   *  session it is acting as rather than leaving the client to guess. */
+  setStatus: (id: number, status: string, auth: AuthAs = true) =>
+    request<Order>(`/orders/${id}/status`, { method: 'POST', body: { status }, auth }),
 }

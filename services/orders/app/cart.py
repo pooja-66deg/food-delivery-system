@@ -97,12 +97,13 @@ async def add_item(
     unavailable this raises 503 — the customer cannot add an item we cannot
     price, and guessing would be worse than saying so.
     """
-    response = await restaurants().get(
+    rows = await restaurants().get_json(
         "/restaurants/items/lookup",
         params={"ids": str(menu_item_id)},
         auth_header=auth_header,
     )
-    rows = response.json() if response.status_code == 200 else []
+    # Reached only when the lookup itself succeeded, so an empty result means
+    # the menu item is genuinely not there — not that we failed to ask.
     if not rows:
         raise NotFoundException("Menu item", str(menu_item_id))
     item = rows[0]

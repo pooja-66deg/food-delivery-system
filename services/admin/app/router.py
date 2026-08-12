@@ -13,6 +13,7 @@ from app.auth import auth
 from app.clients import orders, users
 from app.db import get_db
 from app.schemas import AdminOrderRow, AdminStats, AdminUserRow, BootstrapAdminRequest, BootstrapAdminResponse
+from shared.errors import ConflictException
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(auth.require_role("admin"))]
@@ -49,10 +50,9 @@ async def run_acceptance_timeout(authorization: str | None = Header(default=None
     the same admin check to the same person, rather than this service holding a
     credential that can do anything.
     """
-    response = await orders().post(
+    return await orders().post_json(
         "/orders/internal/expire-acceptances", auth_header=authorization
     )
-    return response.json()
 
 
 @bootstrap_router.post("/bootstrap", response_model=BootstrapAdminResponse, status_code=status.HTTP_201_CREATED)
@@ -65,6 +65,14 @@ async def bootstrap_admin(data: BootstrapAdminRequest):
         "/auth/internal/bootstrap-admin",
         json={"email": data.email, "password": data.password}
     )
-    if response.status_code != 201:
-        raise Exception(f"Failed to create admin: {response.text}")
-    return response.json()
+    # Checked before unwrapping because it is an answer, not a failure — the
+    # documented one for a second call. Left as a bare ``Exception`` it became a
+    # 500 that contradicted this endpoint's own contract, and put the users
+    # service's raw response body in it.
+    if response.status_code == status.HTTP_409_CONFLICT:
+        # Upstream has two reasons for this — an admin exists, or the email is
+        # taken — and only its message says which, so it is carried across.
+        raise ConflictException(
+            response.json().get("detail", "An admin already exists.")
+        )
+    return users().unwrap(response, expect=status.HTTP_201_CREATED)

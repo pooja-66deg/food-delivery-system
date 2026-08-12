@@ -128,6 +128,42 @@ async def test_a_5xx_does_count_as_a_failure():
     await client.aclose()
 
 
+async def test_a_4xx_body_is_never_unwrapped_into_an_empty_result():
+    """The 4xx above is an answer to the *client*, not to the caller reading a
+    body. Handed back as ``[]`` it reads as "there is nothing there", and the
+    caller then reports a missing resource for one that exists."""
+    def _rejects(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "no such path"})
+
+    client = ServiceClient("http://restaurants", name="restaurants")
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_rejects), base_url="http://restaurants"
+    )
+
+    with pytest.raises(ServiceUnavailableException):
+        await client.get_json("/items/lookup", params={"ids": "1"})
+    # Still an answer as far as the circuit is concerned.
+    assert not client._breaker.is_open
+    await client.aclose()
+
+
+async def test_an_expected_status_unwraps_to_the_body():
+    def _answers(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json={"id": 7})
+
+    client = ServiceClient("http://users", name="users")
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_answers), base_url="http://users"
+    )
+
+    assert await client.post_json("/bootstrap", expect=201, json={}) == {"id": 7}
+    # 200 is not a success here: the endpoint documents 201, and anything else
+    # is a different endpoint than the one this caller thinks it is talking to.
+    with pytest.raises(ServiceUnavailableException):
+        await client.post_json("/bootstrap", json={})
+    await client.aclose()
+
+
 async def test_the_callers_token_is_forwarded():
     """Services forward the end user's token rather than holding a machine
     credential, so the called service applies the same rules to the same person."""

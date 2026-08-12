@@ -100,6 +100,22 @@ describe('admin restaurant list', () => {
     )
   })
 
+  it('spins only the button that was pressed', async () => {
+    // Keyed on the row alone, approving a venue also spun its Reject button,
+    // which reads as both decisions being sent at once.
+    let settle: (v: unknown) => void = () => {}
+    mocks.decideApproval.mockReturnValue(new Promise((resolve) => { settle = resolve }))
+    render(<RestaurantsPanel />)
+    await screen.findByText('Tiffin House')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+
+    expect(screen.getByRole('button', { name: 'Approve' }).querySelector('.spin')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Reject' }).querySelector('.spin')).toBeNull()
+
+    settle({ ...ROW, approval_status: 'approved' })
+  })
+
   it('asks for a reason before rejecting, since the owner is shown it', async () => {
     render(<RestaurantsPanel />)
     await screen.findByText('Tiffin House')
