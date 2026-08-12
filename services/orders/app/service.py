@@ -389,9 +389,9 @@ async def cancel_by_customer(
     _record_refund(order, refund)
     await _restore_stock(session, order, auth_header)
     await _emit_status(session, order)
-    await session.commit()
     if refund == RefundStatus.FULL:
         _request_payment_action(session, order, "refund")
+    await session.commit()
     await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
@@ -422,8 +422,8 @@ async def reject_by_restaurant(
     _record_refund(order, RefundStatus.FULL)  # kitchen rejection always refunds
     await _restore_stock(session, order, auth_header)
     await _emit_status(session, order)
-    await session.commit()
     _request_payment_action(session, order, "refund")
+    await session.commit()
     await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
@@ -442,11 +442,11 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
         _record_refund(order, refund)
         await _restore_stock(session, order)
     await _emit_status(session, order)
-    await session.commit()
     if to == OrderStatus.DELIVERED:
         _request_payment_action(session, order, "settle")
     elif refund == RefundStatus.FULL:
         _request_payment_action(session, order, "refund")
+    await session.commit()
     # No driver assignment here any more. The delivery service does it when it
     # reads the READY_FOR_PICKUP event that _emit_status already published — so
     # a kitchen marking food ready never waits on driver selection, and never
@@ -463,9 +463,9 @@ async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) 
         raise NotFoundException("Order", str(order_id))
     sm.apply_transition(session, order, to, Actor.DRIVER)
     await _emit_status(session, order)
-    await session.commit()
     if to == OrderStatus.DELIVERED:
         _request_payment_action(session, order, "settle")
+    await session.commit()
     await _deliver_status(session, order)
     return await _load_full(session, order_id)
 
@@ -511,8 +511,7 @@ async def expire_pending_acceptances(session: AsyncSession, now: datetime) -> in
         _record_refund(order, RefundStatus.FULL)
         await _restore_stock(session, order)
         await _emit_status(session, order)
-    await session.commit()
-    for order in stale:
         _request_payment_action(session, order, "refund")
+    await session.commit()
     await _deliver_status(session, *stale)
     return len(stale)

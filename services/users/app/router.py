@@ -49,6 +49,25 @@ from app.schemas import (
 
 
 def _client_ip(request: Request) -> str:
+    """The caller's address, for rate-limit keys.
+
+    ``request.client.host`` is the TCP peer, which behind Cloud Run is always the
+    internal ingress proxy — one constant for the whole platform. Keying a limit
+    on that does not rate-limit a caller, it rate-limits *everyone together*: ten
+    anonymous forgot-password requests in a minute locked account recovery for
+    every user on the platform.
+
+    So the left-most ``X-Forwarded-For`` entry is preferred, which is the client
+    as the first proxy that saw it recorded it. It is caller-supplied and
+    therefore spoofable, which is the honest trade: a spoofed value lets one
+    caller evade their own limit, while the peer address lets one caller consume
+    everybody's. Evasion by one is the smaller failure than denial for all.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
     return request.client.host if request.client else "unknown"
 
 
@@ -209,12 +228,21 @@ async def reset_password(
 )
 async def admin_reset_password(
     data: AdminPasswordResetRequest,
+    request: Request,
     session: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
 ):
-    """Reset admin password after forced reset flow.
+    """Complete the forced reset an admin's first login demanded.
 
-    Validates old password, sets new password, and clears password_reset_required flag.
+    Unauthenticated by necessity — see service.reset_admin_password for what
+    bounds it instead. Rate-limited like every other unauthenticated auth route:
+    without it, this is an unbounded password-verification oracle for any email
+    a caller cares to try.
     """
+    await enforce_rate_limit(
+        redis, f"rl:admin_reset:{_client_ip(request)}:{data.email}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
     return await service.reset_admin_password(
         session, data.email, data.old_password, data.new_password
     )
