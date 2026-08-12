@@ -33,7 +33,9 @@ export function RestaurantsPanel() {
   const [rows, setRows] = useState<AdminRestaurantRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [busyId, setBusyId] = useState<number | null>(null)
+  // Which decision is in flight, not merely which row. Keyed on the row alone,
+  // approving a venue spun the spinner on its Reject button too.
+  const [busy, setBusy] = useState<{ id: number; status: ApprovalStatus } | null>(null)
   // The venue being rejected, held while the reason is typed.
   const [rejecting, setRejecting] = useState<AdminRestaurantRow | null>(null)
   const [reason, setReason] = useState('')
@@ -54,7 +56,7 @@ export function RestaurantsPanel() {
   }, [load])
 
   async function decide(row: AdminRestaurantRow, status: ApprovalStatus, why?: string) {
-    setBusyId(row.id)
+    setBusy({ id: row.id, status })
     setError(null)
     setNotice(null)
     try {
@@ -66,7 +68,7 @@ export function RestaurantsPanel() {
     } catch (e) {
       setError(errorMessage(e, `Could not ${status.replace(/d$/, '')} this restaurant.`))
     } finally {
-      setBusyId(null)
+      setBusy(null)
     }
   }
 
@@ -158,16 +160,18 @@ export function RestaurantsPanel() {
                       {r.approval_status !== 'approved' && (
                         <Button
                           variant="ghost"
-                          loading={busyId === r.id}
+                          loading={busy?.id === r.id && busy.status === 'approved'}
                           onClick={() => decide(r, 'approved')}
                         >
                           Approve
                         </Button>
                       )}
+                      {/* Opens the reason modal rather than deciding, so it
+                          never spins — only disabled while its row is busy. */}
                       {r.approval_status !== 'rejected' && (
                         <Button
                           variant="ghost"
-                          loading={busyId === r.id}
+                          disabled={busy?.id === r.id}
                           onClick={() => {
                             setRejecting(r)
                             setReason('')
@@ -206,7 +210,7 @@ export function RestaurantsPanel() {
         </label>
         <div className="row-actions" style={{ marginTop: '1rem' }}>
           <Button
-            loading={busyId === rejecting?.id}
+            loading={busy?.id === rejecting?.id && busy?.status === 'rejected'}
             onClick={() => rejecting && decide(rejecting, 'rejected', reason.trim() || undefined)}
           >
             Reject restaurant

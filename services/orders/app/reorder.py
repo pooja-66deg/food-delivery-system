@@ -67,14 +67,16 @@ async def reorder(
     if not lines:
         raise ConflictException("That order has no items to reorder")
 
-    response = await restaurants().get(
+    # Required, not best-effort: a failed lookup used to read as an empty one,
+    # which reported every line of the order as unavailable and cleared the cart
+    # on the way. Better to say the reorder could not be done than to say the
+    # restaurant stopped selling everything.
+    rows = await restaurants().get_json(
         "/restaurants/items/lookup",
         params={"ids": ",".join(str(line.menu_item_id) for line in lines)},
         auth_header=auth_header,
     )
-    current = {
-        item["id"]: item for item in (response.json() if response.status_code == 200 else [])
-    }
+    current = {item["id"]: item for item in rows}
 
     # Start from empty rather than adding to whatever is in the cart: "order this
     # again" means this order, not this order plus yesterday's leftovers. It also

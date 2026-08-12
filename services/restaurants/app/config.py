@@ -7,6 +7,7 @@ business holding — and could not start without them.
 
 from typing import Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from shared.cors import split_origins
@@ -24,6 +25,17 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://fooduser:foodpass@postgres-restaurants:5432/restaurants_db"
     )
     database_echo: bool = False
+
+    # Pool size, per instance. Seven services share one Cloud SQL instance, so
+    # the ceiling that matters is the sum across all of them times their replica
+    # count — not what any one service would like for itself. Overridable so a
+    # bigger tier does not need a code change.
+    #: 2 + 1 = 3 per instance. Seven services at one replica each is 21, which
+    #: fits under db-f1-micro's ~25 max_connections with room for the Cloud SQL
+    #: proxy and a superuser slot. Raise these *and* the instance tier together —
+    #: raising them alone is how the ceiling was breached in the first place.
+    db_pool_size: int = 2
+    db_max_overflow: int = 1
 
     kafka_bootstrap_servers: str = "kafka:9092"
     #: Every replica shares the group, so an event is handled once by the
@@ -57,6 +69,20 @@ class Settings(BaseSettings):
     # Both return the same URL shape, so callers never know which is in use.
     media_root: str = "media"
     gcs_bucket_name: Optional[str] = None
+
+    @field_validator("gcs_bucket_name", mode="after")
+    @classmethod
+    def _clean_bucket(cls, v: Optional[str]) -> Optional[str]:
+        """Trim the name, and read blank as unset.
+
+        The deployed value was " food-project-poc_cloudbuild" — a leading space,
+        which every display of it hides, and which makes both the API call and
+        the public URL wrong. Blank collapses to None so an unset bucket disables
+        uploads instead of pointing them at a bucket named "".
+        """
+        if v is None:
+            return None
+        return v.strip() or None
 
     # Geocoding a restaurant's address, and the delivery-zone maths that uses
     # it. Unset: zones fall back to a city match, which is the pre-radius rule.

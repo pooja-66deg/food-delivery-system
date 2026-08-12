@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from shared.errors import ConflictException, NotFoundException, UnauthorizedException
+from shared.errors import ConflictException, UnauthorizedException
 from app.jwt_tokens import create_access_token, create_refresh_token, verify_token
 from app.security import hash_password, verify_password
 from app import outbox
@@ -399,20 +399,41 @@ async def bootstrap_admin(session: AsyncSession, email: str, password: str) -> U
 async def reset_admin_password(
     session: AsyncSession, email: str, old_password: str, new_password: str
 ) -> User:
-    """Reset admin password after forced reset on first login.
+    """Complete the forced password reset for a bootstrapped admin.
 
-    Validates old password and sets password_reset_required to False.
-    Raises NotFoundException if user not found or UnauthorizedException if old password is wrong.
+    This is the second half of the flow ``/auth/admin/login`` starts when it
+    answers 403 ``password_reset_required``: at that point the caller has no
+    token to authenticate with, so this route cannot require one. What keeps an
+    unauthenticated password-change endpoint safe is that it accepts exactly the
+    one account state that flow can produce, and nothing else:
+
+      * the account must be an admin, and
+      * it must still be flagged ``password_reset_required``, and
+      * the caller must already know the current password.
+
+    Before those first two conditions existed this was a password-change
+    primitive for *any* account — a customer's password could be changed with no
+    Authorization header at all.
+
+    Every failure answers with one message. Distinguishing "no such account"
+    from "wrong password" here would rebuild the enumeration oracle that
+    ``request_password_reset`` goes out of its way to avoid, on an endpoint that
+    needs no credentials to ask.
     """
     user = await session.scalar(select(User).where(User.email == email))
-    if user is None:
-        raise NotFoundException("User", email)
-
-    if not verify_password(old_password, user.hashed_password):
+    if (
+        user is None
+        or user.role != "admin"
+        or not user.password_reset_required
+        or not verify_password(old_password, user.hashed_password)
+    ):
         raise UnauthorizedException("Invalid email or password")
 
     user.hashed_password = hash_password(new_password)
     user.password_reset_required = False
+    # Same reason as reset_password: a password change that leaves existing
+    # sessions alive has not taken the account back from whoever had it.
+    user.session_generation += 1
     await session.commit()
     await session.refresh(user)
     return user

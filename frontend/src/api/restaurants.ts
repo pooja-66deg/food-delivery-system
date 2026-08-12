@@ -209,7 +209,7 @@ export const restaurantsApi = {
   adminList: (approvalStatus?: ApprovalStatus) =>
     request<AdminRestaurantPage>(
       `/restaurants/admin/all?limit=100${approvalStatus ? `&approval_status=${approvalStatus}` : ''}`,
-      { auth: true },
+      { auth: 'admin' },
     ),
 
   /** Approve or reject a venue. Admin only. */
@@ -217,7 +217,7 @@ export const restaurantsApi = {
     request<AdminRestaurantRow>(`/restaurants/${id}/approval`, {
       method: 'POST',
       body: { status, reason: reason ?? null },
-      auth: true,
+      auth: 'admin',
     }),
 
   // Owner management

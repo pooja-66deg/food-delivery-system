@@ -26,12 +26,23 @@ async def get_preferences(session: AsyncSession, user_id: int) -> NotificationPr
 async def update_preferences(
     session: AsyncSession, user_id: int, data: PreferenceUpdate
 ) -> NotificationPreference:
-    """Apply the fields the caller sent, leaving the rest alone."""
+    """Apply the fields the caller sent, leaving the rest alone.
+
+    ``exclude_none`` rather than ``exclude_unset``, and the difference is a 500.
+    Every channel is declared ``bool | None = None`` so it can be omitted, which
+    means an explicit ``{"sms_enabled": null}`` passes validation and is a *set*
+    field whose value is None — ``exclude_unset`` kept it, ``setattr`` wrote None
+    into a NOT NULL column, and the IntegrityError escaped as an unhandled 500.
+
+    Omitted and null now mean the same thing, which is what a client sending
+    either one intends: leave this channel as it is. The same reading
+    ``update_address`` already applies, and for the same reason.
+    """
     prefs = await session.get(NotificationPreference, user_id)
     if prefs is None:
         prefs = NotificationPreference(user_id=user_id)
         session.add(prefs)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    for field, value in data.model_dump(exclude_none=True).items():
         setattr(prefs, field, value)
     await session.commit()
     await session.refresh(prefs)

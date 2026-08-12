@@ -9,7 +9,7 @@ the caller's own Authorization header to the restaurants service, so that servic
 authorises the same person rather than trusting a machine credential.
 """
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from app.models import OrderStatus
 from app.redis_client import get_redis
 from app.schemas import OrderRead, OrderSummary
 from shared.identity import Identity
+from shared.ids import EntityId, INT64_MAX
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 cart_router = APIRouter(prefix="/cart", tags=["cart"])
@@ -68,7 +69,7 @@ async def add_to_cart(
 
 @cart_router.patch("/items/{menu_item_id}", response_model=CartView)
 async def update_cart_item(
-    menu_item_id: int,
+    menu_item_id: EntityId,
     data: UpdateCartItem,
     user: Identity = Depends(_customer),
     redis=Depends(get_redis),
@@ -93,7 +94,7 @@ async def reorder(
 
 @cart_router.delete("/items/{menu_item_id}", response_model=CartView)
 async def remove_cart_item(
-    menu_item_id: int, user: Identity = Depends(_customer), redis=Depends(get_redis)
+    menu_item_id: EntityId, user: Identity = Depends(_customer), redis=Depends(get_redis)
 ):
     return await cart_service.remove_item(redis, user.user_id, menu_item_id)
 
@@ -118,8 +119,8 @@ async def checkout(
 
 @router.get("", response_model=list[OrderSummary])
 async def list_my_orders(
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     scope: str = "all",
     user: Identity = Depends(_customer),
     session: AsyncSession = Depends(get_db),
@@ -129,9 +130,9 @@ async def list_my_orders(
 
 @router.get("/restaurant/{restaurant_id}", response_model=list[OrderRead])
 async def restaurant_orders(
-    restaurant_id: int,
-    limit: int = 50,
-    offset: int = 0,
+    restaurant_id: EntityId,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     user: Identity = Depends(_restaurant),
     session: AsyncSession = Depends(get_db),
 ):
@@ -140,7 +141,7 @@ async def restaurant_orders(
 
 @router.get("/{order_id}", response_model=OrderRead)
 async def get_order(
-    order_id: int,
+    order_id: EntityId,
     user: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
@@ -149,7 +150,7 @@ async def get_order(
 
 @router.post("/{order_id}/cancel", response_model=OrderRead)
 async def cancel_order(
-    order_id: int,
+    order_id: EntityId,
     user: Identity = Depends(_customer),
     session: AsyncSession = Depends(get_db),
     authorization: str | None = Header(default=None),
@@ -159,7 +160,7 @@ async def cancel_order(
 
 @router.post("/{order_id}/accept", response_model=OrderRead)
 async def accept_order(
-    order_id: int,
+    order_id: EntityId,
     user: Identity = Depends(_restaurant),
     session: AsyncSession = Depends(get_db),
 ):
@@ -168,7 +169,7 @@ async def accept_order(
 
 @router.post("/{order_id}/reject", response_model=OrderRead)
 async def reject_order(
-    order_id: int,
+    order_id: EntityId,
     body: RejectBody = RejectBody(),
     user: Identity = Depends(_restaurant),
     session: AsyncSession = Depends(get_db),
@@ -181,7 +182,7 @@ async def reject_order(
 
 @router.post("/{order_id}/status", response_model=OrderRead)
 async def set_status(
-    order_id: int,
+    order_id: EntityId,
     body: StatusBody,
     user: Identity = Depends(_restaurant),
     session: AsyncSession = Depends(get_db),

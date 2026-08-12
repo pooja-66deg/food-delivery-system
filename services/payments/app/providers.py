@@ -7,6 +7,7 @@ deterministic stand-in for an online PSP that the Stripe adapter replaces.
 """
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
@@ -14,6 +15,22 @@ from typing import Protocol
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+#: Stripe key shapes: sk_live_/sk_test_ (secret), rk_ (restricted), whsec_ (webhook).
+_SECRET_RE = re.compile(r"\b(sk_live|sk_test|rk_live|rk_test|whsec)_[A-Za-z0-9]+")
+
+
+def _safe(exc: Exception) -> str:
+    """An exception message with any Stripe credential removed.
+
+    Provider exceptions are not safe to log verbatim. When the API key was
+    malformed the SDK raised a header-validation error whose message *embedded
+    the outgoing Authorization header* — so this logger wrote the live secret key
+    into Cloud Logging in plaintext, once per failed checkout, where anyone with
+    roles/logging.viewer could read it. The failure that most needs logging is
+    the one most likely to quote the credential back at you.
+    """
+    return _SECRET_RE.sub("<redacted>", str(exc))
 
 
 @dataclass
@@ -134,7 +151,7 @@ class StripeProvider:
                 checkout_url=checkout.url,
             )
         except Exception as exc:  # noqa: BLE001 — never let payment setup crash checkout
-            logger.error("[payments:STRIPE] authorize failed: %s", exc)
+            logger.error("[payments:STRIPE] authorize failed: %s", _safe(exc))
             return ProviderResult(ok=False, status="error")
 
     async def verify(self, reference: str | None) -> ProviderResult:
@@ -162,7 +179,7 @@ class StripeProvider:
                 ok=intent.status == "succeeded", reference=intent.id, status=intent.status,
             )
         except Exception as exc:  # noqa: BLE001 — an unverifiable payment is simply not settled
-            logger.error("[payments:STRIPE] verify failed: %s", exc)
+            logger.error("[payments:STRIPE] verify failed: %s", _safe(exc))
             return ProviderResult(ok=False, reference=reference, status="error")
 
     async def refund(self, reference: str | None, amount: Decimal) -> ProviderResult:
@@ -174,7 +191,7 @@ class StripeProvider:
             refund = await asyncio.to_thread(lambda: stripe.Refund.create(payment_intent=intent))
             return ProviderResult(ok=True, reference=reference, status=refund.status)
         except Exception as exc:  # noqa: BLE001
-            logger.error("[payments:STRIPE] refund failed: %s", exc)
+            logger.error("[payments:STRIPE] refund failed: %s", _safe(exc))
             return ProviderResult(ok=False, status="error")
 
     @staticmethod

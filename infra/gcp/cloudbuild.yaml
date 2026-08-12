@@ -232,7 +232,13 @@ steps:
         # display name should receive.
         for t in order-events user-events restaurant-registrations; do
           create_sub restaurants-service "$$t"; done
-        for t in order-events user-events; do
+        # restaurant-events belongs here and was missing. delivery's config
+        # defaults KAFKA_TOPICS to all three, so the service logged that it was
+        # consuming restaurant-events at every startup while no such subscription
+        # existed — and shared/messaging.py never checks the subscribe future, so
+        # the NotFound was swallowed and the RestaurantSnapshot read-model simply
+        # stayed empty. Exactly the silent drift the comment above warns about.
+        for t in order-events user-events restaurant-events; do
           create_sub delivery-service "$$t"; done
         # restaurant-events: approval decisions, which reach the applicant by
         # email — this is the only service holding an address to send to, and
@@ -304,7 +310,9 @@ steps:
   #
   # --ingress=internal-and-cloud-load-balancing is the network door: nothing
   # from the public internet reaches these, only traffic arriving through the
-  # VPC. That is what the gateway's --vpc-egress=all-traffic (step 6) buys.
+  # VPC. That is what the gateway's --vpc-egress=all-traffic (step 6) buys — and
+  # what any service calling another service needs too, which is why egress is
+  # decided per service below rather than fixed for all of them.
   #
   # --allow-unauthenticated is the *IAM* door, and opening it is deliberate.
   # Cloud Run's IAM check wants a Google identity token in the Authorization
@@ -355,6 +363,34 @@ steps:
         fe_all="${_FE_URL}"
         fe_primary="$${fe_all%%,*}"
 
+        # Egress is per-service, and the difference is not cosmetic.
+        #
+        # A Cloud Run URL is a *public* address. Under private-ranges-only a call
+        # from one service to another therefore leaves the VPC, and arrives at an
+        # --ingress=internal-and-cloud-load-balancing service as public traffic.
+        # Cloud Run answers that with 404 — not 403 — and a 404 at the call site
+        # is indistinguishable from the resource genuinely not being there. That
+        # is how a network setting came out as "Menu item with ID 1 not found":
+        # orders could not reach restaurants at all, and said the dish did not
+        # exist. The 404 is now logged with its body (shared/http_client.py), but
+        # the setting is the fix.
+        #
+        # So the services holding another service's URL — the two with a
+        # *_SERVICE_URL below — get all-traffic, the same thing the gateway gets
+        # in step 6 and for the same reason. The rest keep private-ranges-only:
+        # they only ever talk to Cloud SQL, Redis and Google APIs, and routing
+        # that through the connector buys nothing.
+        #
+        # all-traffic sends Google API traffic through the VPC too, so the
+        # connector's subnet needs Private Google Access on — without it Pub/Sub
+        # and Secret Manager stop resolving for these two.
+        egress() {
+          case "$$1" in
+            orders|admin) echo all-traffic ;;
+            *) echo private-ranges-only ;;
+          esac
+        }
+
         deploy() {
           local svc="$$1"; shift
           gcloud run deploy "$$svc-service" \
@@ -363,8 +399,8 @@ steps:
             --ingress=internal-and-cloud-load-balancing \
             --allow-unauthenticated \
             --add-cloudsql-instances="${_CLOUDSQL_INSTANCE}" \
-            --vpc-connector="${_VPC_CONNECTOR}" --vpc-egress=private-ranges-only \
-            --min-instances=1 \
+            --vpc-connector="${_VPC_CONNECTOR}" --vpc-egress="$$(egress "$$svc")" \
+            --min-instances=1 --no-cpu-throttling \
             "$$@" --quiet
         }
 
@@ -372,6 +408,14 @@ steps:
         # Pub/Sub subscriber in a background thread, and Cloud Run stops
         # background work on an idle instance. Scaled to zero, a service stops
         # consuming and its read-models silently stop updating.
+        #
+        # --no-cpu-throttling is the other half of the same requirement, and
+        # min-instances alone does not give it. An instance kept alive but
+        # throttled between requests has no CPU for that subscriber thread, so
+        # the handler cannot finish inside its 30s future timeout: admin-service
+        # alone failed 1,285 Pub/Sub messages that way, and notifications took
+        # 43 seconds after boot to subscribe at all. The instance was up the
+        # whole time — it just was not allowed to run.
 
         # Mount a secret only if it exists.
         #

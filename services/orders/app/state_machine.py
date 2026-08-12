@@ -24,6 +24,11 @@ PRE_PREP_STATES: set[OrderStatus] = {
     S.CREATED, S.PAYMENT_PENDING, S.PAYMENT_SUCCESS, S.RESTAURANT_ACCEPTED,
 }
 
+#: States an order can be cancelled from where no money has been taken yet.
+#: PAYMENT_SUCCESS is deliberately *not* here — that is the transition that marks
+#: the money captured (or, for COD, committed to be collected).
+UNPAID_STATES: set[OrderStatus] = {S.CREATED, S.PAYMENT_PENDING}
+
 
 class OrderError(AppException):
     """A client-actionable order error; ``code`` is a stable machine reason."""
@@ -60,9 +65,22 @@ def customer_cancel_allowed(current: OrderStatus) -> bool:
 
 
 def refund_on_cancel(current: OrderStatus, actor: Actor) -> RefundStatus:
-    if actor == Actor.SYSTEM:
+    """What to refund when an order is cancelled from ``current`` by ``actor``.
+
+    Nothing captured means nothing to refund, whoever cancels and for whatever
+    reason — expire_unpaid_orders already said so in as many words ("Nothing was
+    ever captured, so there is nothing to refund"), but the customer- and
+    restaurant-initiated paths through here did not, and returned FULL from
+    PAYMENT_PENDING anyway. That booked a refund of money the platform never
+    took: an order whose Stripe authorize had failed reported refund_status FULL
+    against a payment row still marked FAILED, so refund reporting could not
+    balance against the provider. Now the payment command is published in the
+    same transaction as the cancellation, that phantom refund would also be
+    *delivered* to the payments service, so this has to be decided here.
+    """
+    if OrderStatus(current) in UNPAID_STATES:
+        return RefundStatus.NONE
+    if actor in (Actor.SYSTEM, Actor.CUSTOMER):
         return RefundStatus.FULL
-    if actor == Actor.CUSTOMER:
-        return RefundStatus.FULL  # only reachable from pre-prep states
     # RESTAURANT approval
     return RefundStatus.FULL if OrderStatus(current) in PRE_PREP_STATES else RefundStatus.NONE

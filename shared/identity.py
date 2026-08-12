@@ -130,6 +130,30 @@ class JWTAuth:
 
         return dependency
 
+    def maybe_identity(self):
+        """Dependency resolving the caller, or None when there is no token.
+
+        For the routes that answer for anybody but answer *more* for someone —
+        a restaurant's public page is the case this exists for. It has to stay
+        readable anonymously, and it also has to show an owner their own venue
+        before an operator has approved it. Requiring a token would break the
+        first; ignoring the token entirely is what leaked every pending
+        applicant's address and phone number to the open internet.
+
+        A token that is present but bad is still a 401. Only its *absence* is
+        None: a caller who sent a credential meant it, and silently downgrading
+        them to anonymous would hide the fact that it was rejected.
+        """
+
+        async def dependency(
+            credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+        ) -> Optional[Identity]:
+            if credentials is None:
+                return None
+            return self.verify(credentials.credentials)
+
+        return dependency
+
     def require_role(self, *roles: str):
         """Dependency allowing only callers holding one of ``roles``.
 

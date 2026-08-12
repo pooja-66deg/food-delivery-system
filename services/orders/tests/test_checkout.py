@@ -96,6 +96,30 @@ async def test_adding_to_the_cart_captures_name_and_price(client, auth, restaura
     assert again.json()["items"][0]["name"] == "Pizza"
 
 
+async def test_an_item_that_is_really_missing_is_a_404(client, auth, restaurants_stub):
+    """The lookup answered, and the answer was that there is no such dish."""
+    restaurants_stub["responses"].append(httpx.Response(200, json=[]))
+    r = await client.post("/cart/items", json={"menu_item_id": 404, "quantity": 1},
+                          headers=auth())
+    assert r.status_code == 404
+
+
+async def test_a_refused_lookup_is_a_503_not_a_missing_item(client, auth, restaurants_stub):
+    """The distinction this endpoint used to lose.
+
+    A 4xx from the lookup — a rejected token, a mistyped path, a gateway that
+    routed the call nowhere — was read as an empty result and reported as "that
+    dish does not exist". The dish did exist; nobody had asked about it. This
+    sent the last debugging session to the menu table for a problem that was in
+    the wiring between two services.
+    """
+    for refusal in (401, 403, 404):
+        restaurants_stub["responses"].append(httpx.Response(refusal, json={"detail": "no"}))
+        r = await client.post("/cart/items", json={"menu_item_id": 1, "quantity": 1},
+                              headers=auth())
+        assert r.status_code == 503, f"{refusal} from the lookup became {r.status_code}"
+
+
 async def test_the_cart_holds_one_restaurant(client, auth, restaurants_stub):
     """A delivery comes from one kitchen; mixing two produces an order nobody
     can fulfil."""

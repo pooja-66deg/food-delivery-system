@@ -148,6 +148,23 @@ class ServiceClient:
             )
             raise ServiceUnavailableException(f"{self._name} is unavailable")
 
+        # A 4xx does not open the breaker, but it is not nothing either. It is
+        # the one class of failure a caller can mistake for an answer, and the
+        # mistake is silent by construction — so it is logged here, at the one
+        # place every call passes through, rather than at each call site that
+        # might remember to. The body is what names the real fault: a refused
+        # token and a mistyped path are both "404" and nothing else tells them
+        # apart afterwards.
+        if response.status_code >= 400:
+            logger.warning(
+                "%s: %s %s returned %s: %s",
+                self._name,
+                method,
+                path,
+                response.status_code,
+                response.text[:200],
+            )
+
         self._breaker.record_success()
         return response
 
@@ -156,3 +173,35 @@ class ServiceClient:
 
     async def get(self, path: str, **kwargs) -> Any:
         return await self.request("GET", path, **kwargs)
+
+    def unwrap(self, response: Any, *, expect: int = 200) -> Any:
+        """The decoded body of a call that had to succeed, or a 503.
+
+        This exists because of what it replaces::
+
+            rows = response.json() if response.status_code == 200 else []
+
+        That line turns every failure the client deliberately does not raise on
+        — a rejected token, a mistyped path, any 4xx — into an empty result,
+        and an empty result is indistinguishable from a truthful "there is
+        nothing here". The caller then reports the wrong thing with complete
+        confidence: a cart add whose price lookup was refused answers "that dish
+        does not exist", which sends whoever is debugging it to the menu table
+        instead of to the call that actually failed.
+
+        An unexpected status is therefore a 503 — we could not get an answer we
+        can use — and never an empty body. Callers that genuinely want to read a
+        4xx (a documented 409, say) should check for it before unwrapping.
+        """
+        if response.status_code == expect:
+            return response.json()
+        # The status and body are already in the log from ``request``.
+        raise ServiceUnavailableException(f"{self._name} is unavailable")
+
+    async def get_json(self, path: str, *, expect: int = 200, **kwargs) -> Any:
+        """GET whose body is required. See :meth:`unwrap`."""
+        return self.unwrap(await self.get(path, **kwargs), expect=expect)
+
+    async def post_json(self, path: str, *, expect: int = 200, **kwargs) -> Any:
+        """POST whose body is required. See :meth:`unwrap`."""
+        return self.unwrap(await self.post(path, **kwargs), expect=expect)

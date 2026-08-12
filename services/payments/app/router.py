@@ -15,7 +15,7 @@ anyway.
 
 import json
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import service as payment_service
@@ -26,8 +26,9 @@ from app.db import get_db
 from app.models import OrderSnapshot
 from app.redis_client import get_redis
 from app.schemas import PaymentRead
-from shared.errors import ForbiddenException, NotFoundException
+from shared.errors import NotFoundException
 from shared.identity import Identity
+from shared.ids import EntityId, INT64_MAX
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -42,6 +43,13 @@ async def _visible_order(
 
     404 before 403: telling a stranger that an order exists but is not theirs
     leaks which order ids are real.
+
+    That rule was stated here and then not followed — a foreign order raised
+    ForbiddenException, so 403 meant "exists, not yours" and 404 meant "does not
+    exist", and any signed-in customer could enumerate every real order id on the
+    platform by walking integers. An order the caller may not see is now
+    indistinguishable from one that is not there, which is what the rule says and
+    what ``_owned_address`` and the favourites routes already do.
     """
     snapshot = await session.get(OrderSnapshot, order_id)
     if snapshot is None:
@@ -49,7 +57,7 @@ async def _visible_order(
     if caller.role in ("admin", "restaurant"):
         return snapshot
     if snapshot.customer_id != caller.user_id:
-        raise ForbiddenException("Not your order")
+        raise NotFoundException("Order", str(order_id))
     return snapshot
 
 
@@ -84,8 +92,8 @@ async def stripe_webhook(
 
 @router.get("", response_model=list[PaymentRead])
 async def my_payment_history(
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=INT64_MAX),
     caller: Identity = Depends(_customer),
     session: AsyncSession = Depends(get_db),
 ):
@@ -94,7 +102,7 @@ async def my_payment_history(
 
 @router.get("/order/{order_id}", response_model=PaymentRead)
 async def get_order_payment(
-    order_id: int,
+    order_id: EntityId,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
@@ -107,7 +115,7 @@ async def get_order_payment(
 
 @router.post("/order/{order_id}/resume", response_model=PaymentRead)
 async def resume_order_payment(
-    order_id: int,
+    order_id: EntityId,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
@@ -121,7 +129,7 @@ async def resume_order_payment(
 
 @router.post("/order/{order_id}/confirm", response_model=PaymentRead)
 async def confirm_order_payment(
-    order_id: int,
+    order_id: EntityId,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):
@@ -139,7 +147,7 @@ async def confirm_order_payment(
 
 @router.post("/order/{order_id}/retry", response_model=PaymentRead)
 async def retry_order_payment(
-    order_id: int,
+    order_id: EntityId,
     caller: Identity = Depends(_caller),
     session: AsyncSession = Depends(get_db),
 ):

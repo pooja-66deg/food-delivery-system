@@ -56,6 +56,9 @@ export function Thumb({ url, alt, variant = 'item' }: ThumbProps) {
     )
   }
 
-  // Uploads are served by the API, which the dev server proxies under /api.
-  return <img className={base} src={`/api${url}`} alt={alt} />
+  // Local-disk uploads come back as a relative path ("/media/...") served by the
+  // API, which the dev server proxies under /api. GCS uploads come back as a
+  // full https:// URL and must be used as-is.
+  const src = /^https?:\/\//i.test(url) ? url : `/api${url}`
+  return <img className={base} src={src} alt={alt} />
 }

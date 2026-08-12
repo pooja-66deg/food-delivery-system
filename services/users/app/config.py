@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     )
     database_echo: bool = False
 
+    # Pool size, per instance. Seven services share one Cloud SQL instance, so
+    # the ceiling that matters is the sum across all of them times their replica
+    # count — not what any one service would like for itself. Overridable so a
+    # bigger tier does not need a code change.
+    #: 2 + 1 = 3 per instance. Seven services at one replica each is 21, which
+    #: fits under db-f1-micro's ~25 max_connections with room for the Cloud SQL
+    #: proxy and a superuser slot. Raise these *and* the instance tier together —
+    #: raising them alone is how the ceiling was breached in the first place.
+    db_pool_size: int = 2
+    db_max_overflow: int = 1
+
     kafka_bootstrap_servers: str = "kafka:9092"
     #: Every replica shares the group, so an event is handled once by the
     #: service rather than once per replica.

@@ -49,12 +49,44 @@ server {
     proxy_ssl_server_name on;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    # https, not $scheme. This listener is plain HTTP behind Cloud Run's TLS
+    # terminator, so $scheme is "http" — and forwarding that told every upstream
+    # the request arrived unencrypted. FastAPI then built its self-referential
+    # redirects as http://, which is half of why a trailing slash produced an
+    # unusable Location.
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
     client_max_body_size 6m;
+
+    # Redirects the upstream emits are about *its* hostname, which is internal
+    # and answers nothing from a browser. FastAPI's redirect_slashes turns
+    # /api/orders/ into a 307 at http://orders-service…/orders — a dead end that
+    # also discloses the internal host and drops the /api prefix. These map the
+    # Location back onto the public origin, one per upstream because each has its
+    # own hostname.
+    proxy_redirect ~^https?://users-service[^/]*(/.*)$        /api$1;
+    proxy_redirect ~^https?://restaurants-service[^/]*(/.*)$  /api$1;
+    proxy_redirect ~^https?://orders-service[^/]*(/.*)$       /api$1;
+    proxy_redirect ~^https?://payments-service[^/]*(/.*)$     /api$1;
+    proxy_redirect ~^https?://delivery-service[^/]*(/.*)$     /api$1;
+    proxy_redirect ~^https?://notifications-service[^/]*(/.*)$ /api$1;
+    proxy_redirect ~^https?://admin-service[^/]*(/.*)$        /api$1;
+
+    # nginx's own trailing-slash redirect, built from $scheme and the listen port
+    # — so it came out as http://<host>:8080/…, an address Cloud Run does not
+    # serve at all. Relative Location headers cannot be wrong about either.
+    absolute_redirect off;
+    port_in_redirect off;
 
     # Cloud Run's DNS, needed because these upstreams are resolved at request
     # time from a variable rather than at startup from a literal.
-    resolver 169.254.169.254 valid=30s;
+    #
+    # ipv6=off because the resolver prefers the AAAA record and this environment
+    # has no IPv6 egress: every proxied request burned ~8 failed connects to
+    # 2600:1900::/32 before falling back, which worked but cost latency and made
+    # 99.8% of the error log "Network unreachable" — the noise a real upstream
+    # failure would have to be spotted in.
+    resolver 169.254.169.254 valid=30s ipv6=off;
 
     location = /health {
         access_log off;
