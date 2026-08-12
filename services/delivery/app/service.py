@@ -82,7 +82,9 @@ def _announce_status(session: AsyncSession, delivery: Delivery) -> None:
     )
 
 
-def _offer_notification(session: AsyncSession, driver_id: int, order_id: int, restaurant_name: str | None = None) -> None:
+def _offer_notification(
+    session: AsyncSession, driver_id: int, order_id: int, restaurant_name: str | None = None
+) -> None:
     """The driver's "you have a new offer" message.
 
     An event rather than a direct write: the notifications service owns that
