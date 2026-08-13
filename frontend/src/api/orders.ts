@@ -43,6 +43,7 @@ export interface Order {
 export interface OrderSummary {
   id: number
   restaurant_id: number
+  restaurant_name: string | null
   status: string
   total: number
   created_at: string
