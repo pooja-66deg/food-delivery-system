@@ -80,6 +80,7 @@ export function OrderTicket({ order, restaurantName, now, onChanged }: OrderTick
         order_id: order.id,
         driver_id: tracking.driver_id,
         status: tracking.status,
+        restaurant_name: null,
         assigned_at: null,
         picked_up_at: null,
         delivered_at: null,
