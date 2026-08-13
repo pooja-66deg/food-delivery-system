@@ -112,6 +112,7 @@ export function OrdersPage() {
               <Link to={`/orders/${o.id}`} className="order-card">
                 <div>
                   <div className="menu-item-name">Order #{o.id}</div>
+                  {o.restaurant_name && <div className="restaurant-name">{o.restaurant_name}</div>}
                   <div className="muted">{new Date(o.created_at).toLocaleString()}</div>
                 </div>
                 <span className="badge">{statusLabel(o.status)}</span>

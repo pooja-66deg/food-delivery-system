@@ -348,7 +348,16 @@ async def list_orders(
         stmt = stmt.where(Order.status.notin_(FINISHED))
     elif scope == "past":
         stmt = stmt.where(Order.status.in_(FINISHED))
-    return list(await session.scalars(stmt.limit(limit).offset(offset)))
+    orders = list(await session.scalars(stmt.limit(limit).offset(offset)))
+
+    # Fetch restaurant names for each order to include in the response.
+    for order in orders:
+        snapshot = await session.get(RestaurantSnapshot, order.restaurant_id)
+        if snapshot:
+            # Add restaurant_name as an attribute so OrderSummary can serialize it.
+            order.restaurant_name = snapshot.name  # type: ignore
+
+    return orders
 
 
 async def list_orders_for_restaurant(

@@ -1682,6 +1682,12 @@ section:first-of-type { margin-top: 0; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.restaurant-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin: 0.3rem 0;
+}
 .order-card-footer {
   display: flex;
   justify-content: space-between;
