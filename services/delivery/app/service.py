@@ -225,8 +225,11 @@ async def list_for_driver(session: AsyncSession, driver_id: int) -> list[Deliver
     return deliveries
 
 
-async def _owned_active(session: AsyncSession, driver_id: int, order_id: int) -> Delivery:
-    delivery = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
+async def _owned_active(session: AsyncSession, driver_id: int, order_id: int, for_update: bool = False) -> Delivery:
+    stmt = select(Delivery).where(Delivery.order_id == order_id)
+    if for_update:
+        stmt = stmt.with_for_update()
+    delivery = await session.scalar(stmt)
     if delivery is None:
         raise _not_found("Delivery not found")
     if delivery.driver_id != driver_id:
@@ -238,7 +241,7 @@ async def accept_assignment(
     session: AsyncSession, driver_id: int, order_id: int, redis=None
 ) -> Delivery:
     """Driver confirms an offered assignment (ASSIGNED → ACCEPTED)."""
-    delivery = await _owned_active(session, driver_id, order_id)
+    delivery = await _owned_active(session, driver_id, order_id, for_update=True)
     if delivery.status != DeliveryStatus.ASSIGNED.value:
         raise _conflict("Only a freshly assigned delivery can be accepted")
     delivery.status = DeliveryStatus.ACCEPTED.value
