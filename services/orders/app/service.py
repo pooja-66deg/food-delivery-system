@@ -119,6 +119,7 @@ async def _emit_status(session: AsyncSession, order: Order) -> None:
     # databases — and a driver has to be able to navigate while those services
     # are down. So the coordinates travel with the event.
     address = await session.get(AddressSnapshot, order.address_id)
+    restaurant = await session.get(RestaurantSnapshot, order.restaurant_id)
     outbox.record_event(
         session, "order-events", str(order.id),
         {
@@ -131,6 +132,7 @@ async def _emit_status(session: AsyncSession, order: Order) -> None:
             # on this topic and settles in every consumer's database.
             "customer_name": _display_name(customer),
             "restaurant_id": order.restaurant_id,
+            "restaurant_name": restaurant.name if restaurant else None,
             # The payments service prices from this rather than reading the
             # order: authorising a charge must not depend on the orders service
             # answering, or a blip there becomes a customer who cannot pay.
