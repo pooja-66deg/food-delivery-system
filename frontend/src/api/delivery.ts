@@ -13,6 +13,8 @@ export interface Delivery {
   driver_id: number | null
   status: string
   restaurant_name: string | null
+  items: string | null
+  order_total: string | null
   assigned_at: string | null
   picked_up_at: string | null
   delivered_at: string | null

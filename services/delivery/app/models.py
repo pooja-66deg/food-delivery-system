@@ -19,7 +19,7 @@ what it knows about one it was told about.
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text as SQLText
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -59,6 +59,10 @@ class Delivery(Base):
         String(20), default=DeliveryStatus.UNASSIGNED.value, nullable=False
     )
     restaurant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: What to pick up and deliver: JSON array of items.
+    items: Mapped[str | None] = mapped_column(SQLText, nullable=True)
+    #: Order total for display.
+    order_total: Mapped[str | None] = mapped_column(String(20), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -68,8 +72,8 @@ class Delivery(Base):
 class OrderSnapshot(Base):
     """What this service knows about an order, from the orders service's events.
 
-    Only the fields delivery actually uses: who to bill the journey to, and the
-    two ends of it. Copying more would mean caring when more of it changes.
+    Only the fields delivery actually uses: who to bill the journey to, the
+    two ends of it, what they're picking up, and where it's going.
 
     The coordinates are copied rather than referenced because a driver needs to
     navigate while the restaurants and users services may be down — and a
@@ -80,10 +84,17 @@ class OrderSnapshot(Base):
 
     order_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     customer_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     #: Which kitchen, so an owner action can be checked against the roster above.
     restaurant_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
     restaurant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
+    #: What to pick up: JSON array of items with quantities.
+    items: Mapped[str | None] = mapped_column(SQLText, nullable=True)
+    #: Order total for display.
+    order_total: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    #: Where to deliver.
+    delivery_address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     restaurant_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     restaurant_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     destination_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -145,7 +156,7 @@ class OutboxEvent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     topic: Mapped[str] = mapped_column(String(100), nullable=False)
     key: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON string
+    payload: Mapped[str] = mapped_column(SQLText, nullable=False)  # JSON string
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

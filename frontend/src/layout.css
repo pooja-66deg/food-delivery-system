@@ -1689,6 +1689,73 @@ section:first-of-type { margin-top: 0; }
   gap: 0.5rem;
 }
 
+/* Delivery cards for drivers */
+.delivery-card {
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.7);
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+.delivery-card:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.delivery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.delivery-items {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--line);
+}
+.items-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.items-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+.items-list li { margin-left: 0; }
+.delivery-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--paper);
+  border-radius: var(--r-sm);
+}
+.delivery-total .amount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--tomato);
+  font-variant-numeric: tabular-nums;
+}
+.delivery-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.delivery-actions .button { flex: 1; min-width: 6rem; }
+.delivery-actions .link-inline { white-space: nowrap; }
+
 /* Menu grid */
 .confirm-backdrop {
   position: fixed;
