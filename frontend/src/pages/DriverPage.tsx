@@ -131,14 +131,46 @@ export function DriverPage() {
         <EmptyState>No active deliveries. New orders are assigned when a restaurant marks them ready.</EmptyState>
       ) : (
         <div className="order-list">
-          {assignments.map((d) => (
+          {assignments.map((d) => {
+            let itemsList: string[] = []
+            try {
+              if (d.items) {
+                const parsed = JSON.parse(d.items)
+                itemsList = Array.isArray(parsed) ? parsed : []
+              }
+            } catch {
+              // Invalid JSON, skip items display
+            }
+
+            return (
             <div key={d.id} className="delivery-card">
-              <div>
-                <div className="menu-item-name">Order #{d.order_id}</div>
-                {d.restaurant_name && <div className="muted">{d.restaurant_name}</div>}
-                <div className="muted">{DESCRIPTIONS[d.status] ?? d.status}</div>
+              <div className="delivery-header">
+                <div>
+                  <div className="menu-item-name">Order #{d.order_id}</div>
+                  {d.restaurant_name && <div className="muted">{d.restaurant_name}</div>}
+                  <div className="muted">{DESCRIPTIONS[d.status] ?? d.status}</div>
+                </div>
+                <span className="badge">{d.status}</span>
               </div>
-              <span className="badge">{d.status}</span>
+
+              {itemsList.length > 0 && (
+                <div className="delivery-items">
+                  <div className="muted items-label">Items:</div>
+                  <ul className="items-list">
+                    {itemsList.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {d.order_total && (
+                <div className="delivery-total">
+                  <span className="muted">Total:</span>
+                  <span className="amount">₹{d.order_total}</span>
+                </div>
+              )}
+
               <div className="delivery-actions">
                 {nextStop(d) && (
                   <a
@@ -172,7 +204,8 @@ export function DriverPage() {
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </main>
