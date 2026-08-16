@@ -256,6 +256,26 @@ class AddressResponse(BaseModel):
     longitude: float | None = None
 
 
+class AdminGateRequest(BaseModel):
+    """The password for the console's outer gate."""
+
+    #: Not length-validated the way a user's password is. This is one shared
+    #: operator secret compared against a configured value, and a minimum length
+    #: here would only tell a caller when to stop guessing short ones.
+    password: str = Field(..., max_length=256)
+
+
+class AdminGateStatus(BaseModel):
+    """Whether this deployment gates the console at all.
+
+    The SPA cannot know without asking: the gate is configured on the server, and
+    it must not render a form that no value can satisfy. Disclosing only
+    *whether* a gate exists reveals nothing the login page below it does not.
+    """
+
+    gate_required: bool
+
+
 class AdminPasswordResetRequest(BaseModel):
     """Request to reset admin password after forced reset."""
 

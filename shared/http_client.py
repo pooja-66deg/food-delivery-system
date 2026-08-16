@@ -113,6 +113,7 @@ class ServiceClient:
         json: Any = None,
         params: Optional[Mapping[str, Any]] = None,
         auth_header: Optional[str] = None,
+        headers: Optional[Mapping[str, str]] = None,
     ) -> Any:
         """Call the service, or raise ``ServiceUnavailableException``.
 
@@ -120,12 +121,20 @@ class ServiceClient:
         a machine credential, so the called service applies the same rules to the
         same person. A service holding its own all-powerful token is how one
         compromised service becomes all of them.
+
+        ``headers`` is for the few calls that carry something other than a user's
+        token — the bootstrap secret is the only one today. It is deliberately
+        separate from ``auth_header`` so that a caller passing one cannot
+        silently drop the other.
         """
         if self._breaker.is_open:
             logger.warning("%s: circuit open, failing fast", self._name)
             raise ServiceUnavailableException(f"{self._name} is unavailable")
 
-        headers = {"Authorization": auth_header} if auth_header else None
+        request_headers: dict[str, str] = dict(headers) if headers else {}
+        if auth_header:
+            request_headers["Authorization"] = auth_header
+        headers = request_headers or None
         try:
             client = await self._http()
             response = await client.request(

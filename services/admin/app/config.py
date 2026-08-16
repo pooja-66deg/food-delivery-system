@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config_guard import assert_production_secrets
 from shared.cors import split_origins
 
 
@@ -57,6 +58,16 @@ class Settings(BaseSettings):
     orders_service_url: str = "http://orders-service:8000"
     # The users service, for bootstrapping the first admin.
     users_service_url: str = "http://users-service:8000"
+
+    #: Forwarded to the users service as ``X-Bootstrap-Secret`` by
+    #: ``POST /admin/bootstrap``, which is a thin proxy for the route that
+    #: creates the platform's first administrator.
+    #:
+    #: Must hold the same value as the users service's ``BOOTSTRAP_SECRET``.
+    #: Unset here means this proxy refuses before making the call — the same
+    #: fail-closed default as upstream, so a half-configured deployment does not
+    #: leave one of the two doors open.
+    bootstrap_secret: Optional[str] = None
     orders_timeout_seconds: float = 10.0
     breaker_threshold: int = 5
     breaker_cooldown_seconds: float = 10.0
@@ -81,3 +92,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Import time, not startup: the process must die before it binds a port, so a
+# deploy that dropped a secret fails visibly instead of serving on a public one.
+assert_production_secrets(settings)
