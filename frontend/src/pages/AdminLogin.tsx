@@ -17,20 +17,6 @@ interface GateStatus {
   gate_required: boolean
 }
 
-// The gate password is not here, and cannot be.
-//
-// It used to be a `const ADMIN_GATE_PASSWORD` literal in this file, which put it
-// in the shipped bundle for anyone to read in devtools. Reading it from
-// `import.meta.env.VITE_ADMIN_GATE_PASSWORD` would not have helped: Vite inlines
-// every VITE_ variable at build time, so the built JavaScript would contain the
-// value just as plainly. A secret the browser is given is not a secret.
-//
-// So the password lives in the users service's configuration and the comparison
-// happens there. What is kept here is only the fact that this session already
-// passed, which is a UX convenience and not a credential — everything past the
-// gate is enforced by /auth/admin/login and the admin role on every console
-// route, so forging this flag gets an attacker as far as a login form.
-
 export function AdminLogin() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
