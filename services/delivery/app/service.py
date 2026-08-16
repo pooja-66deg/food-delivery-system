@@ -18,6 +18,7 @@ import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import eta as eta_module
@@ -180,6 +181,14 @@ async def assign_for_order(session: AsyncSession, order_id: int, redis=None) -> 
     Idempotent: an order that already has a delivery returns it untouched. That
     matters more here than it did in the monolith, because this is now driven by
     an at-least-once event stream — the same "ready for pickup" can arrive twice.
+
+    "Twice" includes *at the same time*, which the check below alone does not
+    cover: two consumers handling a redelivered event both find no existing row,
+    both pick a driver, and both insert. The unique constraint on ``order_id``
+    means one of them loses with an IntegrityError, and an unhandled one leaves
+    the message unacknowledged for redelivery — a delivery that exists, being
+    retried forever because creating it "failed". Hence the catch: the winner's
+    row is the right answer for both.
     """
     existing = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
     if existing is not None:
@@ -200,7 +209,14 @@ async def assign_for_order(session: AsyncSession, order_id: int, redis=None) -> 
         _offer_notification(session, driver.id, order_id, snapshot.restaurant_name if snapshot else None)
     session.add(delivery)
     _announce_status(session, delivery)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        winner = await session.scalar(select(Delivery).where(Delivery.order_id == order_id))
+        if winner is None:
+            raise
+        return winner
     await session.refresh(delivery)
     return delivery
 
@@ -256,8 +272,21 @@ async def accept_assignment(
 async def reject_assignment(
     session: AsyncSession, driver_id: int, order_id: int, redis=None
 ) -> Delivery:
-    """Driver declines; release the offer and try the next-nearest driver."""
-    delivery = await _owned_active(session, driver_id, order_id)
+    """Driver declines; release the offer and try the next-nearest driver.
+
+    Locked for the same reason ``accept_assignment`` is, and the asymmetry
+    between them was the bug: accept took the row lock, reject read the row
+    without one. A plain SELECT does not wait on a locked row under MVCC — it
+    reads the last committed version — so a reject overlapping an accept saw the
+    delivery still ASSIGNED, passed its own status check, and unassigned a
+    delivery the driver had just been told was theirs. The order was then offered
+    to somebody else while the first driver's app showed it accepted.
+
+    Two simultaneous rejects were the milder version of the same thing: both
+    passed, and ``_pick_driver`` ran twice, so the next-nearest driver could be
+    offered the same order twice.
+    """
+    delivery = await _owned_active(session, driver_id, order_id, for_update=True)
     if delivery.status not in (DeliveryStatus.ASSIGNED.value, DeliveryStatus.ACCEPTED.value):
         raise _conflict("This delivery can no longer be rejected")
 
@@ -280,7 +309,7 @@ async def reject_assignment(
 
 
 async def pickup(session: AsyncSession, driver_id: int, order_id: int, redis=None) -> Delivery:
-    delivery = await _owned_active(session, driver_id, order_id)
+    delivery = await _owned_active(session, driver_id, order_id, for_update=True)
     if delivery.status not in (DeliveryStatus.ASSIGNED.value, DeliveryStatus.ACCEPTED.value):
         raise _conflict("Delivery is not in a pickup-ready state")
     delivery.status = DeliveryStatus.PICKED_UP.value
@@ -298,7 +327,7 @@ async def pickup(session: AsyncSession, driver_id: int, order_id: int, redis=Non
 
 
 async def deliver(session: AsyncSession, driver_id: int, order_id: int, redis=None) -> Delivery:
-    delivery = await _owned_active(session, driver_id, order_id)
+    delivery = await _owned_active(session, driver_id, order_id, for_update=True)
     if delivery.status != DeliveryStatus.PICKED_UP.value:
         raise _conflict("Delivery must be picked up before it can be delivered")
     delivery.status = DeliveryStatus.DELIVERED.value

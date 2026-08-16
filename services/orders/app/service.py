@@ -71,6 +71,37 @@ _LOCK_KEY = "order_lock:{user_id}"
 _LOCK_TTL = 10
 
 
+async def _locked_order(session: AsyncSession, order_id: int) -> Order:
+    """The order, with its row held until this transaction ends.
+
+    Every state change below reads the order, decides against what it read, and
+    writes. ``session.get`` makes that a check-then-act with no lock, and the
+    state machine cannot close the gap because it validates the status the
+    caller *read*, not the one in the row at write time. Two requests that
+    overlap therefore both pass validation:
+
+      * A restaurant double-tapping "cancel" runs the cancel path twice. Stock is
+        released twice — over-crediting, which release-stock documents as the
+        acceptable direction — and, worse, ``payment-commands`` gets two refund
+        events for one order.
+      * Cancel racing accept leaves the order in whichever state committed last
+        while *both* status events go out, so every downstream service sees a
+        sequence that never happened.
+
+    ``FOR UPDATE`` serialises them: the second request blocks until the first
+    commits, then re-reads and is rejected by the state machine on its merits.
+
+    SQLite ignores the clause entirely, which is correct rather than lucky — the
+    test suite has a single writer, so there is nothing to serialise.
+    """
+    order = await session.scalar(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    if order is None:
+        raise NotFoundException("Order", str(order_id))
+    return order
+
+
 async def _restore_stock(session: AsyncSession, order: Order, auth_header: str = "") -> None:
     """Put a cancelled order's stock back.
 
@@ -179,10 +210,16 @@ async def mark_paid(session: AsyncSession, order_id: int) -> Order:
     Called by the payments webhook once money has actually moved, and by
     checkout when the provider settles without the customer's involvement.
     Idempotent: an order that is already past payment is returned untouched.
+
+    Locked, because the status check below is only idempotent against a status
+    nobody is concurrently changing. A payment provider retries a webhook it did
+    not get a timely 2xx for, so two deliveries arriving together is ordinary
+    traffic rather than an edge case — and both would read PAYMENT_PENDING, both
+    pass the guard, and both emit. The order lands in the right state either way;
+    what duplicates is the fan-out, so the restaurant gets told twice that the
+    same order arrived.
     """
-    order = await session.get(Order, order_id)
-    if order is None:
-        raise NotFoundException("Order", str(order_id))
+    order = await _locked_order(session, order_id)
     if order.status != OrderStatus.PAYMENT_PENDING.value:
         return await _load_full(session, order_id)
 
@@ -428,9 +465,7 @@ async def cancel_by_customer(
 
 
 async def accept_by_restaurant(session: AsyncSession, user, order_id: int) -> Order:
-    order = await session.get(Order, order_id)
-    if order is None:
-        raise NotFoundException("Order", str(order_id))
+    order = await _locked_order(session, order_id)
     await _owned_restaurant(session, user, order.restaurant_id)
     sm.apply_transition(session, order, OrderStatus.RESTAURANT_ACCEPTED, Actor.RESTAURANT)
     await _emit_status(session, order)
@@ -443,9 +478,7 @@ async def reject_by_restaurant(
     session: AsyncSession, user, order_id: int, reason: str | None = None,
     auth_header: str = "",
 ) -> Order:
-    order = await session.get(Order, order_id)
-    if order is None:
-        raise NotFoundException("Order", str(order_id))
+    order = await _locked_order(session, order_id)
     await _owned_restaurant(session, user, order.restaurant_id)
     sm.apply_transition(session, order, OrderStatus.REJECTED, Actor.RESTAURANT, reason)
     order.cancelled_by = Actor.RESTAURANT.value
@@ -460,9 +493,7 @@ async def reject_by_restaurant(
 
 
 async def advance_status(session: AsyncSession, user, order_id: int, to: OrderStatus, redis=None) -> Order:
-    order = await session.get(Order, order_id)
-    if order is None:
-        raise NotFoundException("Order", str(order_id))
+    order = await _locked_order(session, order_id)
     await _owned_restaurant(session, user, order.restaurant_id)
     current = OrderStatus(order.status)
     sm.apply_transition(session, order, to, Actor.RESTAURANT)
@@ -489,9 +520,7 @@ async def advance_status(session: AsyncSession, user, order_id: int, to: OrderSt
 async def driver_advance(session: AsyncSession, order_id: int, to: OrderStatus) -> Order:
     """Advance an order on behalf of the assigned driver (OUT_FOR_DELIVERY /
     DELIVERED). Access is enforced by the delivery service before calling."""
-    order = await session.get(Order, order_id)
-    if order is None:
-        raise NotFoundException("Order", str(order_id))
+    order = await _locked_order(session, order_id)
     sm.apply_transition(session, order, to, Actor.DRIVER)
     await _emit_status(session, order)
     if to == OrderStatus.DELIVERED:

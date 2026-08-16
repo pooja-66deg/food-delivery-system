@@ -4,6 +4,7 @@ Settle/refund are no-ops when an order has no payment row, so order flows built
 directly in tests (bypassing checkout) don't require a payment.
 """
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -58,15 +59,22 @@ async def create_payment_for_order(
     object carries the ``checkout_url`` as a transient attribute — read it with
     ``checkout_url_of``. It is never written to the database.
     """
-    existing = await get_payment(session, order.order_id)
+    # Read off the snapshot once, up front. ``session.rollback()`` in the
+    # recovery path below expires every object in the session, so touching
+    # ``order.order_id`` after it triggers a lazy reload — synchronous IO inside
+    # an async context, which raises MissingGreenlet rather than reloading. The
+    # recovery would then fail exactly where it was meant to help.
+    order_id = order.order_id
+
+    existing = await get_payment(session, order_id)
     if existing is not None:
         return existing
 
     provider = provider or provider_for(order.payment_method)
-    idem = f"order-{order.order_id}"
-    result = await provider.authorize(order.total, idempotency_key=idem, order_id=order.order_id)
+    idem = f"order-{order_id}"
+    result = await provider.authorize(order.total, idempotency_key=idem, order_id=order_id)
     payment = Payment(
-        order_id=order.order_id,
+        order_id=order_id,
         provider=provider.name,
         amount=order.total,
         status=PaymentTxStatus.AUTHORIZED.value if result.ok else PaymentTxStatus.FAILED.value,
@@ -74,7 +82,14 @@ async def create_payment_for_order(
         idempotency_key=idem,
     )
     session.add(payment)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        winner = await get_payment(session, order_id)
+        if winner is None:
+            raise
+        return winner
     await session.refresh(payment)
     payment.checkout_url = result.checkout_url
     return payment
@@ -89,12 +104,35 @@ def checkout_url_of(payment: Payment | None) -> str | None:
     return getattr(payment, "checkout_url", None)
 
 
+#: Statuses a capture may move *from*. Anything else is a command that has
+#: already been carried out, or one that arrived after the money went the other
+#: way — see ``capture_payment``.
+CAPTURABLE = (PaymentTxStatus.PENDING.value, PaymentTxStatus.AUTHORIZED.value)
+
+
 async def capture_payment(session: AsyncSession, order) -> Payment | None:
     """Capture an authorized payment (COD: cash collected; card: funds captured).
-    Moves AUTHORIZED → SUCCEEDED. No-op if there's no payment."""
+
+    Moves AUTHORIZED → SUCCEEDED, and *only* from there. No-op if there's no
+    payment, and a no-op rather than a write for a payment already past this
+    point — which is what makes a redelivered settle command harmless.
+
+    The status check is the whole point and it used to be missing: this assigned
+    SUCCEEDED unconditionally, so a settle command that arrived after a refund
+    moved the payment REFUNDED → SUCCEEDED. The money was genuinely returned to
+    the customer and the record then said it had been collected — a discrepancy
+    no reconciliation would find, because nothing about the row looks wrong.
+
+    That is not a hypothetical ordering. The transport is at-least-once by
+    design (see shared/messaging.py), and Pub/Sub gives no ordering guarantee at
+    all, so a delayed settle overtaking a refund is an expected delivery, not a
+    fault.
+    """
     payment = await get_payment(session, order.order_id)
     if payment is None:
         return None
+    if payment.status not in CAPTURABLE:
+        return payment
     payment.status = PaymentTxStatus.SUCCEEDED.value
     await session.commit()
     await session.refresh(payment)
@@ -223,10 +261,34 @@ async def list_for_customer(session: AsyncSession, customer_id: int, limit: int 
 async def refund_payment(
     session: AsyncSession, order, provider: PaymentProvider | None = None
 ) -> Payment | None:
-    """Execute a refund via the provider and mark the payment REFUNDED."""
+    """Execute a refund via the provider and mark the payment REFUNDED.
+
+    Refuses to refund twice. The guard is not defensive tidiness — without it
+    this was a double-refund waiting for an ordinary redelivery. The transport
+    is at-least-once and says so (shared/messaging.py): a handler that raises,
+    a rebalanced consumer group, a Pub/Sub ack that missed its deadline, all
+    redeliver the same ``refund`` command. This called ``provider.refund()``
+    unconditionally, so each redelivery sent real money back again.
+
+    The consumer's own docstring asserted this protection existed here — "refund
+    only acts on a payment that is not already REFUNDED" — which is exactly the
+    kind of belief that stops anyone checking.
+
+    Only a payment that was actually collected can be refunded. FAILED and
+    PENDING never took money, and refunding a provider reference for a charge
+    that never succeeded is at best a provider error and at worst a credit the
+    platform cannot reclaim.
+    """
     payment = await get_payment(session, order.order_id)
     if payment is None:
         return None
+    if payment.status == PaymentTxStatus.REFUNDED.value:
+        return payment
+    if payment.status not in (
+        PaymentTxStatus.AUTHORIZED.value,
+        PaymentTxStatus.SUCCEEDED.value,
+    ):
+        return payment
     provider = provider or provider_for(payment.provider)
     await provider.refund(payment.provider_ref, order.total)
     payment.status = PaymentTxStatus.REFUNDED.value
