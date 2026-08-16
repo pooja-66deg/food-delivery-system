@@ -46,7 +46,17 @@ SERVICES="users restaurants orders payments delivery notifications admin"
 SHARED_SECRETS="JWT_SECRET_KEY REDIS_URL GOOGLE_MAPS_API_KEY
                 STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET
                 SENDGRID_API_KEY SENDGRID_FROM_EMAIL
-                TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_PHONE_NUMBER"
+                TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_PHONE_NUMBER
+                ADMIN_GATE_PASSWORD BOOTSTRAP_SECRET"
+
+# The two secrets above that this platform owns outright. Unlike a Stripe key
+# there is no external account to copy a value from — any sufficiently random
+# string will do — so leaving them for a human to invent means a weak one chosen
+# under deploy pressure, or a deploy blocked on nobody knowing what to put.
+#
+# Generated only when absent, like everything else here, so re-running never
+# rotates a secret something is already using.
+GENERATED_SECRETS="ADMIN_GATE_PASSWORD BOOTSTRAP_SECRET"
 
 # --- the password ----------------------------------------------------------
 if [ -z "${DB_PASSWORD:-}" ]; then
@@ -90,6 +100,27 @@ for svc in $SERVICES; do
     --project="$PROJECT_ID" --quiet >/dev/null
 done
 
+
+# --- the ones we can generate ----------------------------------------------
+# Created before the binding loop below, so a fresh project gets a value and an
+# IAM binding in a single run rather than being told to come back.
+echo
+for name in $GENERATED_SECRETS; do
+  if gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    echo "  $name — already exists, leaving it"
+  else
+    # openssl rather than $RANDOM: the latter is 15 bits of a seeded PRNG, which
+    # is a guessable password however long the string built from it looks.
+    openssl rand -base64 36 | tr -d '\n=+/' \
+      | gcloud secrets create "$name" --data-file=- --project="$PROJECT_ID" >/dev/null
+    echo "  $name — created (random)"
+  fi
+done
+
+echo
+echo "The admin console gate password is now in Secret Manager. Read it with:"
+echo "  gcloud secrets versions access latest --secret=ADMIN_GATE_PASSWORD --project=$PROJECT_ID"
+echo "Share it with whoever operates the console — it is never sent to the browser."
 
 # --- the shared secrets ----------------------------------------------------
 # Only the binding, never the value. A missing one is reported rather than

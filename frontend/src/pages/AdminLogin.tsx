@@ -25,9 +25,6 @@ export function AdminLogin() {
   const [gateError, setGateError] = useState("")
   const [loading, setLoading] = useState(false)
   const [gateChecking, setGateChecking] = useState(false)
-  // Undefined until the server says whether this deployment gates at all, so the
-  // gate form is never rendered against a backend that cannot satisfy it and the
-  // login form never flashes on one that can.
   const [gateUnlocked, setGateUnlocked] = useState<boolean | undefined>(undefined)
   const navigate = useNavigate()
   const { setAdminToken } = useAdminAuth()
@@ -45,9 +42,6 @@ export function AdminLogin() {
         if (!cancelled) setGateUnlocked(!status.gate_required)
       })
       .catch(() => {
-        // Unreachable or erroring backend: show the gate rather than skip it.
-        // Failing open here would hide a server problem behind a console that
-        // looks like it opened normally.
         if (!cancelled) setGateUnlocked(false)
       })
 
@@ -103,7 +97,6 @@ export function AdminLogin() {
     }
   }
 
-  // Still asking the server whether this deployment gates the console.
   if (gateUnlocked === undefined) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>

@@ -454,11 +454,22 @@ steps:
           printf '%s' "$${required}$${extra:+,$$extra}"
         }
 
+        # ADMIN_GATE_PASSWORD is required, not optional, and deliberately so: the
+        # users service refuses to start in production without it (see its
+        # config.py), because a silently absent gate is a console with nothing in
+        # front of its login form. Listing it here makes a missing secret a
+        # failed deploy rather than a revision that crash-loops on startup.
+        #
+        # BOOTSTRAP_SECRET is optional in the opposite direction. Absent, the
+        # first-admin route disables itself, which is the correct state for every
+        # deployment that has already been bootstrapped — that is, all of them
+        # after the first day.
         deploy users \
           --set-env-vars="^;^$$common;FRONTEND_BASE_URL=$$fe_primary" \
           --set-secrets="$$(with_optional \
-            "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
-            GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY)"
+            "DATABASE_URL=USERS_DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,ADMIN_GATE_PASSWORD=ADMIN_GATE_PASSWORD:latest" \
+            GOOGLE_MAPS_API_KEY=GOOGLE_MAPS_API_KEY \
+            BOOTSTRAP_SECRET=BOOTSTRAP_SECRET)"
 
         deploy restaurants \
           --set-env-vars="^;^$$common;GCS_BUCKET_NAME=${_GCS_BUCKET_NAME};ADMIN_ALERT_EMAIL=${_ADMIN_ALERT_EMAIL}" \
@@ -506,9 +517,14 @@ steps:
             TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN \
             TWILIO_PHONE_NUMBER=TWILIO_PHONE_NUMBER)"
 
+        # The same BOOTSTRAP_SECRET the users service holds — this one forwards
+        # it as X-Bootstrap-Secret, users compares it. Optional here for the same
+        # reason: without it this service refuses the call rather than opening it.
         deploy admin \
           --set-env-vars="^;^$$common;ORDERS_SERVICE_URL=${_ORDERS_URL};USERS_SERVICE_URL=${_USERS_URL}" \
-          --set-secrets="DATABASE_URL=ADMIN_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest"
+          --set-secrets="$$(with_optional \
+            "DATABASE_URL=ADMIN_DATABASE_URL:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest" \
+            BOOTSTRAP_SECRET=BOOTSTRAP_SECRET)"
 
   # -----------------------------------------------------------------------
   # 6. The gateway: the only public door to the API. Its upstreams are the
