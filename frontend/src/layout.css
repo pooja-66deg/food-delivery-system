@@ -1413,7 +1413,6 @@ section:first-of-type { margin-top: 0; }
   gap: 0.75rem;
   margin-left: auto;
   /* Revealed on hover or when focused, so keyboard users still reach them. */
-  opacity: 0;
   transition: opacity 0.16s var(--ease);
 }
 .menu-group:hover .menu-group-actions,
