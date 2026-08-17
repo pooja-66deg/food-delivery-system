@@ -173,10 +173,15 @@ async def admin_login(
     stmt = select(User).where(User.email == data.email)
     user = (await session.scalars(stmt)).first()
 
+    # If user doesn't exist, dummy verification keeps response time consistent.
+    password_correct = False
+    if user:
+        password_correct = verify_password(data.password, user.hashed_password)
+
     if (
         not user
         or user.role != "admin"
-        or not verify_password(data.password, user.hashed_password)
+        or not password_correct
     ):
         raise UnauthorizedException("Invalid email or password")
 
