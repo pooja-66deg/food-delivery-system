@@ -79,16 +79,21 @@ export function RestaurantWorkspace({
     categoryId: number
     stock: number | null
     price: number
+    image: File | null
   }) {
     setItemBusy(true)
     const ok = await mutate(
-      () =>
-        restaurantsApi.addItem(restaurantId, {
+      async () => {
+        const item = await restaurantsApi.addItem(restaurantId, {
           category_id: fields.categoryId,
           name: fields.name,
           price: fields.price,
           stock_quantity: fields.stock,
-        }),
+        })
+        if (fields.image) {
+          await restaurantsApi.uploadItemImage(restaurantId, item.id, fields.image)
+        }
+      },
       'Could not add item.',
     )
     if (ok) showToast('add')
@@ -230,6 +235,12 @@ export function RestaurantWorkspace({
                 onChanged()
               }}
               onEditItem={setEditing}
+              onPickItemImage={(itemId, file) =>
+                void mutate(
+                  () => restaurantsApi.uploadItemImage(restaurantId, itemId, file),
+                  'Image upload failed.',
+                )
+              }
               onSetStock={(itemId, stock) =>
                 void mutate(
                   () => restaurantsApi.updateItem(restaurantId, itemId, { stock_quantity: stock }),

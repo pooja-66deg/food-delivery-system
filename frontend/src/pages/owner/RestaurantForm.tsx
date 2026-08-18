@@ -4,7 +4,7 @@ import type { FormEvent } from 'react'
 import { errorMessage } from '../../api/client'
 import { restaurantsApi, FOOD_TYPE_LABELS, FOOD_TYPES } from '../../api/restaurants'
 import type { FoodType, Restaurant } from '../../api/restaurants'
-import { Alert, Button, Field, PhoneField } from '../../components/ui'
+import { Alert, Button, Field, FilePicker, PhoneField } from '../../components/ui'
 import { normalizePhone, PHONE_ERROR } from '../../lib/phone'
 import { AddressAutocomplete } from '../../components/AddressAutocomplete'
 import { CityDropdown } from '../../components/CityDropdown'
@@ -24,6 +24,7 @@ const EMPTY = {
 
 export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => void }) {
   const [form, setForm] = useState(EMPTY)
+  const [image, setImage] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -41,7 +42,7 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
     setError(null)
     setBusy(true)
     try {
-      const r = await restaurantsApi.create({
+      let r = await restaurantsApi.create({
         name: form.name,
         city: form.city,
         address_line: form.address_line,
@@ -54,7 +55,11 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
           : undefined,
         food_type: form.food_type,
       })
+      if (image) {
+        r = await restaurantsApi.uploadImage(r.id, image)
+      }
       setForm(EMPTY)
+      setImage(null)
       onCreated(r)
     } catch (err) {
       setError(errorMessage(err, 'Could not create restaurant.'))
@@ -127,6 +132,14 @@ export function RestaurantForm({ onCreated }: { onCreated: (r: Restaurant) => vo
         value={form.delivery_radius_km}
         onChange={set('delivery_radius_km')}
       />
+      <div className="field">
+        <span>Menu cover image</span>
+        <FilePicker
+          label={image ? `Image: ${image.name}` : 'Choose image'}
+          onPick={setImage}
+        />
+        <small className="muted">Shown to customers when they browse your restaurant.</small>
+      </div>
       <Button block loading={busy}>Register restaurant</Button>
       <small className="muted">
         An administrator reviews new restaurants. You can build your menu straight away;
