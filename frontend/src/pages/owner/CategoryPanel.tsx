@@ -15,6 +15,8 @@ interface CategoryPanelProps {
   onSetStock: (itemId: number, stock: number | null) => void
   onSetPrice: (itemId: number, price: number) => void
   onDeleteItem: (itemId: number) => void
+  /** Uploads a dish photo straight from its row. */
+  onPickItemImage?: (itemId: number, file: File) => void
 }
 
 /**
@@ -32,6 +34,7 @@ export function CategoryPanel({
   onSetStock,
   onSetPrice,
   onDeleteItem,
+  onPickItemImage,
 }: CategoryPanelProps) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(category.name)
@@ -149,6 +152,9 @@ export function CategoryPanel({
               onSetStock={(stock) => onSetStock(item.id, stock)}
               onSetPrice={(price) => onSetPrice(item.id, price)}
               onDelete={() => onDeleteItem(item.id)}
+              onPickImage={
+                onPickItemImage ? (file) => onPickItemImage(item.id, file) : undefined
+              }
             />
           ))}
         </div>
