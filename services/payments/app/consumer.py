@@ -77,9 +77,17 @@ async def _apply_payment_command(session: AsyncSession, payload: dict) -> None:
     were published and nothing ever acted on them, so a cancelled card order was
     marked refunded in the order history and the customer never got their money.
 
-    Idempotent by state, not by a marker: capture only moves AUTHORIZED to
-    SUCCEEDED and refund only acts on a payment that is not already REFUNDED, so
-    a redelivered command is a no-op rather than a second movement of money.
+    Idempotent by state, not by a marker: capture only moves a capturable
+    payment to SUCCEEDED, and refund only acts on one that actually took money
+    and has not already been refunded — so a redelivered command is a no-op
+    rather than a second movement of money.
+
+    This paragraph described the intent long before the code did it. ``refund_payment``
+    called ``provider.refund()`` unconditionally and ``capture_payment`` assigned
+    SUCCEEDED unconditionally, so on a transport that is explicitly at-least-once
+    a redelivered refund sent the money back twice, and a settle arriving after a
+    refund marked a refunded payment collected. Both guards now live in
+    ``app/service.py``; if that changes, this comment is a lie again.
     """
     order_id = payload.get("order_id")
     action = payload.get("action")

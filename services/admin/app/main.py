@@ -11,7 +11,7 @@ offers is forwarded to the service that owns the data.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.clients import close_clients
@@ -42,9 +42,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Admin Service", version="0.1.0", lifespan=lifespan)
 
-# The browser checks every response this service returns through the gateway
-# against the SPA's origin, which is a different hostname. nginx forwards what
-# we send and adds nothing, so the header has to originate here.
 install_cors(app, settings.cors_origin_list)
 install_error_handlers(app)
 app.include_router(bootstrap_router)
@@ -63,12 +60,13 @@ async def health():
 
 
 @app.get("/ready", tags=["ops"])
-async def ready():
+async def ready(response: Response):
     """Can it actually serve? This one does check the database."""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Not ready: %s", exc)
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "degraded", "database": "unreachable"}
     return {"status": "ready"}

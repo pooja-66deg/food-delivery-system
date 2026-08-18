@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config_guard import assert_production_secrets
 from shared.cors import split_origins
 
 
@@ -52,11 +53,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
 
-    # The one action the console takes rather than reports: running the
     # acceptance-timeout sweep, which belongs to the orders service.
     orders_service_url: str = "http://orders-service:8000"
     # The users service, for bootstrapping the first admin.
     users_service_url: str = "http://users-service:8000"
+
+    bootstrap_secret: Optional[str] = None
     orders_timeout_seconds: float = 10.0
     breaker_threshold: int = 5
     breaker_cooldown_seconds: float = 10.0
@@ -81,3 +83,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Import time, not startup: the process must die before it binds a port, so a
+# deploy that dropped a secret fails visibly instead of serving on a public one.
+assert_production_secrets(settings)

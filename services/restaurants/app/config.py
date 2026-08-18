@@ -10,6 +10,7 @@ from typing import Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config_guard import assert_production_secrets
 from shared.cors import split_origins
 
 
@@ -113,3 +114,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Import time, not startup: the process must die before it binds a port, so a
+# deploy that dropped a secret fails visibly instead of serving on a public one.
+assert_production_secrets(settings)

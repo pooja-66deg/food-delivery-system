@@ -11,7 +11,7 @@ hanging request.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.config import settings
@@ -90,12 +90,18 @@ async def health():
 
 
 @app.get("/ready", tags=["ops"])
-async def ready():
+async def ready(response: Response):
     """Can it actually serve? This one does check the database."""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Not ready: %s", exc)
+        # 503, not a 200 that merely says "degraded" in its body. Cloud Run and
+        # Kubernetes route on the status code and read nothing else, so the old
+        # response advertised this instance as ready to serve while its database
+        # was unreachable — every request sent here failed, and the load balancer
+        # kept sending them because it had been told everything was fine.
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "degraded", "database": "unreachable"}
     return {"status": "ready"}

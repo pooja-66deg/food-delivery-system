@@ -9,6 +9,7 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config_guard import assert_production_secrets
 from shared.cors import split_origins
 
 
@@ -61,6 +62,28 @@ class Settings(BaseSettings):
     auth_rate_max: int = 10
     auth_rate_window_seconds: int = 60
 
+    #: Shared password for the console's outer gate, checked by
+    #: ``POST /auth/admin/gate``.
+    #:
+    #: It lives here rather than in the SPA because Vite inlines every ``VITE_``
+    #: variable into the built bundle — a gate password held on the frontend is
+    #: readable by anyone who opens the JavaScript, whether it was written as a
+    #: literal or read from an environment variable. Only a value the browser
+    #: never receives can gate anything.
+    #:
+    #: Unset means no gate, which is the local-development default. Production
+    #: cannot leave it unset: see ``assert_production_secrets`` below.
+    admin_gate_password: Optional[str] = None
+
+    #: Required in the ``X-Bootstrap-Secret`` header by
+    #: ``/auth/internal/bootstrap-admin``.
+    #:
+    #: That route creates the platform's first administrator and is reachable
+    #: through the public gateway, so before this it was a race: whoever called
+    #: it first owned the platform. Unset disables the route entirely rather than
+    #: leaving it open — an unconfigured secret must not mean an unguarded door.
+    bootstrap_secret: Optional[str] = None
+
     #: Browser origins allowed to call this service, comma-separated.
     #:
     #: The frontend is a separate Cloud Run service on its own origin, so
@@ -106,3 +129,20 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Import time, not startup: the process must die before it binds a port, so a
+# deploy that dropped a secret fails visibly instead of serving on a public one.
+assert_production_secrets(settings)
+
+# The gate is off when unconfigured, which is right for a laptop and wrong for
+# production: the console would then be reachable by anyone who guesses the URL,
+# with nothing in front of the login form. Silently serving one fewer layer than
+# the deployment intended is exactly the failure this file exists to prevent, so
+# an unset gate password in production is a failed deploy rather than an open door.
+if settings.environment == "production" and not settings.admin_gate_password:
+    raise RuntimeError(
+        "users-service refused to start in production:\n"
+        "  - ADMIN_GATE_PASSWORD is unset, which disables the admin console gate.\n"
+        "Set it from Secret Manager, or delete this check if the gate is being\n"
+        "retired in favour of network-level access control (Cloud IAP, VPN)."
+    )

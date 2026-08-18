@@ -9,9 +9,10 @@ account: ``/users/me/change-password`` needs the current password, so without
 this pair a forgotten password is an operator task.
 """
 
+import secrets as _secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Header, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -19,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from shared.ratelimit import enforce_rate_limit
-from shared.errors import UnauthorizedException
+from shared.errors import ForbiddenException, UnauthorizedException
 from shared.ids import EntityId
 from app.db import get_db
 from app.redis_client import get_redis
@@ -35,6 +36,8 @@ from app.schemas import (
     AddressCreate,
     AddressResponse,
     AddressUpdate,
+    AdminGateRequest,
+    AdminGateStatus,
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
     ChangePasswordRequest,
@@ -90,12 +93,39 @@ async def register(
 
 @auth_router.post("/internal/bootstrap-admin", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def bootstrap_admin(
-    data: LoginRequest, session: AsyncSession = Depends(get_db),
+    data: LoginRequest,
+    session: AsyncSession = Depends(get_db),
+    x_bootstrap_secret: Optional[str] = Header(default=None),
 ):
-    """Create the first admin user. Only works if no admin exists.
+    """Create the platform's first admin. Only works while no admin exists.
 
-    Internal endpoint — not for public use.
+    "Internal" described the intent, not the routing: ``/api/auth/`` is proxied
+    to this service by the public gateway, so this route was reachable by
+    anyone, and the only thing standing between a stranger and the first admin
+    account on a fresh deployment was whoever called it first. That is a race
+    decided by whoever is watching, not an access control.
+
+    So it now needs ``X-Bootstrap-Secret``. Unset configuration disables the
+    route rather than opening it: the alternative — treating "no secret
+    configured" as "no secret required" — reproduces exactly the hole this
+    closes, on precisely the deployments nobody has finished configuring.
+
+    Compared with ``compare_digest`` because the obvious ``!=`` returns as soon
+    as two bytes differ, and that timing difference is enough to recover the
+    secret one byte at a time.
     """
+    configured = settings.bootstrap_secret
+    if not configured or not x_bootstrap_secret or not _secrets.compare_digest(
+        # Encoded, because compare_digest rejects str containing anything outside
+        # ASCII with a TypeError — which a non-ASCII secret would turn into a 500
+        # on the one route nobody gets to retry.
+        x_bootstrap_secret.encode("utf-8"), configured.encode("utf-8")
+    ):
+        # Deliberately identical whether the secret is unconfigured, missing, or
+        # wrong. Distinguishing them tells a caller whether this deployment can
+        # still be bootstrapped at all, which is the one fact worth probing for.
+        raise UnauthorizedException("Invalid or missing bootstrap secret")
+
     return await service.bootstrap_admin(session, data.email, data.password)
 
 
@@ -118,21 +148,44 @@ async def admin_login(
     session: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
 ):
-    """Admin login endpoint that enforces password reset on first login."""
+    """Sign an administrator in, forcing the reset their first login demands.
+
+    Only administrators. This route used to verify the password, check the reset
+    flag *if* the account happened to be an admin, and otherwise fall through to
+    the ordinary login — so a customer's own credentials were accepted here and
+    returned a perfectly valid token, which the console then stored as its admin
+    token. The token itself was never actually privileged, so the console's own
+    calls failed once it started using it, but the platform had nonetheless
+    answered "yes" to an admin sign-in from a customer, and every check that
+    mattered from that point on was a frontend one.
+
+    A non-admin is refused with the same message and status as a bad password.
+    Answering 403 "not an administrator" instead would confirm that the
+    submitted credentials were valid, turning this route into a password oracle
+    for every non-admin account on the platform — which is worse than the
+    slightly blunt error an operator sees after mistyping their address.
+    """
     await enforce_rate_limit(
         redis, f"rl:login:{_client_ip(request)}:{data.email}",
         settings.auth_rate_max, settings.auth_rate_window_seconds,
     )
 
-    # Validate password and get user
     stmt = select(User).where(User.email == data.email)
     user = (await session.scalars(stmt)).first()
 
-    if not user or not verify_password(data.password, user.hashed_password):
+    # If user doesn't exist, dummy verification keeps response time consistent.
+    password_correct = False
+    if user:
+        password_correct = verify_password(data.password, user.hashed_password)
+
+    if (
+        not user
+        or user.role != "admin"
+        or not password_correct
+    ):
         raise UnauthorizedException("Invalid email or password")
 
-    # Check if admin with password_reset_required
-    if user.role == "admin" and user.password_reset_required:
+    if user.password_reset_required:
         return JSONResponse(
             status_code=403,
             content={
@@ -142,8 +195,70 @@ async def admin_login(
             }
         )
 
-    # Normal login for non-admin or admin with password already reset
     return await service.login(session, data.email, data.password)
+
+
+@auth_router.get("/admin/gate", response_model=AdminGateStatus)
+async def admin_gate_status():
+    """Does this deployment gate the console, before the login form?
+
+    The SPA has to ask, because the answer is configuration it cannot see. It
+    reveals only that a gate exists — the same thing the gate form itself would
+    reveal to anyone who loaded the page.
+    """
+    return AdminGateStatus(gate_required=bool(settings.admin_gate_password))
+
+
+@auth_router.post("/admin/gate", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_gate(
+    data: AdminGateRequest,
+    request: Request,
+    redis=Depends(get_redis),
+):
+    """Check the console's outer gate password.
+
+    This check lives here, and not in the SPA where it started, for a reason
+    that no amount of care on the frontend can work around: Vite inlines every
+    ``VITE_`` variable into the built bundle, so a gate password on the frontend
+    is readable in the shipped JavaScript whether it was written as a literal or
+    read from an environment variable. Moving the *value* to an env file would
+    have moved nothing at all. Only a secret the browser never receives can gate
+    anything, which makes this a server-side check by necessity.
+
+    Rate-limited per client address like every other unauthenticated route here:
+    one shared password with unlimited attempts is a password with a deadline.
+
+    What this is *not*: authentication. It is a shared secret with no identity
+    behind it, and everything past it is still enforced by ``/auth/admin/login``
+    and the admin role on every console route. Treat it as the deterrent it is —
+    real perimeter control belongs at the network layer (Cloud IAP, VPN, an IP
+    allowlist), where an attacker never reaches this handler at all.
+    """
+    await enforce_rate_limit(
+        redis, f"rl:admin_gate:{_client_ip(request)}",
+        settings.auth_rate_max, settings.auth_rate_window_seconds,
+    )
+
+    configured = settings.admin_gate_password
+    if not configured:
+        # No gate configured means no gate to pass, and the GET above has
+        # already told the SPA not to render one. Refusing here instead would
+        # lock the console out of every deployment that never set the variable.
+        return
+
+    # Encoded for the same reason as the bootstrap secret: compare_digest raises
+    # TypeError on non-ASCII str, and a gate password with an accent in it would
+    # then answer 500 instead of "incorrect".
+    if not _secrets.compare_digest(
+        data.password.encode("utf-8"), configured.encode("utf-8")
+    ):
+        # 403 rather than 401, and the distinction is load-bearing on the client:
+        # the SPA treats a 401 on a non-admin call as "this session's token is
+        # dead" and signs the user out. A mistyped gate password would then log
+        # a signed-in customer out of an unrelated tab. Nothing about this route
+        # concerns identity — there is no account behind the gate — so refusing
+        # with "forbidden" is both truthful and free of that side effect.
+        raise ForbiddenException("Incorrect password")
 
 
 @auth_router.post("/refresh", response_model=TokenResponse)

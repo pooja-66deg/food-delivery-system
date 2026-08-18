@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { request } from "../api/client"
+import { errorMessage, request } from "../api/client"
 import { useAdminAuth } from "../auth/AdminAuthContext"
 
 interface LoginResponse {
@@ -11,8 +11,11 @@ interface LoginResponse {
   email?: string
 }
 
-const ADMIN_GATE_PASSWORD = "admin@123"
 const GATE_SESSION_KEY = "admin_gate_unlocked"
+
+interface GateStatus {
+  gate_required: boolean
+}
 
 export function AdminLogin() {
   const [email, setEmail] = useState("")
@@ -21,29 +24,50 @@ export function AdminLogin() {
   const [error, setError] = useState("")
   const [gateError, setGateError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [gateUnlocked, setGateUnlocked] = useState(false)
+  const [gateChecking, setGateChecking] = useState(false)
+  const [gateUnlocked, setGateUnlocked] = useState<boolean | undefined>(undefined)
   const navigate = useNavigate()
   const { setAdminToken } = useAdminAuth()
 
-  // Check if gate is already unlocked in this session
   useEffect(() => {
-    const isUnlocked = sessionStorage.getItem(GATE_SESSION_KEY)
-    if (isUnlocked === "true") {
+    let cancelled = false
+
+    if (sessionStorage.getItem(GATE_SESSION_KEY) === "true") {
       setGateUnlocked(true)
+      return
+    }
+
+    request<GateStatus>("/auth/admin/gate")
+      .then((status) => {
+        if (!cancelled) setGateUnlocked(!status.gate_required)
+      })
+      .catch(() => {
+        if (!cancelled) setGateUnlocked(false)
+      })
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  const handleGateSubmit = (e: React.FormEvent) => {
+  const handleGateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setGateError("")
+    setGateChecking(true)
 
-    if (gatePassword === ADMIN_GATE_PASSWORD) {
+    try {
+      await request("/auth/admin/gate", {
+        method: "POST",
+        body: { password: gatePassword },
+      })
       sessionStorage.setItem(GATE_SESSION_KEY, "true")
       setGateUnlocked(true)
       setGatePassword("")
-    } else {
-      setGateError("Incorrect password")
+    } catch (err: unknown) {
+      setGateError(errorMessage(err, "Incorrect password"))
       setGatePassword("")
+    } finally {
+      setGateChecking(false)
     }
   }
 
@@ -71,6 +95,14 @@ export function AdminLogin() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (gateUnlocked === undefined) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem' }}>
+        <p style={{ fontSize: '0.9rem', color: 'var(--ink-soft)' }}>Loading…</p>
+      </div>
+    )
   }
 
   // Show password gate first
@@ -113,6 +145,7 @@ export function AdminLogin() {
                 value={gatePassword}
                 onChange={(e) => setGatePassword(e.target.value)}
                 placeholder="Enter access password"
+                disabled={gateChecking}
                 autoFocus
               />
             </div>
@@ -120,8 +153,9 @@ export function AdminLogin() {
             <button
               type="submit"
               className="btn btn-primary btn-block"
+              disabled={gateChecking}
             >
-              Unlock Access
+              {gateChecking ? "Checking…" : "Unlock Access"}
             </button>
           </form>
 
