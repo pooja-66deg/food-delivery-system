@@ -49,8 +49,17 @@ DRIVER_ID = 42
 async def pg_engine():
     engine = create_async_engine(_postgres_url(), poolclass=None)
     async with engine.begin() as conn:
+        try:
+            await conn.run_sync(Base.metadata.drop_all)
+        except Exception:
+            pass  # Ignore errors if tables don't exist
         await conn.run_sync(Base.metadata.create_all)
     yield engine
+    async with engine.begin() as conn:
+        try:
+            await conn.run_sync(Base.metadata.drop_all)
+        except Exception:
+            pass  # Ignore errors during cleanup
     await engine.dispose()
 
 
