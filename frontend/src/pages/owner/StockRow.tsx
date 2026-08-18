@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import type { MenuItem } from '../../api/restaurants'
+import { FilePicker, Thumb } from '../../components/ui'
 
 interface StockRowProps {
   item: MenuItem
@@ -9,6 +10,8 @@ interface StockRowProps {
   onSetStock: (stock: number | null) => void
   onSetPrice: (price: number) => void
   onDelete: () => void
+  /** Omitted where the row is read-only for photos; the editor still offers it. */
+  onPickImage?: (file: File) => void
 }
 
 /**
@@ -19,7 +22,14 @@ interface StockRowProps {
  * photo, diet flag, whether it is listed at all) is a rarer edit and lives behind
  * the row's name in a dialog, which keeps the row itself readable.
  */
-export function StockRow({ item, onEdit, onSetStock, onSetPrice, onDelete }: StockRowProps) {
+export function StockRow({
+  item,
+  onEdit,
+  onSetStock,
+  onSetPrice,
+  onDelete,
+  onPickImage,
+}: StockRowProps) {
   // Local copies so typing is not fighting a refetch. Reset when the row's own
   // item changes, so a save elsewhere on the page is reflected here.
   const [price, setPrice] = useState(String(item.price))
@@ -39,6 +49,17 @@ export function StockRow({ item, onEdit, onSetStock, onSetPrice, onDelete }: Sto
 
   return (
     <div className="stock-row" data-hidden={!item.is_available || undefined}>
+      {onPickImage && (
+        <div className="stock-row-photo">
+          <Thumb url={item.image_url} alt={item.name} />
+          <FilePicker
+            label={item.image_url ? 'Replace' : 'Add photo'}
+            small
+            onPick={onPickImage}
+          />
+        </div>
+      )}
+
       <div className="stock-row-lead">
         {/* The name is the way into the full editor: it is the thing an owner
             points at when they mean "this dish". */}

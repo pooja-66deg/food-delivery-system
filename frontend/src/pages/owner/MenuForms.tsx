@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 
 import type { MenuCategory } from '../../api/restaurants'
-import { Button, Field } from '../../components/ui'
+import { Button, Field, FilePicker } from '../../components/ui'
 
 /** A "+" for the create buttons, so both read as additive at a glance. */
 function PlusIcon() {
@@ -56,9 +56,16 @@ export function AddItemCard({
 }: {
   categories: MenuCategory[]
   busy: boolean
-  onAdd: (fields: { name: string; categoryId: number; stock: number | null; price: number }) => void
+  onAdd: (fields: {
+    name: string
+    categoryId: number
+    stock: number | null
+    price: number
+    image: File | null
+  }) => void
 }) {
   const [form, setForm] = useState(EMPTY)
+  const [image, setImage] = useState<File | null>(null)
 
   function set(field: keyof typeof form) {
     return (e: { target: { value: string } }) => setForm((f) => ({ ...f, [field]: e.target.value }))
@@ -72,8 +79,10 @@ export function AddItemCard({
       // Blank means "sell it without tracking stock", which the API models as null.
       stock: form.stock.trim() === '' ? null : Number(form.stock),
       price: Number(form.price),
+      image,
     })
     setForm(EMPTY)
+    setImage(null)
   }
 
   // Nowhere to put a dish yet. Said plainly rather than showing a form whose
@@ -140,6 +149,11 @@ export function AddItemCard({
         />
       </div>
       <div className="compose-actions">
+        <FilePicker
+          label={image ? `Photo: ${image.name}` : 'Add item photo'}
+          small
+          onPick={setImage}
+        />
         <Button loading={busy}>
           <PlusIcon /> Add item
         </Button>
