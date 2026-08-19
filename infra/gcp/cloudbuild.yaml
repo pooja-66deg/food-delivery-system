@@ -129,7 +129,8 @@ steps:
         # DATABASE_URL is intentionally unset: concurrency tests need PostgreSQL
         # (which is not available in Cloud Build) and gracefully skip when it's absent.
         uv run pytest -q
-        ./services/test.sh
+        dos2unix services/test.sh 2>/dev/null || sed -i 's/\r$//' services/test.sh
+        bash services/test.sh
 
   # -----------------------------------------------------------------------
   # 2. Build and push every image, in parallel. Each service's Dockerfile
