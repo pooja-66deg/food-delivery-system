@@ -11,10 +11,11 @@ from shared.errors import (
     ForbiddenException,
     NotFoundException,
 )
+from app import hours as hours_mod
 from app import outbox
 from app.config import settings
-from app.models import APPROVED, PENDING, REJECTED, OwnerRow, Restaurant
-from app.schemas import RestaurantCreate, RestaurantUpdate
+from app.models import APPROVED, PENDING, REJECTED, OpeningHour, OwnerRow, Restaurant
+from app.schemas import OpeningHourDay, RestaurantCreate, RestaurantUpdate
 from app import ratings
 from shared.identity import Identity
 
@@ -244,6 +245,85 @@ async def attach_ratings(session: AsyncSession, restaurants: Sequence[Restaurant
         restaurant.rating_breakdown = summary.breakdown
 
 
+def _hour_to_schema(row: OpeningHour) -> OpeningHourDay:
+    return OpeningHourDay(
+        day_of_week=row.day_of_week,
+        opens_at=hours_mod.format_hhmm(row.opens_at),
+        closes_at=hours_mod.format_hhmm(row.closes_at),
+        is_closed=row.is_closed,
+    )
+
+
+async def opening_hours_for(
+    session: AsyncSession, restaurant_id: int
+) -> list[OpeningHour]:
+    """One restaurant's schedule in weekday order."""
+    return list(
+        await session.scalars(
+            select(OpeningHour)
+            .where(OpeningHour.restaurant_id == restaurant_id)
+            .order_by(OpeningHour.day_of_week)
+        )
+    )
+
+
+async def attach_opening_hours(
+    session: AsyncSession, restaurants: Sequence[Restaurant]
+) -> None:
+    """Attach weekly hours and the derived accepting-orders flag.
+
+    One query for the page. Restaurants with no rows get an empty schedule and
+    ``is_accepting_orders == is_open``, which is the pre-schedule behaviour.
+    """
+    if not restaurants:
+        return
+
+    ids = [r.id for r in restaurants]
+    rows = list(
+        await session.scalars(select(OpeningHour).where(OpeningHour.restaurant_id.in_(ids)))
+    )
+    by_restaurant: dict[int, list[OpeningHour]] = {}
+    for row in rows:
+        by_restaurant.setdefault(row.restaurant_id, []).append(row)
+
+    for restaurant in restaurants:
+        schedule = by_restaurant.get(restaurant.id, [])
+        schedule.sort(key=lambda r: r.day_of_week)
+        status = hours_mod.schedule_status(restaurant.is_open, schedule)
+        restaurant.opening_hours = [_hour_to_schema(r) for r in schedule]
+        restaurant.is_accepting_orders = status.accepting_orders
+        restaurant.local_day_of_week = status.local_day_of_week
+        restaurant.current_closes_at = hours_mod.format_hhmm(status.current_closes_at)
+        restaurant.open_24_hours = status.open_24_hours
+        restaurant.next_opens_at = hours_mod.format_hhmm(status.next_opens_at)
+        restaurant.next_opens_day = status.next_opens_day
+
+
+async def replace_opening_hours(
+    session: AsyncSession, restaurant_id: int, days: list[OpeningHourDay]
+) -> None:
+    """Replace the whole weekly schedule for one restaurant.
+
+    Delete-then-insert rather than upsert: the payload is the full week the
+    owner just edited, and partial merges would leave stale days behind.
+    """
+    existing = await opening_hours_for(session, restaurant_id)
+    for row in existing:
+        await session.delete(row)
+    await session.flush()
+
+    for day in days:
+        session.add(
+            OpeningHour(
+                restaurant_id=restaurant_id,
+                day_of_week=day.day_of_week,
+                opens_at=hours_mod.parse_hhmm(day.opens_at),
+                closes_at=hours_mod.parse_hhmm(day.closes_at),
+                is_closed=day.is_closed,
+            )
+        )
+
+
 # Shortest term that earns a suggestion lookup — one character matches most of
 # the table and is never a useful hint.
 SUGGEST_MIN_CHARS = 2
@@ -318,8 +398,17 @@ async def update_restaurant(
     session: AsyncSession, restaurant_id: int, user: Identity, data: RestaurantUpdate
 ) -> Restaurant:
     restaurant = await owned_restaurant(session, user, restaurant_id)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    # Hours live in their own table — they must not be setattr'd onto Restaurant.
+    schedule = payload.pop("opening_hours", None)
+    for field, value in payload.items():
         setattr(restaurant, field, value)
+    if schedule is not None:
+        await replace_opening_hours(
+            session,
+            restaurant.id,
+            [OpeningHourDay.model_validate(row) for row in schedule],
+        )
     publish_restaurant(session, restaurant)
     await session.commit()
     await session.refresh(restaurant)

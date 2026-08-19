@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from shared.phone import normalize_optional_phone
 
@@ -11,6 +11,32 @@ from shared.phone import normalize_optional_phone
 #: filter reads this, so it is the owner's claim rather than something inferred
 #: from which dishes happen to be flagged vegetarian today.
 FoodType = Literal["veg", "non_veg", "both"]
+
+
+class OpeningHourDay(BaseModel):
+    """One weekday on a restaurant's weekly schedule.
+
+    ``opens_at`` / ``closes_at`` are ``HH:MM`` in the platform's local timezone.
+    A closed day keeps the times null; overnight windows use open > close
+    (e.g. 22:00–02:00). Equal open and close means open all day.
+    """
+
+    day_of_week: int = Field(..., ge=0, le=6, description="Monday=0 … Sunday=6")
+    opens_at: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    closes_at: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    is_closed: bool = False
+
+    @model_validator(mode="after")
+    def _window_or_closed(self) -> "OpeningHourDay":
+        if self.is_closed:
+            # A closed day has no window — drop any times the client sent so the
+            # stored row cannot contradict the flag.
+            self.opens_at = None
+            self.closes_at = None
+            return self
+        if not self.opens_at or not self.closes_at:
+            raise ValueError("opens_at and closes_at are required unless the day is closed")
+        return self
 
 
 class RestaurantCreate(BaseModel):
@@ -51,6 +77,19 @@ class RestaurantUpdate(BaseModel):
     # The owner's own; editing it does not re-open approval, because what a
     # kitchen serves is not what an operator vetted it for.
     food_type: FoodType | None = None
+    #: Replace the whole weekly schedule when present. An empty list clears it
+    #: and restores "manual ``is_open`` only" behaviour. Omitted leaves hours alone.
+    opening_hours: list[OpeningHourDay] | None = None
+
+    @field_validator("opening_hours")
+    @classmethod
+    def _unique_days(cls, value: list[OpeningHourDay] | None) -> list[OpeningHourDay] | None:
+        if value is None:
+            return value
+        days = [row.day_of_week for row in value]
+        if len(days) != len(set(days)):
+            raise ValueError("each day_of_week may appear only once")
+        return value
 
 
 class RestaurantResponse(BaseModel):
@@ -87,6 +126,18 @@ class RestaurantResponse(BaseModel):
     # Dish names that made this restaurant match the search term. Empty unless
     # the request carried one, so the UI can say why a result is here.
     matched_items: list[str] = []
+    #: Weekly schedule. Empty means none configured — ``is_open`` alone decides.
+    opening_hours: list[OpeningHourDay] = []
+    #: ``is_open`` and (if a schedule exists) currently inside a window. Same as
+    #: ``is_open`` when no hours are set, so existing clients keep reading true.
+    is_accepting_orders: bool = True
+    #: Server-local clock facts. Clients format these; they do not reimplement
+    #: schedule evaluation or timezone handling.
+    local_day_of_week: int = Field(default=0, ge=0, le=6)
+    current_closes_at: str | None = None
+    open_24_hours: bool = False
+    next_opens_at: str | None = None
+    next_opens_day: int | None = Field(default=None, ge=0, le=6)
 
 
 class AdminRestaurantRow(RestaurantResponse):

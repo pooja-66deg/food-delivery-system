@@ -28,7 +28,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import hours as hours_mod
 from app import inventory, zones
+from app import service as restaurant_service
 from app.auth import auth
 from app.db import get_db
 from app.models import APPROVED, MenuItem, Restaurant
@@ -112,6 +114,11 @@ async def validate_order(
         raise NotFoundException("Restaurant", str(restaurant_id))
 
     if not restaurant.is_open:
+        return _reject("RESTAURANT_CLOSED", "This restaurant is currently closed.")
+
+    schedule = await restaurant_service.opening_hours_for(session, restaurant_id)
+    # Empty schedule → is_open alone, same as before. Schedule present → both.
+    if not hours_mod.schedule_status(restaurant.is_open, schedule).accepting_orders:
         return _reject("RESTAURANT_CLOSED", "This restaurant is currently closed.")
 
     wanted = {line.menu_item_id: line for line in body.items}
@@ -262,8 +269,6 @@ async def lookup_restaurants(
     wanted = _wanted_ids(ids)
     if not wanted:
         return []
-    from app import service as restaurant_service
-
     found = list(await session.scalars(
         select(Restaurant).where(
             Restaurant.id.in_(wanted),
@@ -272,4 +277,5 @@ async def lookup_restaurants(
     ))
     # Same rating detail the browse cards carry, so the list renders identically.
     await restaurant_service.attach_ratings(session, found)
+    await restaurant_service.attach_opening_hours(session, found)
     return found

@@ -96,6 +96,7 @@ async def list_restaurants(
         sort=sort, limit=limit, offset=offset,
     )
     await service.attach_ratings(session, result.items)
+    await service.attach_opening_hours(session, result.items)
     await discovery.attach_price_bands(session, result.items)
     await discovery.attach_matched_items(session, result.items, search)
     return RestaurantPage(
@@ -156,6 +157,7 @@ async def my_restaurants(
     """
     restaurants = await service.owned_by(session, user.user_id)
     await service.attach_ratings(session, restaurants)
+    await service.attach_opening_hours(session, restaurants)
     return restaurants
 
 
@@ -181,6 +183,7 @@ async def admin_list_restaurants(
         session, approval_status=approval_status, limit=limit, offset=offset
     )
     await service.attach_ratings(session, result.items)
+    await service.attach_opening_hours(session, result.items)
     await service.attach_owner_names(session, result.items)
     return AdminRestaurantPage(
         items=[AdminRestaurantRow.model_validate(r) for r in result.items],
@@ -207,6 +210,7 @@ async def decide_approval(
         session, restaurant_id, decision.status, decision.reason
     )
     await service.attach_ratings(session, [restaurant])
+    await service.attach_opening_hours(session, [restaurant])
     await service.attach_owner_names(session, [restaurant])
     return AdminRestaurantRow.model_validate(restaurant)
 
@@ -240,6 +244,7 @@ async def get_restaurant(
         # see" is itself the fact being withheld.
         raise NotFoundException("Restaurant", str(restaurant_id))
     await service.attach_ratings(session, [restaurant])
+    await service.attach_opening_hours(session, [restaurant])
     menu = await menu_service.get_menu(session, restaurant_id, available_only=True)
     detail = RestaurantDetail.model_validate(restaurant)
     detail.menu = menu
@@ -253,7 +258,9 @@ async def create_restaurant(
     user: Identity = Depends(owner_only),
     session: AsyncSession = Depends(get_db),
 ):
-    return await service.create_restaurant(session, user, data)
+    restaurant = await service.create_restaurant(session, user, data)
+    await service.attach_opening_hours(session, [restaurant])
+    return restaurant
 
 
 @router.patch("/{restaurant_id}", response_model=RestaurantResponse)
@@ -263,7 +270,9 @@ async def update_restaurant(
     user: Identity = Depends(owner_or_admin),
     session: AsyncSession = Depends(get_db),
 ):
-    return await service.update_restaurant(session, restaurant_id, user, data)
+    restaurant = await service.update_restaurant(session, restaurant_id, user, data)
+    await service.attach_opening_hours(session, [restaurant])
+    return restaurant
 
 
 @router.post("/{restaurant_id}/image", response_model=RestaurantResponse)
@@ -277,6 +286,7 @@ async def upload_restaurant_image(
     restaurant.image_url = await save_image(file, f"restaurants/{restaurant_id}")
     await session.commit()
     await session.refresh(restaurant)
+    await service.attach_opening_hours(session, [restaurant])
     return restaurant
 
 
