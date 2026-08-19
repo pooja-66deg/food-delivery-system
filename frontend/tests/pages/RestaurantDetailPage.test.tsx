@@ -133,6 +133,16 @@ describe('RestaurantDetailPage stock display', () => {
   })
 })
 
+describe('RestaurantDetailPage closed state', () => {
+  it('shows a closed banner and disables ordering when the kitchen is closed', async () => {
+    withMenu([item()], { is_open: false, is_accepting_orders: false })
+    renderPage()
+
+    expect(await screen.findByText('Currently Closed – Orders unavailable.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Closed' })).toBeDisabled()
+  })
+})
+
 describe('RestaurantDetailPage images', () => {
   it('renders an uploaded item image', async () => {
     withMenu([item({ image_url: '/media/items/11.jpg' })])

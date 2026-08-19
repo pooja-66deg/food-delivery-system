@@ -73,8 +73,54 @@ describe('RestaurantTimingControl', () => {
         })}
       />,
     )
-    expect(screen.getByRole('button', { name: /Closed · Opens tomorrow at 9:00 am/ }))
-      .toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Outside opening hours · Opens tomorrow at 9:00 am/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('explains manual closed separately from scheduled hours in the modal', () => {
+    render(
+      <RestaurantTimingControl
+        restaurant={restaurant({
+          is_open: false,
+          is_accepting_orders: false,
+          current_closes_at: null,
+          next_opens_at: '09:00',
+          next_opens_day: 3,
+        })}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Currently closed · Usual hours resume tomorrow/ }),
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(/paused orders/i)
+
+    const todayRow = screen.getByText('Today').closest('li')
+    expect(todayRow).toHaveTextContent('Wednesday')
+    expect(todayRow).toHaveTextContent('Currently closed')
+    expect(todayRow).toHaveTextContent('9:00 am – 10:00 pm (scheduled)')
+    // Other days keep their plain published window.
+    expect(screen.getByText('Monday').closest('li')).toHaveTextContent('9:00 am – 10:00 pm')
+    expect(screen.getByText('Monday').closest('li')).not.toHaveTextContent('Currently closed')
+  })
+
+  it('leaves outside-hours rows unchanged apart from the scheduled hint', () => {
+    render(
+      <RestaurantTimingControl
+        restaurant={restaurant({
+          is_accepting_orders: false,
+          current_closes_at: null,
+          next_opens_at: '09:00',
+          next_opens_day: 3,
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Outside opening hours/ }))
+    const todayRow = screen.getByText('Today').closest('li')
+    expect(todayRow).toHaveTextContent('9:00 am – 10:00 pm (scheduled)')
+    expect(todayRow).not.toHaveTextContent('Currently closed')
   })
 
   it('explains an unpublished schedule inside the timings modal', () => {

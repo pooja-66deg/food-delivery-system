@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   availabilityDetailLabel,
   cardHoursLabel,
+  closedReason,
   formatTime,
   formatWindow,
   todayLabel,
@@ -62,8 +63,47 @@ describe('hours helpers', () => {
       local_day_of_week: 2,
       next_opens_day: 3,
       next_opens_at: '09:00',
+      opening_hours: [day(2), day(3)],
     } as Restaurant
     expect(availabilityDetailLabel(tomorrow)).toBe('Opens tomorrow at 9:00 am')
+  })
+
+  it('distinguishes manual pause from schedule-based closed states', () => {
+    const manual = {
+      is_open: false,
+      is_accepting_orders: false,
+      opening_hours: [day(2)],
+      local_day_of_week: 2,
+      next_opens_day: 2,
+      next_opens_at: '09:00',
+    } as Restaurant
+    expect(closedReason(manual)).toBe('manual')
+    expect(availabilityDetailLabel(manual)).toBe('Usual hours resume today at 9:00 am')
+    expect(cardHoursLabel(manual)).toBe(
+      'Temporarily closed · Usual hours resume today at 9:00 am',
+    )
+
+    const closedToday = {
+      is_open: true,
+      is_accepting_orders: false,
+      opening_hours: [day(2, null, null, true), day(4, '11:00', '15:00')],
+      local_day_of_week: 2,
+      next_opens_day: 4,
+      next_opens_at: '11:00',
+    } as Restaurant
+    expect(closedReason(closedToday)).toBe('closed_today')
+    expect(cardHoursLabel(closedToday)).toBe('Closed today · Opens Friday at 11:00 am')
+
+    const outside = {
+      is_open: true,
+      is_accepting_orders: false,
+      opening_hours: [day(2, '09:00', '22:00')],
+      local_day_of_week: 2,
+      next_opens_day: 3,
+      next_opens_at: '09:00',
+    } as Restaurant
+    expect(closedReason(outside)).toBe('outside_hours')
+    expect(cardHoursLabel(outside)).toBe('Outside opening hours · Opens tomorrow at 9:00 am')
   })
 
   it('builds the customer card label from API timing metadata', () => {

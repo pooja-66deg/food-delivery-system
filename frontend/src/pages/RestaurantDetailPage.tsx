@@ -8,6 +8,7 @@ import { useCart } from '../cart/CartContext'
 import { RestaurantTimingControl } from '../components/RestaurantHours'
 import { Alert, Button, EmptyState, Loading, Thumb } from '../components/ui'
 import { useRestaurantDetail } from '../hooks/queries/useRestaurantQueries'
+import { availabilityDetailLabel, isAcceptingOrders } from '../lib/hours'
 import { RatingStars } from '../reviews/RatingStars'
 import { RatingSummary } from '../reviews/RatingSummary'
 import { ReviewsSection } from '../reviews/ReviewsSection'
@@ -29,8 +30,16 @@ export function RestaurantDetailPage() {
   const [adding, setAdding] = useState<number | null>(null)
 
   const isCustomer = user?.role === 'customer'
+  const acceptingOrders = restaurant ? isAcceptingOrders(restaurant) : false
+  const closedDetail = restaurant && !acceptingOrders
+    ? availabilityDetailLabel(restaurant)
+    : ''
 
   async function handleAdd(itemId: number, name: string) {
+    if (!acceptingOrders) {
+      setError('Currently Closed – Orders unavailable.')
+      return
+    }
     setError(null)
     setNotice(null)
     setAdding(itemId)
@@ -77,6 +86,12 @@ export function RestaurantDetailPage() {
         </div>
         {restaurant.description && <p className="muted">{restaurant.description}</p>}
         <RestaurantTimingControl restaurant={restaurant} />
+        {!acceptingOrders && (
+          <div className="rest-closed-banner" role="status">
+            <strong>Currently Closed – Orders unavailable.</strong>
+            {closedDetail && <span className="muted">{closedDetail}</span>}
+          </div>
+        )}
         <div className="rest-hero-meta">
           {restaurant.rating_average !== null && (
             <span className="chip">
@@ -122,10 +137,14 @@ export function RestaurantDetailPage() {
                       <Button
                         variant="ghost"
                         loading={adding === item.id}
-                        disabled={!item.in_stock}
+                        disabled={!item.in_stock || !acceptingOrders}
                         onClick={() => handleAdd(item.id, item.name)}
                       >
-                        {item.in_stock ? 'Add' : 'Unavailable'}
+                        {!item.in_stock
+                          ? 'Unavailable'
+                          : acceptingOrders
+                            ? 'Add'
+                            : 'Closed'}
                       </Button>
                     )}
                   </div>
