@@ -13,6 +13,10 @@ import { CityDropdown } from '../components/CityDropdown'
 import { FavoriteButton } from '../components/FavoriteButton'
 import type { Facets } from '../components/BrowseFilters'
 import { PopularCuisines } from '../components/PopularCuisines'
+import {
+  RestaurantAvailabilityBadge,
+  RestaurantCardHours,
+} from '../components/RestaurantHours'
 import { SearchSuggest } from '../components/SearchSuggest'
 import { RatingStars } from '../reviews/RatingStars'
 import { reviewCountLabel } from '../reviews/RatingSummary'
@@ -240,9 +244,7 @@ export function RestaurantsPage() {
               <Link to={`/restaurants/${r.id}`} className="rest-card">
                 <Thumb url={r.image_url} alt={`${r.name} cover`} variant="cover" />
                 <div className="rest-card-top">
-                  <span className={`badge ${r.is_open ? 'badge-open' : 'badge-closed'}`}>
-                    {r.is_open ? 'Open' : 'Closed'}
-                  </span>
+                  <RestaurantAvailabilityBadge restaurant={r} />
                   {r.cuisine && <span className="chip">{r.cuisine}</span>}
                   <FavoriteButton
                     restaurantId={r.id}
@@ -274,6 +276,7 @@ export function RestaurantsPage() {
                     </>
                   )}
                 </div>
+                <RestaurantCardHours restaurant={r} />
                 <div className="rest-card-foot">
                   <span>
                     {r.city}

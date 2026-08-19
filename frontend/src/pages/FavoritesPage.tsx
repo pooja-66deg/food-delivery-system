@@ -6,6 +6,10 @@ import { errorMessage } from '../api/client'
 import { favoritesApi } from '../api/favorites'
 import type { Restaurant } from '../api/restaurants'
 import { FavoriteButton } from '../components/FavoriteButton'
+import {
+  RestaurantAvailabilityBadge,
+  RestaurantCardHours,
+} from '../components/RestaurantHours'
 import { Alert, EmptyState, Loading, Thumb } from '../components/ui'
 import { RatingStars } from '../reviews/RatingStars'
 import { reviewCountLabel } from '../reviews/RatingSummary'
@@ -67,9 +71,7 @@ export function FavoritesPage() {
               <Link to={`/restaurants/${r.id}`} className="rest-card">
                 <Thumb url={r.image_url} alt={`${r.name} cover`} variant="cover" />
                 <div className="rest-card-top">
-                  <span className={`badge ${r.is_open ? 'badge-open' : 'badge-closed'}`}>
-                    {r.is_open ? 'Open' : 'Closed'}
-                  </span>
+                  <RestaurantAvailabilityBadge restaurant={r} />
                   {r.cuisine && <span className="chip">{r.cuisine}</span>}
                   <FavoriteButton restaurantId={r.id} saved onToggled={onToggled} />
                 </div>
@@ -87,6 +89,7 @@ export function FavoritesPage() {
                     </>
                   )}
                 </div>
+                <RestaurantCardHours restaurant={r} />
                 <div className="rest-card-foot">
                   <span>
                     {r.city}

@@ -6,6 +6,7 @@ import type { FoodType, RestaurantDetail } from '../../api/restaurants'
 import { Alert, Button, FilePicker, Thumb } from '../../components/ui'
 import { AddressPanel } from './AddressPanel'
 import { DeliveryZonePanel } from './DeliveryZonePanel'
+import { OpeningHoursPanel } from './OpeningHoursPanel'
 
 const FOOD_TYPES = Object.keys(FOOD_TYPE_LABELS) as FoodType[]
 
@@ -101,6 +102,23 @@ export function RestaurantSettings({
           <Button variant="ghost" loading={busy} onClick={() => void toggleOpen()}>
             {detail.is_open ? 'Set closed' : 'Set open'}
           </Button>
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div className="setting-label">
+          <h3>Opening hours</h3>
+          <p className="muted">
+            Weekly schedule. Optional — leave unset and the switch above alone decides.
+            When set, orders are accepted only while you are open and inside these hours.
+          </p>
+        </div>
+        <div className="setting-control setting-control-wide setting-control-hours">
+          <OpeningHoursPanel
+            restaurantId={detail.id}
+            hours={detail.opening_hours ?? []}
+            onSaved={onChanged}
+          />
         </div>
       </div>
 

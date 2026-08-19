@@ -31,6 +31,25 @@ export interface Restaurant {
   price_band: number | null
   /** Dish names that made this restaurant match the search term. */
   matched_items: string[]
+  /** Weekly schedule. Empty means none set — ``is_open`` alone decides. */
+  opening_hours?: OpeningHourDay[]
+  /** Manual switch plus schedule (when configured). Same as ``is_open`` with no hours. */
+  is_accepting_orders?: boolean
+  /** Clock-derived by the API in the restaurant platform timezone. */
+  local_day_of_week?: number
+  current_closes_at?: string | null
+  open_24_hours?: boolean
+  next_opens_at?: string | null
+  next_opens_day?: number | null
+}
+
+/** One weekday on a restaurant's weekly schedule. Monday = 0 … Sunday = 6. */
+export interface OpeningHourDay {
+  day_of_week: number
+  /** HH:MM, null when the day is closed. */
+  opens_at: string | null
+  closes_at: string | null
+  is_closed: boolean
 }
 
 export type RestaurantSort = 'name' | 'rating' | 'price_low' | 'price_high'
@@ -224,7 +243,10 @@ export const restaurantsApi = {
   create: (body: RestaurantCreateInput) =>
     request<Restaurant>('/restaurants', { method: 'POST', body, auth: true }),
 
-  update: (id: number, body: Partial<RestaurantCreateInput> & { is_open?: boolean }) =>
+  update: (id: number, body: Partial<RestaurantCreateInput> & {
+    is_open?: boolean
+    opening_hours?: OpeningHourDay[]
+  }) =>
     request<Restaurant>(`/restaurants/${id}`, { method: 'PATCH', body, auth: true }),
 
   addCategory: (id: number, name: string) =>

@@ -11,7 +11,7 @@ per review would make writing one fail whenever it is down; copying the two
 fields it takes to answer does not.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -23,6 +23,8 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -97,6 +99,32 @@ class Restaurant(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
+
+
+class OpeningHour(Base):
+    """One weekday of a restaurant's weekly schedule.
+
+    Complements ``Restaurant.is_open``: the switch is still the owner's manual
+    override; these rows say when the kitchen *normally* takes orders. No rows
+    means "no schedule" and the switch alone decides, which is how every venue
+    behaved before this table existed.
+    """
+
+    __tablename__ = "opening_hours"
+    __table_args__ = (
+        UniqueConstraint("restaurant_id", "day_of_week", name="uq_opening_hours_day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(
+        ForeignKey("restaurants.id"), index=True, nullable=False
+    )
+    #: Monday = 0 … Sunday = 6 (``datetime.weekday()``).
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Null when ``is_closed`` — a closed day has no window to open.
+    opens_at: Mapped[time | None] = mapped_column(Time, nullable=True)
+    closes_at: Mapped[time | None] = mapped_column(Time, nullable=True)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class MenuCategory(Base):

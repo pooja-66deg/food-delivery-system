@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     delivery_default_radius_km: float = 10.0
     delivery_average_speed_kmh: float = 25.0
 
+    #: Clock used to evaluate opening hours. Times on the schedule are local to
+    #: this zone; the owner's manual ``is_open`` switch is unaffected by it.
+    local_timezone: str = "Asia/Kolkata"
+
     redis_url: Optional[str] = None
 
     #: Origins the SPA is served from. The browser checks every response this

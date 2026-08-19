@@ -29,6 +29,7 @@ from typing import Sequence
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import hours as hours_mod
 from app.models import APPROVED, MenuItem, Restaurant
 from app.models import Review
 
@@ -198,7 +199,9 @@ async def search(
     if vegetarian_only:
         conditions.append(Restaurant.food_type.in_(VEGETARIAN_FOOD_TYPES))
     if open_only:
+        # Manual switch still required; schedule only tightens it when present.
         conditions.append(Restaurant.is_open.is_(True))
+        conditions.append(hours_mod.within_schedule_clause())
 
     if conditions:
         base = base.where(and_(*conditions))
